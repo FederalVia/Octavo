@@ -64,6 +64,7 @@ async function main() {
       content: { type: 'string' },
       heading: { type: 'string' },
       limit: { type: 'string' },
+      into: { type: 'string' },
       done: { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
     },
@@ -121,6 +122,7 @@ async function main() {
       done: values.done,
       json: values.json,
       daily: values.daily,
+      into: values.into,
     });
     return;
   }

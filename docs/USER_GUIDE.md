@@ -136,11 +136,12 @@ Octavo reads standard Markdown plus these extras. The demo vault's **Formatting 
 | `> [!tip]- Title` / `> [!tip]+ Title` | A foldable callout, closed / open by default |
 | `Text.[^1]` … `[^1]: The footnote` | Footnotes |
 | `$E = mc^2$`, `$$ … $$` | Inline and block maths (LaTeX) |
-| ```` ```mermaid ```` code block | Diagrams: flowcharts, sequence diagrams, timelines, … |
+| ```` ```mermaid ```` code block | Diagrams: flowcharts, sequence diagrams, timelines, … A box whose label is a note's name opens that note |
 | `%%hidden%%` | A comment, visible only in the editor |
 | `Some paragraph ^my-id` | A block id, so `[[Note#^my-id]]` can link to or embed exactly that paragraph |
-| ```` ```js ```` code block | Code (highlighted in the editor) |
-| `\| a \| b \|` tables | Tables (`/table` inserts one) |
+| ```` ```js ```` code block | Code, highlighted in the editor and in reading view |
+| ```` ```tasks ```` code block | A live list of tasks from the whole vault (see [Tasks](#tasks)) |
+| `\| a \| b \|` tables | Tables (`/table` inserts one). In reading view, right-click a cell (or tap it, then ⋯) to sort, insert, move, align or delete rows and columns |
 
 ## Images and attachments
 
@@ -165,7 +166,7 @@ Octavo reads standard Markdown plus these extras. The demo vault's **Formatting 
 
 - **Links to notes that don't exist yet** are shown faded. Click one to create the note.
 - **Renaming or moving a note updates every link** that points to it, in all notes.
-- **Frontmatter** (YAML between `---` lines at the top of a note) is shown as a properties table. Special keys:
+- **Frontmatter** (YAML between `---` lines at the top of a note) is shown as a properties table. Hover it and click **Edit** (or command palette → *Edit properties*) to edit it with typed fields: text, list, number, checkbox and date. Special keys:
   - `tags: [a, b]` adds tags.
   - `aliases: [Other Name]` lets `[[Other Name]]` link to this note.
   - `region: frontal` places the note in a brain region.
@@ -190,6 +191,9 @@ Octavo reads standard Markdown plus these extras. The demo vault's **Formatting 
 - **Move**: drag a note onto a folder in the file tree, or rename it to a new path, e.g. `Archive/Old idea`.
 - **Rename / delete**: right-click a note in the file tree, or use the buttons in the note panel.
 - **Folders** exist as long as they contain notes.
+- **Split / merge**: select text in the editor and use *Extract selection to new note*, or use *Merge this note into another…* to combine duplicates. Its text is added to the end of the other note, links are updated, and it goes to the trash.
+- **Import** (desktop): **File → Import** brings in an unzipped Notion export (Markdown & CSV) or an Evernote `.enex` file, into an `Imported/` folder. From a terminal: `octavo import notion <folder>` or `octavo import evernote <file.enex>`.
+- **Links from other apps** (desktop): command palette → *Copy octavo:// link*. Opening `octavo://open?vault=<brain>&file=<note>` anywhere (a browser, another app, a chat) opens that note in Octavo.
 
 ## Command palette and slash commands
 
@@ -216,9 +220,15 @@ Put notes in a **`Templates/`** folder. When a template is used, these placehold
 | Placeholder | Becomes |
 | --- | --- |
 | `{{title}}` | The note's name |
+| `{{folder}}` | The note's folder |
 | `{{date}}` | Today, as `2026-11-06` |
 | `{{time}}` | Now, as `14:05` |
-| `{{date:DD/MM/YYYY}}` | A custom format using `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss` |
+| `{{date:dddd, D MMMM YYYY}}` | A custom format: `YYYY`, `MMMM` (November), `MMM` (Nov), `MM`, `M`, `dddd` (Friday), `ddd` (Fri), `DD`, `D`, `HH`, `mm`, `ss` |
+| `{{date+7d}}`, `{{date-1w:DD/MM}}` | A date before or after today: `d` days, `w` weeks, `m` months, `y` years |
+| `{{yesterday}}`, `{{tomorrow}}` | Those dates |
+| `{{weekday}}`, `{{week}}`, `{{month}}`, `{{year}}` | Friday, 45, November, 2026 |
+
+Templates never run code. Claude and other tools can write notes, so a template that ran scripts would be a security risk.
 
 - **Insert a template** into the current note: `/template` in the editor, or command palette → *Insert template…*. A template's frontmatter is left out when inserting.
 - **Create a note from a template**: command palette → *New note from template…*
@@ -227,11 +237,34 @@ The demo vault includes `Templates/Meeting` and `Templates/Book`.
 
 ## Bookmarks
 
-The **☆** button on a note bookmarks it, and **☆ Bookmark this search** in the Search tab saves a search. In the Bookmarks tab (☆) you can also add web links. Bookmarks are stored in the vault at `.octavo/bookmarks.json`, so they move with the vault.
+The **☆** button on a note bookmarks it. To bookmark a heading, hover it in reading view and click the ☆ next to it. **☆ Bookmark this search** in the Search tab saves a search. In the Bookmarks tab (☆) you can also add web links. Bookmarks are stored in the vault at `.octavo/bookmarks.json`, so they move with the vault.
 
 ## Tasks
 
-The **Tasks** tab (☑) lists every open task in the vault, grouped by note. Tick tasks right there, or click a task to jump to it. *Show completed* includes finished ones. From a terminal: `octavo tasks` and `octavo task "something"`. Claude can list and update tasks too.
+The **Tasks** tab (☑) lists every open task in the vault, **by note** or **by date** (Overdue, Today, Next 7 days, Later, No date). Tick tasks right there, or click a task to jump to it. *Show completed* includes finished ones. From a terminal: `octavo tasks` and `octavo task "something"`. Claude can list and update tasks too, for example "what's overdue?".
+
+**Due dates:** add `📅 2026-11-10` to a task, or type `/due` in the editor and pick *Due today*, *Due tomorrow* or *Due in a week*. `due: 2026-11-10` and `[due:: 2026-11-10]` work too. Overdue dates are shown in red.
+
+**Task lists anywhere:** a ` ```tasks ` code block shows matching tasks from the whole vault, and you can tick them right there. One rule per line:
+
+````
+```tasks
+not done
+due before in 7 days
+tag includes #work
+sort by due
+```
+````
+
+| Rule | Example |
+| --- | --- |
+| `not done` / `done` | Open or finished tasks |
+| `due before …` / `due after …` / `due on …` | A date: `2026-12-01`, `today`, `tomorrow`, `yesterday`, `in 3 days`, `2 weeks ago`, `next week` |
+| `has due date` / `no due date` | |
+| `path includes …` / `text includes …` / `tag includes #…` | Also `does not include` |
+| `sort by due` / `sort by path` | |
+| `group by note` / `group by due` | |
+| `limit 10` | |
 
 ## Insights: orphans, dead ends, unlinked mentions
 
@@ -271,6 +304,8 @@ You can lock any note with a password: diary entries, health records, anything p
 ## Daily journal
 
 **Ctrl/Cmd+D** (or ◷) opens today's note, `Journal/YYYY-MM-DD.md`, and creates it if needed. Claude adds timestamped entries here when it uses `log_to_journal`. To use a different folder, start the server with `--daily <folder>`.
+
+**Weekly and monthly notes:** command palette → *Open this week's note* (`Journal/Weekly/2026-W45.md`, with links to each day) or *Open this month's note* (`Journal/Monthly/2026-11.md`). From a terminal: `octavo weekly`, `octavo monthly`. Claude can open them with `open_periodic_note`, e.g. to plan the week.
 
 ## When Claude (or anything else) edits a note
 

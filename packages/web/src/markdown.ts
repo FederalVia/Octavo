@@ -1,4 +1,4 @@
-import { Marked, type Tokens } from 'marked';
+import { Marked, Renderer, type Tokens } from 'marked';
 import markedFootnote from 'marked-footnote';
 import markedKatex from 'marked-katex-extension';
 import DOMPurify from 'dompurify';
@@ -226,8 +226,14 @@ export function createRenderer(ctxBase: RenderContext) {
       },
       code({ text, lang }) {
         // URI-encoded: the sanitizer strips attributes containing "-->", which Mermaid arrows use.
+        if (lang === 'tasks') return `<div class="tasks-query" data-q="${encodeURIComponent(text)}"><div class="muted small">Loading tasks…</div></div>`;
         if (lang === 'mermaid') return `<div class="mermaid-block" data-src="${encodeURIComponent(text)}"><pre>${escapeHtml(text)}</pre></div>`;
         return false; // default rendering
+      },
+      table(token) {
+        // Wrapped so the reading view can offer sort / insert / delete on it; data-table is the Markdown source.
+        const html = Renderer.prototype.table.call(this, token);
+        return `<div class="table-wrap" data-table="${encodeURIComponent(token.raw)}">${html}</div>`;
       },
       checkbox() {
         return ''; // drawn by listitem so custom statuses work too
@@ -244,6 +250,13 @@ export function createRenderer(ctxBase: RenderContext) {
         if (!item.task) body = body.replace(/\[.\][ \t]/, '');
         const idx = taskIndex++;
         const done = status === 'x' || status === 'X' || status === '-';
+        // Due dates (📅 2026-11-10) as a small badge; red when overdue.
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        body = body.replace(
+          /(📅|🗓️?)\s*(\d{4}-\d{2}-\d{2})\b(?![^<]*>)/gu,
+          (_m, icon: string, date: string) => `<span class="task-due-inline${!done && date < today ? ' overdue' : ''}">${icon} ${date}</span>`,
+        );
         const box = `<span class="task-box${ctx.interactive ? ' interactive' : ''}" data-status="${escapeHtml(status)}"${ctx.interactive ? ` data-task="${idx}" role="checkbox" aria-checked="${done}" tabindex="0"` : ''}>${status === ' ' || status === 'x' || status === 'X' ? '' : escapeHtml(status)}</span>`;
         return `<li class="task${done ? ' done' : ''}" data-status="${escapeHtml(status)}">${box}${body}</li>\n`;
       },

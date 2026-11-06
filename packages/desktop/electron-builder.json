@@ -68,5 +68,13 @@
     "provider": "github",
     "owner": "FederalVia",
     "repo": "Octavo"
-  }
+  },
+  "protocols": [
+    {
+      "name": "Octavo link",
+      "schemes": [
+        "octavo"
+      ]
+    }
+  ]
 }

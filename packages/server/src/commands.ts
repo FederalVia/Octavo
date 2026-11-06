@@ -1,4 +1,5 @@
 import { Vault } from '@octavo/core';
+import { importEnex, importNotion } from './importers.js';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -7,6 +8,7 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
                                        Append text (under a heading if given)
   octavo search <query…> [--limit N]   Full-text search ("phrases", tag:x, path:y)
   octavo daily [text…]                 Print today's journal path, or log an entry to it
+  octavo weekly | monthly               Print this week's / this month's note path (creating it)
   octavo task <text…>                  Add "- [ ] text" to today's journal
   octavo tasks [--done]                List open (or all) tasks across the vault
   octavo done <note> <line>            Toggle a task between open and done
@@ -15,6 +17,10 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo history <note>                List saved versions of a note
   octavo restore <note> <version-id>   Restore a saved version
   octavo orphans                       Notes nothing links to, and dead ends
+  octavo import notion <folder> [--into F]
+                                       Import an unzipped Notion "Markdown & CSV" export
+  octavo import evernote <file.enex> [--into F]
+                                       Import an Evernote export
 
 Add --json to tasks, search, tags, history or orphans for machine-readable output.`;
 
@@ -24,6 +30,9 @@ export const NOTE_COMMANDS = new Set([
   'append',
   'search',
   'daily',
+  'weekly',
+  'monthly',
+  'import',
   'task',
   'tasks',
   'done',
@@ -52,6 +61,7 @@ export interface NoteCommandOptions {
   done?: boolean;
   json?: boolean;
   daily?: string;
+  into?: string;
 }
 
 /** Run a note command against the vault and print the result. */
@@ -96,6 +106,22 @@ export async function runNoteCommand(
       }
       case 'daily': {
         const s = args.length ? await vault.logToJournal(args.join(' ')) : await vault.ensureDailyNote();
+        console.log(s.path);
+        break;
+      }
+      case 'import': {
+        need(args, 2, 'import notion <folder> | import evernote <file.enex> [--into Folder]');
+        const [kind, source] = args;
+        let r;
+        if (kind === 'notion') r = await importNotion(vault, source, opts.into);
+        else if (kind === 'evernote' || kind === 'enex') r = await importEnex(vault, source, opts.into);
+        else throw new Error('Usage: octavo import notion <folder> | import evernote <file.enex> [--into Folder]');
+        out(r, () => `Imported ${r.notes} note(s) and ${r.attachments} attachment(s) into ${r.folder || 'the vault'}.${r.skipped.length ? `\nSkipped:\n  ${r.skipped.join('\n  ')}` : ''}`);
+        break;
+      }
+      case 'weekly':
+      case 'monthly': {
+        const s = await vault.ensurePeriodicNote(command === 'weekly' ? 'week' : 'month');
         console.log(s.path);
         break;
       }

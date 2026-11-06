@@ -241,6 +241,15 @@ export function Editor(props: Props) {
           },
           { label: 'Date', detail: 'today', insert: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}|` },
           { label: 'Time', detail: 'now', insert: `${pad2(now.getHours())}:${pad2(now.getMinutes())}|` },
+          ...[
+            ['Due today', 0],
+            ['Due tomorrow', 1],
+            ['Due in a week', 7],
+          ].map(([label, days]) => {
+            const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (days as number));
+            const iso = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+            return { label: label as string, detail: `📅 ${iso}`, insert: `📅 ${iso}|` };
+          }),
           {
             label: 'Template…',
             detail: 'insert',
