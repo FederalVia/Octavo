@@ -53,6 +53,7 @@ A 3D brain. Notes are grouped into anatomical [regions](#brain-regions).
 | Highlight a note's connections | Hover over it |
 
 - **The legend** (top left) lists each region with its note count. Click a region to hide or show it.
+- **Trail** (top right): a fading line through the notes Claude read or changed in the last 30 minutes, in order, so you can see the shape of a whole session after the glow has gone. It survives a reload. Click **Trail** to hide it.
 - **The controls** (top right):
   - **Labels** turns note names on or off.
   - **All** / **None** show or hide every region.

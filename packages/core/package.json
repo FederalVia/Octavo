@@ -1,6 +1,6 @@
 {
   "name": "@octavo/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./regions": {
+      "types": "./dist/regions.d.ts",
+      "default": "./dist/regions.js"
     }
   },
   "scripts": {

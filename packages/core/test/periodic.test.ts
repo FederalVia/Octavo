@@ -87,3 +87,36 @@ test('merge notes', async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('brain regions: reasons, pinning and random notes', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-region-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    await vault.write('Projects/Alpha.md', '# Alpha\n');
+    await vault.write('Loose idea.md', '# Idea #person\n');
+    await vault.write('Home.md', '# Home\n');
+    assert.deepEqual(vault.regionOf('Alpha'), { region: 'frontal', label: 'Frontal', reason: 'in the “Projects” folder' });
+    assert.equal(vault.regionOf('Loose idea').region, 'temporal');
+    assert.equal(vault.regionOf('Home').reason, 'a home/index note');
+
+    await vault.setRegion('Alpha', 'occipital');
+    assert.match((await vault.read('Alpha')).content, /^---\nregion: occipital\n---\n# Alpha/);
+    assert.equal(vault.regionOf('Alpha').region, 'occipital');
+    await vault.setRegion('Alpha', null);
+    assert.equal((await vault.read('Alpha')).content, '# Alpha\n');
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 60; i++) seen.add(vault.randomNote()!.path);
+    assert.equal(seen.size, 3);
+    assert.equal(vault.randomNote({ region: 'stem' })!.path, 'Home.md');
+    assert.equal(vault.randomNote({ folder: 'Nope' }), null);
+
+    const events: unknown[] = [];
+    vault.on('event', (e) => events.push(e));
+    vault.noteAccessed('Alpha');
+    assert.deepEqual(events, [{ type: 'access', path: 'Projects/Alpha.md' }]);
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

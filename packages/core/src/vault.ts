@@ -5,6 +5,8 @@ import path from 'node:path';
 import { isEncryptedContent, maskCode, parseNote, parseWikiInner, splitFrontmatter, type ParsedLink } from './parse.js';
 import { normalizeFolderPath, normalizeNotePath, noteFolder, noteName, stripMd, VaultPathError } from './paths.js';
 import { searchNotes } from './search.js';
+import { classifyRegion, REGION_INFO, type RegionKey } from './regions.js';
+import YAML from 'yaml';
 import type {
   Backlink,
   GraphData,
@@ -1112,6 +1114,71 @@ export class Vault extends EventEmitter {
     const dir = path.join(this.root, '.octavo');
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, `${name}.json`), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  // ---------------------------------------------------------------- brain regions and activity
+
+  /** Tell listeners (the app) that a note was read, e.g. by Claude. */
+  noteAccessed(nameOrPath: string): void {
+    const rel = this.resolve(nameOrPath);
+    if (rel) this.emitEvent({ type: 'access', path: rel });
+  }
+
+  /** Which brain region a note is drawn in, and why. */
+  regionOf(nameOrPath: string): { region: RegionKey; label: string; reason: string } {
+    const n = this.requireNote(nameOrPath);
+    const fm = typeof n.frontmatter?.region === 'string' ? (n.frontmatter.region as string) : undefined;
+    const r = classifyRegion({ id: n.path, name: n.name, tags: n.tags, region: fm });
+    return { ...r, label: REGION_INFO.find((x) => x.key === r.region)!.label };
+  }
+
+  /** Pin a note to a region with `region:` in its properties, or `null` to go back to automatic placement. */
+  async setRegion(nameOrPath: string, region: RegionKey | null): Promise<NoteSummary> {
+    const note = this.requireNote(nameOrPath);
+    await this.refreshFile(note.path, true);
+    const current = this.notes.get(note.path)!;
+    if (current.encrypted) throw new EncryptedNoteError(note.path);
+    const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(current.content);
+    let data: Record<string, unknown> = {};
+    if (m) {
+      try {
+        const v = YAML.parse(m[1]);
+        if (v && typeof v === 'object' && !Array.isArray(v)) data = v as Record<string, unknown>;
+        else throw new Error();
+      } catch {
+        throw new EditMatchError(`${note.path} has properties that aren't valid YAML; fix them first`);
+      }
+    }
+    if (region) data.region = region;
+    else delete data.region;
+    const body = m ? current.content.slice(m[0].length) : current.content;
+    const content = Object.keys(data).length ? `---\n${YAML.stringify(data, { lineWidth: 0 }).trimEnd()}\n---\n${body}` : body;
+    return this.write(note.path, content);
+  }
+
+  /** A random note, weighted towards ones that haven't been touched in a while. */
+  randomNote(opts: { folder?: string; tag?: string; region?: RegionKey; preferOld?: boolean } = {}): NoteSummary | null {
+    const now = Date.now();
+    const folder = opts.folder ? normalizeFolderPath(opts.folder) : '';
+    const tag = opts.tag?.replace(/^#/, '').toLowerCase();
+    const pool = [...this.notes.values()].filter((n) => {
+      if (folder && !(n.path === folder || n.path.startsWith(folder + '/'))) return false;
+      if (tag && !n.tags.some((t) => t.toLowerCase() === tag || t.toLowerCase().startsWith(tag + '/'))) return false;
+      if (opts.region) {
+        const fm = typeof n.frontmatter?.region === 'string' ? (n.frontmatter.region as string) : undefined;
+        if (classifyRegion({ id: n.path, name: n.name, tags: n.tags, region: fm }).region !== opts.region) return false;
+      }
+      return true;
+    });
+    if (!pool.length) return null;
+    // Weight by age in days (+1), so a year-old note is far likelier than today's.
+    const weights = pool.map((n) => (opts.preferOld === false ? 1 : 1 + Math.max(0, now - n.mtime) / 86400000));
+    let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < pool.length; i++) {
+      pick -= weights[i];
+      if (pick <= 0) return summarize(pool[i]);
+    }
+    return summarize(pool[pool.length - 1]);
   }
 
   // ---------------------------------------------------------------- journal

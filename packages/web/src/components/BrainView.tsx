@@ -31,6 +31,8 @@ export interface BrainHandle {
   fire(id: string): void;
   /** Fly the camera to a node. */
   focus(id: string): void;
+  /** Like fire, and also adds the note to the atlas trail (Claude read or changed it). */
+  visit?(id: string): void;
 }
 
 interface Node extends GraphNode, SimulationNodeDatum {

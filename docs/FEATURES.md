@@ -111,7 +111,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query Bases, install plugins/themes, terminal UI | 🚧 | |
-| AI access | ✅ | MCP server with 17 tools, so Claude can read, write and organise the vault |
+| AI access | ✅ | MCP server with 20 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)
