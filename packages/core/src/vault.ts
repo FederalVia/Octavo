@@ -103,6 +103,40 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+export type Period = 'day' | 'week' | 'month';
+
+export interface TaskItem {
+  path: string;
+  name: string;
+  line: number;
+  status: string;
+  text: string;
+  /** YYYY-MM-DD, from "📅 2026-11-10" (Obsidian Tasks style) or "due: 2026-11-10" / "[due:: 2026-11-10]" in the task text. */
+  due?: string;
+}
+
+const DUE_RE = /(?:📅|🗓️?|\bdue::?)\s*(\d{4}-\d{2}-\d{2})\b/iu;
+
+/** The due date written in a task's text, if any. */
+export function taskDueDate(text: string): string | undefined {
+  return DUE_RE.exec(text)?.[1];
+}
+
+/** ISO 8601 week: weeks start on Monday; week 1 contains the year's first Thursday. */
+export function isoWeek(d: Date): { year: number; week: number; monday: Date; sunday: Date } {
+  const day = (d.getDay() + 6) % 7; // Monday = 0
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
+  const thursday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 3);
+  const year = thursday.getFullYear();
+  const jan4 = new Date(year, 0, 4);
+  const week1Monday = new Date(year, 0, 4 - ((jan4.getDay() + 6) % 7));
+  const week = Math.round((monday.getTime() - week1Monday.getTime()) / (7 * 86400000)) + 1;
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  return { year, week, monday, sunday };
+}
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 function encodeMdHref(rel: string): string {
   return rel
     .split('/')
@@ -725,32 +759,17 @@ export class Vault extends EventEmitter {
     return { path: note.path, trashedTo: trashRel };
   }
 
-  /**
-   * Rename/move a note. By default every wikilink and markdown link that
-   * points at it is rewritten to the new location.
-   */
-  async rename(
-    fromNameOrPath: string,
-    toPath: string,
-    opts: { updateLinks?: boolean } = {},
-  ): Promise<{ from: string; to: string; updatedNotes: string[]; updatedLinks: number }> {
-    const src = this.requireNote(fromNameOrPath);
+  /** New content for every note with links to `src`, pointing them at `to` instead. */
+  private linkRewrites(src: IndexedNote, to: string, opts: { keepAliasLinks: boolean }): Map<string, { content: string; count: number }> {
     const from = src.path;
-    const to = normalizeNotePath(toPath);
-    if (to === from) return { from, to, updatedNotes: [], updatedLinks: 0 };
-    const caseOnly = to.toLowerCase() === from.toLowerCase();
-    if (!caseOnly && (this.notes.has(to) || (await fsp.stat(this.abs(to)).catch(() => null)))) {
-      throw new NoteExistsError(to);
-    }
-
     const newName = noteName(to);
-    const others = [...(this.byName.get(newName.toLowerCase()) ?? [])].filter((p) => p !== from);
+    const others = [...(this.byName.get(newName.toLowerCase()) ?? [])].filter((p) => p !== from && p !== to);
     const wikiTarget = others.length === 0 ? newName : stripMd(to);
     const srcAliases = new Set(src.aliases.map((a) => a.toLowerCase()));
 
-    // Compute link rewrites against the pre-rename index.
+    // Computed against the current index, before anything moves.
     const rewrites = new Map<string, { content: string; count: number }>();
-    if (opts.updateLinks !== false) {
+    {
       for (const n of this.notes.values()) {
         const { body } = splitFrontmatter(n.content);
         const fmLen = n.content.length - body.length;
@@ -763,7 +782,7 @@ export class Vault extends EventEmitter {
           if (!inner.target) continue;
           if (this.resolveLink({ target: inner.target }, n.path) !== from) continue;
           const lt = stripMd(inner.target).toLowerCase();
-          if (srcAliases.has(lt) && lt !== src.name.toLowerCase()) continue; // alias links still work
+          if (opts.keepAliasLinks && srcAliases.has(lt) && lt !== src.name.toLowerCase()) continue; // alias links still work
           const text = `${m[1]}[[${wikiTarget}${inner.heading ? '#' + inner.heading : ''}${inner.alias ? '|' + inner.alias : ''}]]`;
           edits.push({ start: m.index!, end: m.index! + m[0].length, text });
         }
@@ -792,6 +811,28 @@ export class Vault extends EventEmitter {
         }
       }
     }
+    return rewrites;
+  }
+
+  /**
+   * Rename/move a note. By default every wikilink and markdown link that
+   * points at it is rewritten to the new location.
+   */
+  async rename(
+    fromNameOrPath: string,
+    toPath: string,
+    opts: { updateLinks?: boolean } = {},
+  ): Promise<{ from: string; to: string; updatedNotes: string[]; updatedLinks: number }> {
+    const src = this.requireNote(fromNameOrPath);
+    const from = src.path;
+    const to = normalizeNotePath(toPath);
+    if (to === from) return { from, to, updatedNotes: [], updatedLinks: 0 };
+    const caseOnly = to.toLowerCase() === from.toLowerCase();
+    if (!caseOnly && (this.notes.has(to) || (await fsp.stat(this.abs(to)).catch(() => null)))) {
+      throw new NoteExistsError(to);
+    }
+
+    const rewrites = opts.updateLinks !== false ? this.linkRewrites(src, to, { keepAliasLinks: true }) : new Map<string, { content: string; count: number }>();
 
     // Move the file.
     await fsp.mkdir(path.dirname(this.abs(to)), { recursive: true });
@@ -812,6 +853,48 @@ export class Vault extends EventEmitter {
     return { from, to, updatedNotes, updatedLinks };
   }
 
+
+  /**
+   * Merge one note into another: its text is appended to the target, links to it
+   * are pointed at the target, and the source goes to the trash.
+   */
+  async merge(
+    sourceNameOrPath: string,
+    targetNameOrPath: string,
+    opts: { heading?: boolean } = {},
+  ): Promise<{ from: string; into: string; updatedNotes: string[]; updatedLinks: number; trashedTo: string }> {
+    const src = this.requireNote(sourceNameOrPath);
+    const dst = this.requireNote(targetNameOrPath);
+    if (src.path === dst.path) throw new EditMatchError('A note can’t be merged into itself');
+    await this.refreshFile(src.path, true);
+    await this.refreshFile(dst.path, true);
+    for (const n of [src.path, dst.path]) if (this.notes.get(n)!.encrypted) throw new EncryptedNoteError(n);
+
+    const rewrites = this.linkRewrites(this.notes.get(src.path)!, dst.path, { keepAliasLinks: false });
+    const srcContent = rewrites.get(src.path)?.content ?? this.notes.get(src.path)!.content;
+    const dstContent = rewrites.get(dst.path)?.content ?? this.notes.get(dst.path)!.content;
+    let body = splitFrontmatter(srcContent).body.trim();
+    if (opts.heading !== false) {
+      // Keep the source's title as a section heading: "# Title" becomes "## Title", or add one.
+      const h1 = /^# +(.+)\n?/.exec(body);
+      body = h1 ? `## ${h1[1]}\n${body.slice(h1[0].length)}` : `## ${src.name}\n\n${body}`;
+    }
+    const merged = body ? `${dstContent.replace(/\s*$/, '')}\n\n${body}\n` : dstContent;
+
+    let updatedLinks = 0;
+    const updatedNotes: string[] = [];
+    await this.write(dst.path, merged);
+    updatedNotes.push(dst.path);
+    updatedLinks += rewrites.get(dst.path)?.count ?? 0;
+    for (const [p, r] of rewrites) {
+      if (p === src.path || p === dst.path) continue;
+      await this.write(p, r.content);
+      updatedLinks += r.count;
+      updatedNotes.push(p);
+    }
+    const { trashedTo } = await this.delete(src.path);
+    return { from: src.path, into: dst.path, updatedNotes, updatedLinks, trashedTo };
+  }
 
   // ---------------------------------------------------------------- attachments
 
@@ -978,8 +1061,8 @@ export class Vault extends EventEmitter {
   // ---------------------------------------------------------------- tasks
 
   /** Every Markdown task (`- [ ] ...`) in the vault. Status is the character between the brackets. */
-  tasks(opts: { includeDone?: boolean } = {}): { path: string; name: string; line: number; status: string; text: string }[] {
-    const out: { path: string; name: string; line: number; status: string; text: string }[] = [];
+  tasks(opts: { includeDone?: boolean } = {}): TaskItem[] {
+    const out: TaskItem[] = [];
     for (const n of [...this.notes.values()].filter((x) => !x.encrypted).sort((a, b) => a.path.localeCompare(b.path))) {
       const lines = n.content.split('\n');
       const masked = maskCode(n.content).split('\n');
@@ -988,7 +1071,10 @@ export class Vault extends EventEmitter {
         if (!m) return;
         const done = m[1] === 'x' || m[1] === 'X' || m[1] === '-';
         if (done && !opts.includeDone) return;
-        out.push({ path: n.path, name: n.name, line: i + 1, status: m[1], text: lines[i].replace(/^\s*(?:[-*+]|\d+[.)])\s+\[.\]\s+/, '').trim() });
+        const text = lines[i].replace(/^\s*(?:[-*+]|\d+[.)])\s+\[.\]\s+/, '').trim();
+        if (!text) return; // an empty "- [ ]" placeholder
+        const due = taskDueDate(text);
+        out.push({ path: n.path, name: n.name, line: i + 1, status: m[1], text, ...(due ? { due } : {}) });
       });
     }
     return out;
@@ -1031,16 +1117,39 @@ export class Vault extends EventEmitter {
   // ---------------------------------------------------------------- journal
 
   dailyNotePath(date = new Date()): string {
-    const name = `${formatDate(date)}.md`;
-    return this.dailyFolder ? `${this.dailyFolder}/${name}` : name;
+    return this.periodicNotePath('day', date);
+  }
+
+  /** Journal/2026-11-06.md, Journal/Weekly/2026-W45.md, Journal/Monthly/2026-11.md */
+  periodicNotePath(period: Period, date = new Date()): string {
+    let rel: string;
+    if (period === 'week') {
+      const w = isoWeek(date);
+      rel = `Weekly/${w.year}-W${pad(w.week)}.md`;
+    } else if (period === 'month') rel = `Monthly/${date.getFullYear()}-${pad(date.getMonth() + 1)}.md`;
+    else rel = `${formatDate(date)}.md`;
+    return this.dailyFolder ? `${this.dailyFolder}/${rel}` : rel;
   }
 
   /** Return today's daily note, creating it if it doesn't exist. */
   async ensureDailyNote(date = new Date()): Promise<NoteSummary> {
-    const rel = this.dailyNotePath(date);
+    return this.ensurePeriodicNote('day', date);
+  }
+
+  /** Return the note for this day, week or month, creating it if it doesn't exist. */
+  async ensurePeriodicNote(period: Period, date = new Date()): Promise<NoteSummary> {
+    const rel = this.periodicNotePath(period, date);
     const existing = this.notes.get(rel);
     if (existing) return summarize(existing);
-    return this.write(rel, `# ${formatDate(date)}\n\n`);
+    let content: string;
+    if (period === 'week') {
+      const w = isoWeek(date);
+      const days = Array.from({ length: 7 }, (_, i) => formatDate(new Date(w.monday.getFullYear(), w.monday.getMonth(), w.monday.getDate() + i)));
+      content = `# Week ${w.week}, ${w.year}\n\n${formatDate(w.monday)} to ${formatDate(w.sunday)}\n\n## Goals\n\n## Days\n\n${days.map((d) => `- [[${d}]]`).join('\n')}\n\n## Review\n\n`;
+    } else if (period === 'month') {
+      content = `# ${MONTHS[date.getMonth()]} ${date.getFullYear()}\n\n## Goals\n\n## Notes\n\n## Review\n\n`;
+    } else content = `# ${formatDate(date)}\n\n`;
+    return this.write(rel, content);
   }
 
   /** Append a timestamped bullet to today's daily note. */

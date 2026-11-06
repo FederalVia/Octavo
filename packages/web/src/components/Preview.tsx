@@ -1,6 +1,99 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { createRenderer, extractSection, slugify, splitFrontmatter } from '../markdown';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
+import { classHighlighter, highlightTree } from '@lezer/highlight';
+import { parseTaskQuery, runTaskQuery } from '../taskQuery';
+import { dueLabel } from './Panels';
+import { editTableInContent, type TableAction } from '../tables';
+import { Properties } from './Properties';
+
+interface TableMenu {
+  x: number;
+  y: number;
+  raw: string;
+  /** Body row index; -1 for the header row. */
+  row: number;
+  col: number;
+  colName: string;
+  error?: string;
+}
+
+const escapeText = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const DUE_IN_TEXT = /\s*(?:📅|🗓️?|\bdue::?)\s*\d{4}-\d{2}-\d{2}\b/giu;
+
+/** Fill a ```tasks block with the matching tasks from the whole vault. */
+export async function renderTaskQuery(el: HTMLElement) {
+  const q = parseTaskQuery(decodeURIComponent(el.dataset.q ?? ''));
+  let tasks;
+  try {
+    tasks = runTaskQuery(q, (await api.tasks(true)).tasks);
+  } catch {
+    el.innerHTML = '<div class="muted small">Couldn’t load tasks.</div>';
+    return;
+  }
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const item = (t: (typeof tasks)[number]) => {
+    const done = t.status === 'x' || t.status === 'X' || t.status === '-';
+    const overdue = !done && !!t.due && t.due < today;
+    const due = t.due ? `<span class="task-due${overdue ? ' overdue' : t.due === today ? ' today' : ''}" title="${t.due}">📅 ${escapeText(dueLabel(t.due, today))}</span>` : '';
+    const box = `<span class="task-box interactive tq-box" data-status="${escapeText(t.status)}" data-path="${escapeText(t.path)}" data-line="${t.line}" role="checkbox" aria-checked="${done}" tabindex="0">${t.status === ' ' || t.status === 'x' || t.status === 'X' ? '' : escapeText(t.status)}</span>`;
+    const text = escapeText(t.text.replace(DUE_IN_TEXT, '').trim() || t.text);
+    return `<li class="task${done ? ' done' : ''}">${box}<span>${text}</span>${due} <a class="wikilink tq-source" href="#" data-target="${escapeText(t.path)}">${escapeText(t.name)}</a></li>`;
+  };
+  let body: string;
+  if (!tasks.length) body = '<div class="muted small">No matching tasks.</div>';
+  else if (q.group) {
+    const groups = new Map<string, typeof tasks>();
+    for (const t of tasks) {
+      const key = q.group === 'note' ? t.name : t.due ? dueLabel(t.due, today) : 'No date';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    }
+    body = [...groups].map(([k, list]) => `<div class="tq-group">${escapeText(k)}</div><ul class="tq-list">${list.map(item).join('')}</ul>`).join('');
+  } else body = `<ul class="tq-list">${tasks.map(item).join('')}</ul>`;
+  const errors = q.errors.length ? `<div class="tq-errors">${q.errors.map(escapeText).join('<br>')}</div>` : '';
+  el.innerHTML = errors + body;
+}
+
+/** Syntax-highlight fenced code blocks with the same language parsers the editor uses. */
+async function highlightCode(root: HTMLElement, isStale: () => boolean) {
+  const blocks = [...root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]:not([data-hl])')];
+  for (const el of blocks) {
+    if (isStale()) return;
+    el.dataset.hl = '1';
+    const name = /(?:^|\s)language-([^\s]+)/.exec(el.className)?.[1];
+    const desc = name ? LanguageDescription.matchLanguageName(languages, name, true) : null;
+    if (!desc) continue;
+    let support;
+    try {
+      support = desc.support ?? (await desc.load());
+    } catch {
+      continue;
+    }
+    if (isStale()) return;
+    const code = el.textContent ?? '';
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    const push = (text: string, cls?: string) => {
+      if (!text) return;
+      if (!cls) return void frag.append(text);
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      frag.append(span);
+    };
+    highlightTree(support.language.parser.parse(code), classHighlighter, (from, to, cls) => {
+      push(code.slice(pos, from));
+      push(code.slice(from, to), cls);
+      pos = to;
+    });
+    push(code.slice(pos));
+    el.replaceChildren(frag);
+  }
+}
 
 interface Props {
   content: string;
@@ -13,14 +106,16 @@ interface Props {
   onToggleTask?: (index: number) => void;
   scrollToHeading?: string | null;
   onScrolled?: () => void;
+  /** Headings of this note that are bookmarked (shown with a filled star). */
+  bookmarkedHeadings?: string[];
+  /** Shows a star next to each heading that bookmarks (or un-bookmarks) it. */
+  onBookmarkHeading?: (heading: string) => void;
+  /** Lets the reading view change the note (table menu, properties). */
+  onEditContent?: (content: string) => void;
+  /** Changes to open the properties editor. */
+  editPropertiesSignal?: number;
 }
 
-function renderValue(v: unknown): string {
-  if (Array.isArray(v)) return v.map(renderValue).join(', ');
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  if (v && typeof v === 'object') return JSON.stringify(v);
-  return String(v ?? '');
-}
 
 /** Scroll to a heading (by text) or a block (^id) inside a container. */
 export function scrollToAnchor(root: HTMLElement | null, heading: string, smooth = false) {
@@ -72,6 +167,14 @@ async function hydrate(
     }
   }
 
+  await highlightCode(root, isStale);
+
+  for (const el of root.querySelectorAll<HTMLElement>('.tasks-query:not([data-done])')) {
+    if (isStale()) return;
+    el.dataset.done = '1';
+    await renderTaskQuery(el);
+  }
+
   // ![[Note]] / ![[Note#Heading]] / ![[Note#^block]] transclusions.
   const embeds = [...root.querySelectorAll<HTMLElement>('.embed-note:not([data-done])')];
   for (const el of embeds) {
@@ -115,7 +218,7 @@ interface Hover {
   title: string;
 }
 
-export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, onToggleTask, scrollToHeading, onScrolled }: Props) {
+export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, onToggleTask, scrollToHeading, onScrolled, bookmarkedHeadings, onBookmarkHeading, onEditContent, editPropertiesSignal }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,6 +229,8 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const renderGen = useRef(0);
+  const existsRef = useRef(exists);
+  existsRef.current = exists;
 
   // Set HTML imperatively so hydrated embeds/diagrams aren't wiped by React on unrelated re-renders.
   useEffect(() => {
@@ -133,8 +238,98 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
     if (!el) return;
     el.innerHTML = html;
     const gen = ++renderGen.current;
-    hydrate(el, render, path, 0, () => gen !== renderGen.current).catch(() => {});
+    hydrate(el, render, path, 0, () => gen !== renderGen.current)
+      .then(() => {
+        // Diagram boxes whose label is a note's name open that note.
+        if (gen !== renderGen.current) return;
+        for (const node of el.querySelectorAll<SVGGElement>('.mermaid-block g.node')) {
+          const label = (node.textContent ?? '').trim();
+          if (label && existsRef.current(label)) {
+            node.classList.add('note-link');
+            node.dataset.note = label;
+          }
+        }
+      })
+      .catch(() => {});
   }, [html, render, path]);
+
+  const [tableMenu, setTableMenu] = useState<TableMenu | null>(null);
+  const canEditTables = !!onEditContent;
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || !canEditTables) return;
+    for (const wrap of el.querySelectorAll<HTMLElement>(':scope > .table-wrap')) {
+      if (wrap.querySelector(':scope > .table-menu-btn')) continue;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'table-menu-btn';
+      btn.title = 'Table options (or right-click a cell)';
+      btn.textContent = '⋯';
+      wrap.append(btn);
+    }
+  }, [html, render, path, canEditTables]);
+  useEffect(() => {
+    if (!tableMenu) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'mousedown' && (e.target as HTMLElement).closest('.table-menu')) return;
+      setTableMenu(null);
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+      window.removeEventListener('resize', close);
+    };
+  }, [tableMenu]);
+  const openTableMenu = (cell: HTMLTableCellElement | null, wrap: HTMLElement, x: number, y: number) => {
+    const raw = decodeURIComponent(wrap.dataset.table ?? '');
+    const table = wrap.querySelector('table');
+    const c = cell ?? wrap.querySelector<HTMLTableCellElement>('td.cell-selected, th.cell-selected');
+    const col = c ? c.cellIndex : 0;
+    const tr = c?.parentElement as HTMLTableRowElement | undefined;
+    const row = !c || tr?.parentElement?.tagName === 'THEAD' ? -1 : tr!.sectionRowIndex;
+    const colName = table?.querySelectorAll('thead th')[col]?.textContent?.trim() || `Column ${col + 1}`;
+    setTableMenu({ x: Math.min(x, window.innerWidth - 230), y: Math.min(y, window.innerHeight - 380), raw, row, col, colName });
+  };
+  const runTable = (action: TableAction) => {
+    if (!tableMenu || !onEditContent) return;
+    const next = editTableInContent(content, tableMenu.raw, action);
+    if (next == null) {
+      setTableMenu({ ...tableMenu, error: 'This table is inside a quote or list. Change it in Edit mode instead.' });
+      return;
+    }
+    setTableMenu(null);
+    onEditContent(next);
+  };
+
+  // A star on each of this note's own headings (not embedded ones) to bookmark it.
+  const bookmarkedKey = (bookmarkedHeadings ?? []).join('\n');
+  const canBookmark = !!onBookmarkHeading;
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || !canBookmark) return;
+    const marked = new Set(bookmarkedKey ? bookmarkedKey.split('\n') : []);
+    for (const h of el.querySelectorAll<HTMLElement>(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6')) {
+      let btn = h.querySelector<HTMLButtonElement>(':scope > .heading-bookmark');
+      if (!btn) {
+        const text = (h.textContent ?? '').trim();
+        if (!text) continue;
+        btn = document.createElement('button');
+        btn.className = 'heading-bookmark';
+        btn.type = 'button';
+        btn.dataset.heading = text;
+        h.append(btn);
+      }
+      const on = marked.has(btn.dataset.heading ?? '');
+      btn.textContent = on ? '★' : '☆';
+      btn.classList.toggle('on', on);
+      btn.title = on ? 'Remove bookmark' : 'Bookmark this heading';
+    }
+    // render and path too: the HTML is re-set when they change even if the string is identical.
+  }, [html, render, path, bookmarkedKey, canBookmark]);
 
   useEffect(() => {
     if (!scrollToHeading || !ref.current) return;
@@ -191,8 +386,49 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
         onMouseOut={(e) => {
           if ((e.target as HTMLElement).closest('a.wikilink')) hideHover();
         }}
+        onContextMenu={(e) => {
+          const cell = (e.target as HTMLElement).closest('.table-wrap td, .table-wrap th') as HTMLTableCellElement | null;
+          if (!cell || !canEditTables) return;
+          e.preventDefault();
+          openTableMenu(cell, cell.closest('.table-wrap') as HTMLElement, e.clientX, e.clientY);
+        }}
         onClick={(e) => {
           const target = e.target as HTMLElement;
+          const diagramNode = target.closest('.mermaid-block g.note-link') as SVGGElement | null;
+          if (diagramNode) {
+            e.preventDefault();
+            onOpenLink(diagramNode.dataset.note ?? '');
+            return;
+          }
+          const menuBtn = target.closest('.table-menu-btn') as HTMLElement | null;
+          if (menuBtn && canEditTables) {
+            e.preventDefault();
+            const r = menuBtn.getBoundingClientRect();
+            openTableMenu(null, menuBtn.closest('.table-wrap') as HTMLElement, r.left - 190, r.bottom + 4);
+            return;
+          }
+          const cell = target.closest('.table-wrap td, .table-wrap th') as HTMLTableCellElement | null;
+          if (cell && canEditTables && !target.closest('a')) {
+            // Remember the cell so the ⋯ button (e.g. on a phone) acts on it.
+            cell.closest('table')?.querySelectorAll('.cell-selected').forEach((x) => x.classList.remove('cell-selected'));
+            cell.classList.add('cell-selected');
+          }
+          const qbox = target.closest('.tq-box') as HTMLElement | null;
+          if (qbox) {
+            e.preventDefault();
+            const block = qbox.closest('.tasks-query') as HTMLElement | null;
+            api
+              .setTask(qbox.dataset.path ?? '', Number(qbox.dataset.line))
+              .then(() => block && renderTaskQuery(block))
+              .catch(() => {});
+            return;
+          }
+          const star = target.closest('.heading-bookmark') as HTMLElement | null;
+          if (star && onBookmarkHeading) {
+            e.preventDefault();
+            onBookmarkHeading(star.dataset.heading ?? '');
+            return;
+          }
           const box = target.closest('.task-box.interactive') as HTMLElement | null;
           if (box && onToggleTask) {
             e.preventDefault();
@@ -233,20 +469,43 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
           }
         }}
       >
-        {fm && Object.keys(fm).length > 0 && (
-          <table className="properties">
-            <tbody>
-              {Object.entries(fm).map(([k, v]) => (
-                <tr key={k}>
-                  <th>{k}</th>
-                  <td>{renderValue(v)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <Properties frontmatter={fm} content={content} onEditContent={onEditContent} openSignal={editPropertiesSignal} />
         <div ref={bodyRef} />
       </article>
+      {tableMenu && (
+        <div className="table-menu" role="menu" style={{ left: Math.max(8, tableMenu.x), top: Math.max(8, tableMenu.y) }}>
+          {tableMenu.error ? (
+            <div className="table-menu-error">{tableMenu.error}</div>
+          ) : (
+            <>
+              <div className="table-menu-head">Column “{tableMenu.colName}”</div>
+              <button onClick={() => runTable({ type: 'sort', col: tableMenu.col, desc: false })}>Sort A → Z</button>
+              <button onClick={() => runTable({ type: 'sort', col: tableMenu.col, desc: true })}>Sort Z → A</button>
+              <button onClick={() => runTable({ type: 'insertCol', col: tableMenu.col, side: 'left' })}>Insert column left</button>
+              <button onClick={() => runTable({ type: 'insertCol', col: tableMenu.col, side: 'right' })}>Insert column right</button>
+              <button onClick={() => runTable({ type: 'moveCol', col: tableMenu.col, by: -1 })}>Move column left</button>
+              <button onClick={() => runTable({ type: 'moveCol', col: tableMenu.col, by: 1 })}>Move column right</button>
+              <div className="table-menu-row">
+                Align
+                <button onClick={() => runTable({ type: 'align', col: tableMenu.col, align: 'left' })} title="Align left">⇤</button>
+                <button onClick={() => runTable({ type: 'align', col: tableMenu.col, align: 'center' })} title="Center">↔</button>
+                <button onClick={() => runTable({ type: 'align', col: tableMenu.col, align: 'right' })} title="Align right">⇥</button>
+              </div>
+              <button className="danger" onClick={() => runTable({ type: 'deleteCol', col: tableMenu.col })}>Delete column</button>
+              <div className="table-menu-head">{tableMenu.row < 0 ? 'Header row' : `Row ${tableMenu.row + 1}`}</div>
+              {tableMenu.row >= 0 && <button onClick={() => runTable({ type: 'insertRow', row: tableMenu.row, side: 'above' })}>Insert row above</button>}
+              <button onClick={() => runTable({ type: 'insertRow', row: tableMenu.row, side: 'below' })}>Insert row below</button>
+              {tableMenu.row >= 0 && (
+                <>
+                  <button onClick={() => runTable({ type: 'moveRow', row: tableMenu.row, by: -1 })}>Move row up</button>
+                  <button onClick={() => runTable({ type: 'moveRow', row: tableMenu.row, by: 1 })}>Move row down</button>
+                  <button className="danger" onClick={() => runTable({ type: 'deleteRow', row: tableMenu.row })}>Delete row</button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
       {hover && (
         <div
           className="hover-card"

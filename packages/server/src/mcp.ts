@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { NoteSummary, Vault } from '@octavo/core';
+import { formatDate, type NoteSummary, type Vault } from '@octavo/core';
 
 export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
 
@@ -197,18 +197,37 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     'list_tasks',
     {
       title: 'List tasks',
-      description: 'List Markdown tasks (`- [ ] ...`) across the vault, with the note path and line number of each. Open tasks only unless include_done is true.',
+      description:
+        'List Markdown tasks (`- [ ] ...`) across the vault, with the note path and line number of each. Open tasks only unless include_done is true. ' +
+        'Due dates are written in the task text as "📅 YYYY-MM-DD"; use `due` to get only overdue, today\'s or upcoming tasks (sorted by date). When adding a task with a deadline, include "📅 YYYY-MM-DD".',
       inputSchema: {
         include_done: z.boolean().optional(),
         path: z.string().optional().describe('Only tasks from this note'),
+        due: z
+          .enum(['overdue', 'today', 'next_7_days', 'any_date', 'no_date'])
+          .optional()
+          .describe('Filter by due date: overdue (before today), today, next_7_days (today to a week from now), any_date (has a due date), no_date'),
       },
       annotations: { readOnlyHint: true },
     },
-    safe(async ({ include_done, path }) => {
+    safe(async ({ include_done, path, due }) => {
       const only = path ? vault.resolve(path) : null;
-      const tasks = vault.tasks({ includeDone: include_done }).filter((t) => !path || t.path === only);
+      const today = formatDate(new Date());
+      const week = formatDate(new Date(Date.now() + 7 * 86400000));
+      let tasks = vault.tasks({ includeDone: include_done }).filter((t) => !path || t.path === only);
+      if (due) {
+        tasks = tasks.filter((t) => {
+          if (due === 'no_date') return !t.due;
+          if (!t.due) return false;
+          if (due === 'overdue') return t.due < today;
+          if (due === 'today') return t.due === today;
+          if (due === 'next_7_days') return t.due >= today && t.due <= week;
+          return true;
+        });
+        tasks.sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'));
+      }
       if (!tasks.length) return text('No tasks found.');
-      return text(tasks.map((t) => `- [${t.status}] ${t.text}  (${t.path}:${t.line})`).join('\n'));
+      return text(`Today is ${today}.\n` + tasks.map((t) => `- [${t.status}] ${t.text}  (${t.path}:${t.line})`).join('\n'));
     }),
   );
 
@@ -288,6 +307,21 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   server.registerTool(
+    'merge_notes',
+    {
+      title: 'Merge notes',
+      description:
+        'Merge one note into another: the source\'s text is appended to the target under a heading, every link to the source is pointed at the target, and the source moves to .trash. Use to combine duplicate notes.',
+      inputSchema: { from: pathArg.describe('Note to merge (it is removed afterwards)'), into: pathArg.describe('Note that receives the text') },
+      annotations: { destructiveHint: true },
+    },
+    safe(async ({ from, into }) => {
+      const r = await vault.merge(from, into);
+      return text(`Merged ${r.from} into ${r.into}; updated ${r.updatedLinks} link(s) in ${r.updatedNotes.length} note(s). ${r.from} was moved to ${r.trashedTo}.`);
+    }),
+  );
+
+  server.registerTool(
     'delete_note',
     {
       title: 'Delete note',
@@ -330,6 +364,22 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     safe(async ({ entry }) => {
       const s = await vault.logToJournal(entry);
       return text(`Logged to ${s.path}`);
+    }),
+  );
+
+  server.registerTool(
+    'open_periodic_note',
+    {
+      title: 'Open daily, weekly or monthly note',
+      description:
+        'Return the note for today, this week or this month (Journal/YYYY-MM-DD.md, Journal/Weekly/YYYY-Www.md, Journal/Monthly/YYYY-MM.md), creating it from a template if needed. Use it to read or plan goals for the week or month; edit it with append_to_note or write_note.',
+      inputSchema: { period: z.enum(['day', 'week', 'month']).describe('Which note: day, week or month') },
+    },
+    safe(async ({ period }) => {
+      const s = await vault.ensurePeriodicNote(period);
+      if (vault.isEncrypted(s.path)) return text(`${s.path} is a locked (encrypted) note; its contents are only readable in the Octavo app.`);
+      const note = await vault.read(s.path);
+      return text(`${s.path}\n\n${note.content}`);
     }),
   );
 

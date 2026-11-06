@@ -13,14 +13,14 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Local-first notes as plain Markdown files | ✅ | Your vault is an ordinary folder of `.md` files |
-| Works fully offline | 🟡 | The desktop app and a locally run server need no internet. A hosted server needs a connection, and there's no offline cache yet |
+| Works fully offline | ✅ | The desktop app needs no internet. On your phone, notes you open are saved on the device, and **Settings → Offline → Save all notes** keeps every note readable when your PC is off or you have no signal (read-only until you reconnect; edits made offline save when you're back) |
 | No account needed | ✅ | |
 | Free, no paid tiers | ✅ | Every feature, including future sync and publishing |
 | Lock individual notes with a password | ✅ | Optional, off by default (⚙ Settings). End-to-end encrypted on your device (AES-256-GCM, PBKDF2 600k), including on phones over plain Wi-Fi. The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
 | Mac, Windows, Linux | ✅ | Desktop app with installers on the [Releases page](https://github.com/FederalVia/octavo/releases), or any browser |
 | iOS and Android | 🟡 | Scan a QR code and add Octavo to your home screen. **Access from Anywhere** connects your phone directly to your PC over Wi-Fi or mobile data (automatic router setup and HTTPS). No native apps |
-| Multiple vaults | 🟡 | Desktop: **File → Open Vault Folder…**; server: run one per vault (`--vault`, `--port`). No in-app vault switcher yet |
+| Multiple vaults | ✅ | **Brains**: create, switch and remove separate vaults in **Settings → Brains** or **File → Brains**. Each brain is its own Claude connection, so each chat can get only the brains it should. Server: run one per vault (`--vault`, `--port`) |
 | Open a single Markdown file outside a vault | 🚧 | |
 
 ## Writing
@@ -31,14 +31,14 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Live Preview (rendered while editing) | 🚧 | |
 | Headings, bold, italics, strikethrough, quotes, nested lists | ✅ | |
 | Task checkboxes with custom marks (`[x]`, `[-]`, `[?]`, `[!]`…) | ✅ | Click to tick in reading view |
-| Tables | 🟡 | Rendered, and inserted with `/table`. No right-click sort/move/edit menu yet |
+| Tables | ✅ | Rendered, and inserted with `/table`. In reading view, right-click a cell (or tap it, then ⋯) to sort, insert, move, align or delete rows and columns |
 | Coloured highlights | ✅ | `==text==`, or `=={red}text==` (red, orange, yellow, green, blue, purple) |
-| Callouts (`note`, `tip`, `warning`, `question`, `bug`, `todo`…) | 🟡 | All types, plus foldable (`[!tip]-` / `[!tip]+`). Callouts nested inside callouts aren't styled yet |
-| Code blocks with syntax highlighting | 🟡 | Highlighted in the editor. Plain in reading view |
+| Callouts (`note`, `tip`, `warning`, `question`, `bug`, `todo`…) | ✅ | All types, foldable (`[!tip]-` / `[!tip]+`), and nested callouts |
+| Code blocks with syntax highlighting | ✅ | In the editor and in reading view, for 100+ languages |
 | Inline comments hidden in reading view | ✅ | `%%like this%%` |
 | Footnotes | ✅ | `[^1]` … `[^1]: text`, or `/footnote` |
 | Math (LaTeX) | ✅ | `$inline$` and `$$block$$` via KaTeX |
-| Mermaid diagrams | 🟡 | Rendered (flowcharts, sequence, timelines…). Diagram nodes can't link to notes yet |
+| Mermaid diagrams | ✅ | Rendered (flowcharts, sequence, timelines…). A box whose label is a note's name opens that note |
 | Embed images, audio, video, PDFs; resize images | ✅ | `![[photo.png\|300]]`; paste or drag files into the editor to upload them |
 
 ## Links and knowledge
@@ -64,15 +64,15 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | File explorer with folders | ✅ | Drag to move; right-click to rename/delete |
 | Quick switcher | ✅ | Ctrl/Cmd+O |
 | Search by text, path, tag | ✅ | `"phrase"`, `tag:x`, `#x`, `path:folder` |
-| Bookmarks | 🟡 | Notes, searches and web links. Headings can't be bookmarked yet |
+| Bookmarks | ✅ | Notes, headings (hover a heading in reading view and click ☆), searches and web links |
 | Daily notes | ✅ | Ctrl/Cmd+D |
 | Templates with `{{date}}`, `{{time}}`, `{{title}}` | ✅ | Notes in `Templates/`; also `{{date:YYYY-MM-DD}}` formats. `/template` or the command palette |
 | Unique note creator (timestamp titles) | ✅ | Command palette → *New unique note* |
-| Properties / metadata | 🟡 | Shown as a properties table and used for tags, aliases and region. Edited as YAML; no typed property editor yet |
+| Properties / metadata | ✅ | Shown as a properties table and used for tags, aliases and region. **Edit** (or *Edit properties* in the command palette) gives typed fields: text, list, number, checkbox, date |
 | Bases (database views) | 🚧 | |
 | Canvas | 🚧 | |
 | Workspaces (saved layouts) | 🚧 | |
-| Note composer (split / merge) | 🟡 | *Extract selection to new note* works. Merging isn't built yet |
+| Note composer (split / merge) | ✅ | *Extract selection to new note*, and *Merge this note into another…* (links are updated; Claude can use `merge_notes`) |
 | File recovery snapshots | ✅ | ⟲ on each note: diff against the current version, restore. Kept in `.octavo/history/` |
 | Rename/move updates every link | ✅ | |
 
@@ -105,13 +105,13 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Links that open a note | 🟡 | Every note has a URL (`…/#/note/Folder/Note.md`); command palette → *Copy link*. No custom `octavo://` scheme |
+| Links that open a note | ✅ | Every note has a URL (`…/#/note/Folder/Note.md`), and the desktop app opens `octavo://open?vault=Brain&file=Note` links from anywhere (command palette → *Copy octavo:// link*) |
 | CLI: create, read, append, search, move notes | ✅ | `octavo new / read / append / search / move` |
 | CLI: daily note, add a task | ✅ | `octavo daily [text]`, `octavo task <text>` |
 | CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query Bases, install plugins/themes, terminal UI | 🚧 | |
-| AI access | ✅ | MCP server with 15 tools, so Claude can read, write and organise the vault |
+| AI access | ✅ | MCP server with 17 tools, so Claude can read, write and organise the vault |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)
@@ -129,13 +129,13 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | --- | --- | --- |
 | Themes / CSS snippets | 🚧 | |
 | Plugins | 🚧 | |
-| Import from other apps | 🟡 | Obsidian vaults open as-is; other importers aren't built |
+| Import from other apps | ✅ | Obsidian vaults open as-is. **File → Import** (or `octavo import`) brings in Notion exports and Evernote `.enex` files |
 
 ## Popular plugin equivalents
 
 | Plugin | Status | Notes |
 | --- | --- | --- |
-| Tasks | 🟡 | Vault-wide task list (drawer ☑, `octavo tasks`, Claude's `list_tasks`). No due dates or queries |
-| Templater | 🟡 | Basic templates; no scripting |
-| Periodic Notes | 🟡 | Daily notes only |
+| Tasks | ✅ | Vault-wide task list (drawer ☑, by note or by date), due dates (`📅 2026-11-10`, or `/due` in the editor), live ` ```tasks ` query blocks, `octavo tasks`, and Claude's `list_tasks` (can filter overdue / today / next 7 days) |
+| Templater | 🟡 | Templates with variables: `{{title}}`, `{{folder}}`, `{{date:dddd D MMMM}}`, offsets like `{{date+7d}}`, `{{weekday}}`, `{{week}}`… No scripting, by design: notes can be written by Claude and other tools, so templates never run code |
+| Periodic Notes | ✅ | Daily, weekly (`Journal/Weekly/2026-W45`) and monthly (`Journal/Monthly/2026-11`) notes, from the command palette, `octavo weekly`/`monthly`, or Claude's `open_periodic_note` |
 | Dataview, Calendar, Excalidraw, Outliner | 🚧 | |

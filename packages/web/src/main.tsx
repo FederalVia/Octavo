@@ -30,6 +30,11 @@ if (key) {
   }
 }
 
+// Offline copies (needs HTTPS or localhost; not used inside the desktop app, which is always local).
+if ('serviceWorker' in navigator && window.isSecureContext && !window.octavoDesktop) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

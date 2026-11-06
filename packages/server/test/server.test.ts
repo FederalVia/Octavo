@@ -164,7 +164,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -183,6 +183,8 @@ describe('HTTP server', () => {
       assert.match(r.text, /## Preferences/);
       r = await call('log_to_journal', { entry: 'Met [[Ada]]' });
       assert.match(r.text, /Logged to Journal\//);
+      r = await call('open_periodic_note', { period: 'week' });
+      assert.match(r.text, /^Journal\/Weekly\/\d{4}-W\d{2}\.md\n\n# Week /);
       r = await call('get_vault_overview', {});
       assert.match(r.text, /Home note \(Home.md\)/);
       r = await call('read_note', { path: 'Does not exist' });

@@ -1,5 +1,53 @@
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
+import { api, saveAllForOffline } from '../api';
+
+/** Phones (HTTPS): keep a copy of every note for reading without a connection. */
+function OfflineSection() {
+  const [available, setAvailable] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (window.octavoDesktop || !navigator.serviceWorker) return;
+    navigator.serviceWorker.getRegistration().then((r) => setAvailable(!!r?.active)).catch(() => {});
+  }, []);
+  if (!available) return null;
+  const run = async () => {
+    setError('');
+    try {
+      const { notes } = await api.notes();
+      const paths = notes.map((n) => n.path);
+      setProgress({ done: 0, total: paths.length + 8 });
+      const ok = await saveAllForOffline(paths, (done, total) => setProgress({ done, total }));
+      if (!ok) setError('Offline copies aren’t available in this browser.');
+    } catch {
+      setError('Couldn’t reach your computer. Try again when you’re connected.');
+      setProgress(null);
+    }
+  };
+  const finished = progress && progress.done >= progress.total;
+  return (
+    <section>
+      <h4>Offline</h4>
+      <div className="setting-row">
+        <div>
+          <b>Read notes without a connection</b>
+          <span className="muted small">
+            Notes you open are saved on this device automatically. This saves all of them, so you can read everything when your computer is off or
+            you have no signal. Changes still need a connection.
+          </span>
+          {progress && (
+            <span className="small">{finished ? `Saved ${progress.total - 8} notes on this device ✓` : `Saving… ${progress.done} of ${progress.total}`}</span>
+          )}
+          {error && <span className="small prop-error">{error}</span>}
+        </div>
+        <button className="btn" disabled={!!progress && !finished} onClick={run}>
+          {finished ? 'Save again' : 'Save all notes'}
+        </button>
+      </div>
+    </section>
+  );
+}
 
 export interface UpdateState {
   status: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported';
@@ -384,6 +432,8 @@ export function SettingsDialog(p: Props) {
           <h4>Use on your phone</h4>
           <PhoneSection />
         </section>
+
+        <OfflineSection />
 
         <UpdatesSection />
       </div>

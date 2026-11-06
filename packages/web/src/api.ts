@@ -113,12 +113,45 @@ function encodePath(p: string): string {
     .join('/');
 }
 
+// ---------------------------------------------------------------- offline (saved copies from the service worker)
+
+let offline = false;
+const offlineListeners = new Set<(v: boolean) => void>();
+function setOffline(v: boolean) {
+  if (v === offline) return;
+  offline = v;
+  offlineListeners.forEach((f) => f(v));
+}
+/** Notified when the app starts or stops showing saved (offline) copies. */
+export function onOffline(f: (v: boolean) => void): () => void {
+  offlineListeners.add(f);
+  f(offline);
+  return () => offlineListeners.delete(f);
+}
+export const isOffline = () => offline;
+
+export class OfflineError extends Error {
+  constructor() {
+    super('Octavo can’t reach your computer right now, so changes can’t be saved. Your edit is still on screen; try again when you’re back online.');
+  }
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  let res: Response;
+  try {
+    res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (err) {
+    if (method !== 'GET' || !navigator.onLine) {
+      setOffline(true);
+      throw new OfflineError();
+    }
+    throw err;
+  }
+  setOffline(res.headers.get('X-Octavo-Offline') === '1');
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
   return data as T;
@@ -137,6 +170,8 @@ export const api = {
       from,
       to,
     }),
+  merge: (from: string, into: string) =>
+    request<{ from: string; into: string; updatedNotes: string[]; updatedLinks: number; trashedTo: string }>('POST', 'api/merge', { from, into }),
   resolve: (link: string, from?: string) =>
     request<{ path: string | null }>(
       'GET',
@@ -146,6 +181,7 @@ export const api = {
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
   graph: () => request<GraphData>('GET', 'api/graph'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
+  periodic: (period: 'day' | 'week' | 'month') => request<NoteSummary>('POST', `api/periodic/${period}`),
   upload: async (file: File, folder = 'attachments'): Promise<{ path: string }> => {
     const headers: Record<string, string> = { 'Content-Type': file.type || 'application/octet-stream' };
     const token = getToken();
@@ -188,6 +224,8 @@ export interface Task {
   line: number;
   status: string;
   text: string;
+  /** YYYY-MM-DD, from "📅 2026-11-10" in the task text. */
+  due?: string;
 }
 
 export type Bookmark =
@@ -223,4 +261,30 @@ export function subscribe(onEvent: (e: VaultEvent) => void, onStatus?: (connecte
     if (retry) clearTimeout(retry);
     es?.close();
   };
+}
+
+/** Ask the service worker to save every note on this device for offline reading. */
+export async function saveAllForOffline(paths: string[], onProgress: (done: number, total: number) => void): Promise<boolean> {
+  const reg = await navigator.serviceWorker?.getRegistration();
+  const sw = reg?.active;
+  if (!sw) return false;
+  const base = new URL('./', location.href);
+  const urls = [
+    'api/vault',
+    'api/notes',
+    'api/graph',
+    'api/tags',
+    'api/tasks',
+    'api/tasks?done=1',
+    'api/config/bookmarks',
+    'api/config/settings',
+    ...paths.map((p) => `api/notes/${encodePath(p)}`),
+  ].map((u) => new URL(u, base).toString());
+  const listener = (e: MessageEvent) => {
+    if (e.data?.type === 'octavo:save-progress') onProgress(e.data.done, e.data.total);
+  };
+  navigator.serviceWorker.addEventListener('message', listener);
+  setTimeout(() => navigator.serviceWorker.removeEventListener('message', listener), 10 * 60 * 1000);
+  sw.postMessage({ type: 'octavo:save-all', urls, token: getToken() });
+  return true;
 }

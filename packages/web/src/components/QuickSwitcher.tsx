@@ -5,8 +5,10 @@ import { Overlay } from './Modal';
 interface Props {
   notes: NoteSummary[];
   onOpen: (path: string) => void;
-  onCreate: (name: string) => void;
+  /** Omit to only pick existing notes. */
+  onCreate?: (name: string) => void;
   onClose: () => void;
+  placeholder?: string;
 }
 
 /** Subsequence fuzzy score; higher is better, -1 = no match. */
@@ -29,7 +31,7 @@ function fuzzy(query: string, text: string): number {
   return score;
 }
 
-export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
+export function QuickSwitcher({ notes, onOpen, onCreate, onClose, placeholder }: Props) {
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -48,7 +50,7 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
   }, [notes, query]);
 
   const exact = notes.some((n) => n.name.toLowerCase() === query.trim().toLowerCase() || n.path.toLowerCase() === query.trim().toLowerCase());
-  const canCreate = query.trim() !== '' && !exact;
+  const canCreate = !!onCreate && query.trim() !== '' && !exact;
   const total = results.length + (canCreate ? 1 : 0);
 
   useEffect(() => setSel(0), [query]);
@@ -58,7 +60,7 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
 
   const choose = (i: number) => {
     if (i < results.length) onOpen(results[i].path);
-    else if (canCreate) onCreate(query.trim());
+    else if (canCreate) onCreate!(query.trim());
     onClose();
   };
 
@@ -68,7 +70,7 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
         <input
           ref={input}
           className="input switcher-input"
-          placeholder="Find or create a note…"
+          placeholder={placeholder ?? 'Find or create a note…'}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -81,7 +83,7 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
             } else if (e.key === 'Enter') {
               e.preventDefault();
               if (e.shiftKey && canCreate) {
-                onCreate(query.trim());
+                onCreate!(query.trim());
                 onClose();
               } else if (total) choose(sel);
             } else if (e.key === 'Escape') {
@@ -121,7 +123,7 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
               <span className="switcher-path">Shift+Enter</span>
             </div>
           )}
-          {total === 0 && <div className="switcher-empty muted">No notes yet</div>}
+          {total === 0 && <div className="switcher-empty muted">{query.trim() ? 'No matching notes' : 'No notes yet'}</div>}
         </div>
       </div>
     </Overlay>

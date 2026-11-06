@@ -194,6 +194,19 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
+  api.post('/merge', async (req, res, next) => {
+    try {
+      const { from, into } = req.body ?? {};
+      if (typeof from !== 'string' || typeof into !== 'string') {
+        res.status(400).json({ error: 'Body must include "from" and "into"' });
+        return;
+      }
+      res.json(await vault.merge(from, into));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   api.get('/resolve', (req, res) => {
     const link = typeof req.query.link === 'string' ? req.query.link : '';
     const from = typeof req.query.from === 'string' ? req.query.from : undefined;
@@ -330,6 +343,16 @@ export function createApp(opts: AppOptions): express.Express {
   api.post('/daily', async (_req, res, next) => {
     try {
       res.json(await vault.ensureDailyNote());
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.post('/periodic/:period', async (req, res, next) => {
+    try {
+      const period = req.params.period;
+      if (period !== 'day' && period !== 'week' && period !== 'month') return void res.status(400).json({ error: 'period must be day, week or month' });
+      res.json(await vault.ensurePeriodicNote(period));
     } catch (err) {
       next(err);
     }

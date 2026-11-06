@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, setToken, subscribe, type Backlink, type Bookmark, type GraphData, type NoteDetail, type NoteSummary, type VaultEvent } from './api';
+import { api, ApiError, OfflineError, onOffline, setToken, subscribe, type Backlink, type Bookmark, type GraphData, type NoteDetail, type NoteSummary, type VaultEvent } from './api';
 import { Editor, type EditorHandle } from './components/Editor';
 import { Preview } from './components/Preview';
 import { FileTree } from './components/FileTree';
@@ -8,6 +8,7 @@ import { AtlasView } from './components/AtlasView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HistoryDialog } from './components/HistoryDialog';
+import { applyTemplate } from './templates';
 import { DEFAULT_SETTINGS, SettingsDialog, useDesktopUpdate, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
@@ -30,23 +31,7 @@ function pad2(n: number) {
 }
 
 /** Fill {{date}}, {{time}}, {{title}} and {{date:YYYY-MM-DD HH:mm}} placeholders in a template. */
-export function applyTemplate(text: string, title: string, now = new Date()): string {
-  const fmt = (f: string) =>
-    f
-      .replace(/YYYY/g, String(now.getFullYear()))
-      .replace(/MM/g, pad2(now.getMonth() + 1))
-      .replace(/DD/g, pad2(now.getDate()))
-      .replace(/HH/g, pad2(now.getHours()))
-      .replace(/mm/g, pad2(now.getMinutes()))
-      .replace(/ss/g, pad2(now.getSeconds()));
-  return text
-    .replace(/\{\{\s*title\s*\}\}/gi, title)
-    .replace(/\{\{\s*date\s*:\s*([^}]+)\}\}/gi, (_m, f) => fmt(f.trim()))
-    .replace(/\{\{\s*time\s*:\s*([^}]+)\}\}/gi, (_m, f) => fmt(f.trim()))
-    .replace(/\{\{\s*date\s*\}\}/gi, fmt('YYYY-MM-DD'))
-    .replace(/\{\{\s*time\s*\}\}/gi, fmt('HH:mm'));
-}
-type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
+type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict' | 'offline';
 type Route = { view: 'note'; path: string } | { view: 'home' };
 
 function load<T>(key: string, fallback: T): T {
@@ -117,6 +102,9 @@ export function App() {
   const [lineNumbers, setLineNumbers] = useState(() => load('octavo.lineNumbers', false));
   useEffect(() => store('octavo.vim', vimMode), [vimMode]);
   const [switcher, setSwitcher] = useState(false);
+  /** Path of the note being merged into another (shows a note picker). */
+  const [mergeFrom, setMergeFrom] = useState<string | null>(null);
+  const [propsSignal, setPropsSignal] = useState(0);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [connected, setConnected] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -187,7 +175,7 @@ export function App() {
         return;
       }
       const message = err instanceof Error ? err.message : String(err);
-      await confirm('Something went wrong', message, { confirmLabel: 'OK' });
+      await confirm(err instanceof OfflineError ? 'You’re offline' : 'Something went wrong', message, { confirmLabel: 'OK' });
     },
     [prompt, confirm],
   );
@@ -265,6 +253,7 @@ export function App() {
         }
       } catch (err) {
         if (err instanceof ApiError && err.status === 409) setSaveState('conflict');
+        else if (err instanceof OfflineError) setSaveState('offline');
         else {
           setSaveState('error');
           if (err instanceof ApiError && err.status === 401) handleError(err);
@@ -284,6 +273,29 @@ export function App() {
   );
   const saveStateRef = useRef(saveState);
   saveStateRef.current = saveState;
+
+  // Offline: the service worker is serving saved copies. Unsaved edits are saved once back online.
+  const [offline, setOfflineState] = useState(false);
+  useEffect(
+    () =>
+      onOffline((v) => {
+        setOfflineState(v);
+        if (!v && dirty.current) save();
+      }),
+    [save],
+  );
+  useEffect(() => {
+    const back = () => {
+      // A cheap request tells us whether the computer is reachable again.
+      api.vault().catch(() => {});
+    };
+    window.addEventListener('online', back);
+    const t = setInterval(() => offline && back(), 15000);
+    return () => {
+      window.removeEventListener('online', back);
+      clearInterval(t);
+    };
+  }, [offline]);
 
   const onChange = useCallback(
     (value: string) => {
@@ -415,7 +427,13 @@ export function App() {
   useEffect(() => {
     const onHash = () => setRoute(parseHash());
     window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    // octavo://open?…&heading=… links (desktop app) scroll to a heading.
+    const onHeading = (e: Event) => setPendingHeading(String((e as CustomEvent).detail ?? '') || null);
+    window.addEventListener('octavo:heading', onHeading);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('octavo:heading', onHeading);
+    };
   }, []);
 
   useEffect(() => {
@@ -595,6 +613,30 @@ export function App() {
     [refreshNotes, handleError],
   );
 
+  const mergeNote = useCallback(
+    async (from: string, into: string) => {
+      const name = (p: string) => p.replace(/\.md$/, '');
+      const ok = await confirm(
+        `Merge “${name(from)}” into “${name(into)}”?`,
+        `Its text is added to the end of “${name(into)}”, links to it are updated, and “${name(from)}” is moved to the vault’s .trash folder.`,
+        { confirmLabel: 'Merge' },
+      );
+      if (!ok) return;
+      try {
+        if (dirty.current && loadedPath.current) await save();
+        dirty.current = false;
+        loadedPath.current = null;
+        await api.merge(from, into);
+        await refreshNotes();
+        navigate(into);
+      } catch (err) {
+        handleError(err);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [confirm, refreshNotes, navigate, handleError],
+  );
+
   const deleteNote = useCallback(
     async (path: string) => {
       const ok = await confirm(`Delete “${path.replace(/\.md$/, '')}”?`, 'It will be moved to the vault’s .trash folder.', {
@@ -622,15 +664,19 @@ export function App() {
     [confirm, refreshNotes, route, navigate, handleError],
   );
 
-  const openDaily = useCallback(async () => {
-    try {
-      const s = await api.daily();
-      await refreshNotes();
-      navigate(s.path, { mode: 'edit' });
-    } catch (err) {
-      handleError(err);
-    }
-  }, [refreshNotes, navigate, handleError]);
+  const openPeriodic = useCallback(
+    async (period: 'day' | 'week' | 'month') => {
+      try {
+        const s = await api.periodic(period);
+        await refreshNotes();
+        navigate(s.path, { mode: 'edit' });
+      } catch (err) {
+        handleError(err);
+      }
+    },
+    [refreshNotes, navigate, handleError],
+  );
+  const openDaily = useCallback(() => openPeriodic('day'), [openPeriodic]);
 
   const showSearch = useCallback((q?: string) => {
     if (q != null) setQuery(q);
@@ -686,6 +732,18 @@ export function App() {
     api.setConfig('bookmarks', next).catch(() => {});
   }, []);
   const isBookmarked = !!detail && bookmarks.some((b) => b.type === 'note' && b.path === detail.path && !b.heading);
+  const headingBookmarks = useMemo(
+    () => (detail ? bookmarks.flatMap((b) => (b.type === 'note' && b.path === detail.path && b.heading ? [b.heading] : [])) : []),
+    [detail, bookmarks],
+  );
+  const toggleHeadingBookmark = useCallback(
+    (heading: string) => {
+      if (!detail || !heading) return;
+      const has = (b: Bookmark) => b.type === 'note' && b.path === detail.path && b.heading === heading;
+      saveBookmarks(bookmarks.some(has) ? bookmarks.filter((b) => !has(b)) : [...bookmarks, { type: 'note', path: detail.path, heading }]);
+    },
+    [detail, bookmarks, saveBookmarks],
+  );
   const toggleBookmark = useCallback(() => {
     if (!detail) return;
     if (bookmarks.some((b) => b.type === 'note' && b.path === detail.path && !b.heading)) {
@@ -725,7 +783,7 @@ export function App() {
     async (path: string) => {
       try {
         const t = await api.note(path);
-        const text = applyTemplate(t.content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, ''), detail?.name ?? '');
+        const text = applyTemplate(t.content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, ''), detail?.name ?? '', new Date(), detail?.folder ?? '');
         setMode('edit');
         setTimeout(() => editor.current?.insert(text), 60);
       } catch (err) {
@@ -786,6 +844,13 @@ export function App() {
     const url = `${location.href.split('#')[0]}${noteHash(detail.path)}`;
     navigator.clipboard?.writeText(url).catch(() => {});
   }, [detail]);
+
+  /** octavo://open?vault=…&file=… opens this note in the desktop app from other apps. */
+  const copyAppLink = useCallback(() => {
+    if (!detail) return;
+    const link = `octavo://open?vault=${encodeURIComponent(vaultName)}&file=${encodeURIComponent(detail.path.replace(/\.md$/, ''))}`;
+    navigator.clipboard?.writeText(link).catch(() => {});
+  }, [detail, vaultName]);
 
   const addUrlBookmark = useCallback(async () => {
     const url = await prompt('Bookmark a web link', 'https://', { confirmLabel: 'Add' });
@@ -990,6 +1055,8 @@ export function App() {
     { id: 'unique', label: 'New unique note (timestamp name)', keywords: 'zettelkasten id', run: newUniqueNote },
     { id: 'new-tpl', label: 'New note from template…', run: () => setTimeout(() => setPalette('new-from-template'), 0) },
     { id: 'daily', label: 'Open today’s journal', hint: `${mod}+D`, keywords: 'daily note', run: openDaily },
+    { id: 'weekly', label: 'Open this week’s note', keywords: 'weekly note periodic plan goals', run: () => openPeriodic('week') },
+    { id: 'monthly', label: 'Open this month’s note', keywords: 'monthly note periodic plan goals', run: () => openPeriodic('month') },
     { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
     { id: 'random', label: 'Open random note', run: openRandom },
     ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
@@ -1005,6 +1072,9 @@ export function App() {
     ...(hasNote
       ? [
           { id: 'toggle', label: mode === 'edit' ? 'Switch to reading view' : 'Switch to editing', hint: `${mod}+E`, run: () => setMode((m) => (m === 'edit' ? 'preview' : 'edit')) },
+          ...(!locked
+            ? [{ id: 'props', label: 'Edit properties', keywords: 'frontmatter metadata yaml tags aliases', run: () => { setMode('preview'); setPropsSignal((n) => n + 1); } }]
+            : []),
           { id: 'tpl', label: 'Insert template…', run: () => setTimeout(() => setPalette('templates'), 0) },
           { id: 'bookmark', label: isBookmarked ? 'Remove bookmark' : 'Bookmark this note', run: toggleBookmark },
           ...(!isEncrypted
@@ -1020,7 +1090,11 @@ export function App() {
                 ]),
           { id: 'history', label: 'Show version history', keywords: 'recovery restore snapshot', run: () => setHistoryOpen(true) },
           { id: 'extract', label: 'Extract selection to new note', keywords: 'split composer refactor', run: extractSelection },
+          { id: 'merge', label: 'Merge this note into another…', keywords: 'combine composer duplicate join', run: () => setMergeFrom(route.path) },
           { id: 'copy', label: 'Copy link to this note', run: copyLink },
+          ...(window.octavoDesktop
+            ? [{ id: 'copy-app', label: 'Copy octavo:// link (opens the desktop app)', keywords: 'url uri deep link share', run: copyAppLink }]
+            : []),
           { id: 'rename', label: 'Rename or move note', run: () => renameNote(detail!.path) },
           { id: 'delete', label: 'Delete note', run: () => deleteNote(detail!.path) },
           { id: 'close', label: 'Close note', hint: 'Esc', run: closePanel },
@@ -1045,6 +1119,7 @@ export function App() {
     dirty: 'Editing…',
     saving: 'Saving…',
     error: 'Save failed',
+    offline: 'Offline: not saved yet',
     conflict: 'Conflict',
   };
   const panelOpen = route.view === 'note' && (!!detail || !!missing);
@@ -1108,6 +1183,11 @@ export function App() {
         </button>
       </div>
 
+      {offline && (
+        <div className="offline-banner" role="status">
+          Offline: showing the copies saved on this device. Changes can’t be saved until your computer is reachable.
+        </div>
+      )}
       {update && (update.status === 'ready' || update.status === 'available') && updateDismissed !== update.version && (
         <div className="update-banner" role="status">
           <span>
@@ -1330,6 +1410,10 @@ export function App() {
               onTag={(t) => showSearch(`tag:${t}`)}
               scrollToHeading={pendingHeading}
               onScrolled={() => setPendingHeading(null)}
+              bookmarkedHeadings={headingBookmarks}
+              onBookmarkHeading={toggleHeadingBookmark}
+              onEditContent={onChange}
+              editPropertiesSignal={propsSignal}
             />
           )}
         </div>
@@ -1461,6 +1545,14 @@ export function App() {
 
       {switcher && (
         <QuickSwitcher notes={notes} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} onClose={() => setSwitcher(false)} />
+      )}
+      {mergeFrom && (
+        <QuickSwitcher
+          notes={notes.filter((n) => n.path !== mergeFrom && !n.encrypted)}
+          placeholder={`Merge “${mergeFrom.replace(/\.md$/, '').split('/').pop()}” into…`}
+          onOpen={(into) => mergeNote(mergeFrom, into)}
+          onClose={() => setMergeFrom(null)}
+        />
       )}
       {dialog && <Dialog req={dialog} onDone={() => setDialog(null)} />}
     </div>

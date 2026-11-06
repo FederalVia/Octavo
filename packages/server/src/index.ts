@@ -9,6 +9,7 @@ export { createMcpServer, SERVER_INSTRUCTIONS } from './mcp.js';
 export { seedIfEmpty } from './seed.js';
 export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js';
 export { RemoteAccess, diagnose, type RemoteStatus, type RemoteProblem } from './remote/remote.js';
+export { importNotion, importEnex, type ImportResult } from './importers.js';
 
 export interface StartOptions {
   vaultPath: string;

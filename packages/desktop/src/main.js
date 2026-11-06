@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import updaterPkg from 'electron-updater';
-import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose } from '@octavo/server';
+import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose, importNotion, importEnex } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 4321;
@@ -431,6 +431,26 @@ function brainsClaudeJson(p) {
   return JSON.stringify({ mcpServers: Object.fromEntries(chosen.map((b) => [b.mcpName, mcpEntry(b.path)])) }, null, 2);
 }
 
+/** File → Import: Notion export folder or Evernote .enex file, into the open brain. */
+async function runImport(kind) {
+  if (!server) return;
+  const notion = kind === 'notion';
+  const res = await dialog.showOpenDialog(win ?? undefined, notion
+    ? { title: 'Choose your unzipped Notion export folder', buttonLabel: 'Import', properties: ['openDirectory'] }
+    : { title: 'Choose an Evernote export', buttonLabel: 'Import', properties: ['openFile'], filters: [{ name: 'Evernote export', extensions: ['enex'] }] });
+  if (res.canceled || !res.filePaths[0]) return;
+  try {
+    const r = notion ? await importNotion(server.vault, res.filePaths[0]) : await importEnex(server.vault, res.filePaths[0]);
+    await dialog.showMessageBox(win ?? undefined, {
+      type: 'info',
+      message: `Imported ${r.notes} note${r.notes === 1 ? '' : 's'}`,
+      detail: `They’re in the “${r.folder}” folder${r.attachments ? `, with ${r.attachments} attachment${r.attachments === 1 ? '' : 's'}` : ''}.${r.skipped.length ? `\n\nSkipped:\n${r.skipped.slice(0, 10).join('\n')}` : ''}`,
+    });
+  } catch (err) {
+    await dialog.showMessageBox(win ?? undefined, { type: 'error', message: 'Import failed', detail: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 async function chooseVault() {
   const res = await dialog.showOpenDialog(win ?? undefined, {
     title: 'Open or create a vault folder',
@@ -589,6 +609,14 @@ function buildMenu() {
           ],
         },
         {
+          label: 'Import',
+          enabled: !!server,
+          submenu: [
+            { label: 'From Notion (unzipped export folder)…', click: () => runImport('notion') },
+            { label: 'From Evernote (.enex file)…', click: () => runImport('enex') },
+          ],
+        },
+        {
           label: 'Reveal Brain Folder',
           enabled: !!server,
           click: () => server && shell.openPath(server.vault.root),
@@ -671,14 +699,85 @@ function createWindow() {
 
 // ------------------------------------------------------------------ lifecycle
 
+// ------------------------------------------------------------------ octavo:// links
+
+const PROTOCOL = 'octavo';
+const findLink = (argv) => argv.find((a) => typeof a === 'string' && a.toLowerCase().startsWith(`${PROTOCOL}://`)) ?? null;
+/** A link Octavo was started with, handled once the vault is open. */
+let pendingLink = findLink(process.argv);
+let ready = false;
+
+function registerProtocol() {
+  try {
+    if (process.defaultApp && process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+    } else app.setAsDefaultProtocolClient(PROTOCOL);
+  } catch {
+    /* not fatal */
+  }
+}
+
+/** octavo://open?vault=<brain name>&file=<note name or path>[&heading=<heading>] */
+async function handleLink(link) {
+  console.log(`[octavo] opening link ${link}`);
+  let u;
+  try {
+    u = new URL(link);
+  } catch {
+    return;
+  }
+  if (u.protocol !== `${PROTOCOL}:`) return;
+  const action = (u.hostname || u.pathname.replace(/^\/+/, '')).toLowerCase();
+  if (action !== 'open') return;
+  const vault = u.searchParams.get('vault');
+  const file = u.searchParams.get('file') ?? '';
+  const heading = u.searchParams.get('heading') ?? '';
+  if (vault) {
+    const b = brainList().find((x) => x.name.toLowerCase() === vault.toLowerCase());
+    if (!b) {
+      await dialog.showMessageBox(win ?? undefined, { type: 'warning', message: `There’s no brain called “${vault}”`, detail: 'Check Settings → Brains for its name.' });
+      return;
+    }
+    if (!server || !samePath(server.vault.root, b.path)) await switchBrain(b.path);
+  }
+  if (!win || !server) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  if (!file) return;
+  const resolved = server.vault.resolve(file);
+  if (!resolved) {
+    await dialog.showMessageBox(win, { type: 'warning', message: `“${file}” isn’t in ${path.basename(server.vault.root)}` });
+    return;
+  }
+  const hash = `#/note/${resolved.split('/').map(encodeURIComponent).join('/')}`;
+  // Same-page navigation: the app follows hash changes without reloading.
+  await win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}; void 0;`).catch(() => {});
+  if (heading) {
+    await win.webContents
+      .executeJavaScript(`window.dispatchEvent(new CustomEvent('octavo:heading', { detail: ${JSON.stringify(heading)} })); void 0;`)
+      .catch(() => {});
+  }
+}
+
+app.on('open-url', (e, link) => {
+  // macOS delivers links here, also at launch (before the app is ready).
+  e.preventDefault();
+  if (ready) handleLink(link);
+  else pendingLink = link;
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
     if (win) {
       if (win.isMinimized()) win.restore();
       win.focus();
     }
+    // Windows and Linux pass the link as a command-line argument to a second copy.
+    const link = findLink(argv);
+    if (link && ready) handleLink(link);
   });
 
   // Desktop actions for the in-app Settings. Only Octavo's own main window may call them.
@@ -739,6 +838,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    registerProtocol();
     createWindow();
     initUpdater();
     buildMenu();
@@ -753,6 +853,14 @@ if (!app.requestSingleInstanceLock()) {
         detail: `${vaultPath}\n\n${err instanceof Error ? err.message : err}`,
       });
       await chooseVault();
+    }
+    ready = true;
+    if (pendingLink) {
+      const link = pendingLink;
+      pendingLink = null;
+      // Navigate once the page has loaded.
+      const go = () => (win?.webContents.isLoading() ? setTimeout(go, 200) : handleLink(link));
+      go();
     }
   });
 
