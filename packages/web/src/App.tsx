@@ -107,6 +107,9 @@ export function App() {
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [showLeft, setShowLeft] = useState<boolean>(() => !narrow() && load('octavo.left', false));
+  // Linked notes under a note: collapsed to one line by default on phones, so the note gets the screen.
+  const [connOpen, setConnOpen] = useState<boolean>(() => load('octavo.connOpen', !narrow()));
+  useEffect(() => store('octavo.connOpen', connOpen), [connOpen]);
   const [panelWide, setPanelWide] = useState<boolean>(() => load('octavo.panelWide', false));
   const [lineNumbers, setLineNumbers] = useState(() => load('octavo.lineNumbers', false));
   useEffect(() => store('octavo.vim', vimMode), [vimMode]);
@@ -1740,7 +1743,19 @@ export function App() {
         </div>
 
         {detail && !locked && (
-          <div className="connections">
+          <div className={`connections${connOpen ? ' open' : ' collapsed'}`}>
+            <button className="conn-toggle" onClick={() => setConnOpen((o) => !o)} aria-expanded={connOpen}>
+              <span>
+                {detail.backlinks.length} linked from · {outgoing.length} links to
+                {mentions.length > 0 ? ` · ${mentions.length} mention${mentions.length === 1 ? "" : "s"}` : ''}
+                {detail.tags.length > 0 ? ` · ${detail.tags.length} tag${detail.tags.length === 1 ? '' : 's'}` : ''}
+              </span>
+              <span className="conn-chevron" aria-hidden>
+                {connOpen ? '▾' : '▴'}
+              </span>
+            </button>
+            {connOpen && (
+            <>
             <div className="conn-row">
               <span className="conn-label">Linked from</span>
               {detail.backlinks.length === 0 && <span className="muted small">nothing yet</span>}
@@ -1784,6 +1799,8 @@ export function App() {
                   </span>
                 ))}
               </div>
+            )}
+            </>
             )}
           </div>
         )}
