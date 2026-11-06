@@ -1,11 +1,17 @@
 name: Release
 
 # Builds the desktop app for Windows, macOS and Linux and publishes a GitHub
-# release when a version tag (e.g. v0.1.0) is pushed.
+# release, either when a version tag (e.g. v0.1.0) is pushed, or when run by
+# hand from the Actions tab (GitHub then creates the tag for you).
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to create, e.g. v0.1.0'
+        required: true
+        default: 'v0.1.0'
 
 permissions:
   contents: write
@@ -61,7 +67,6 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,11 +77,12 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           ls -la artifacts
           gh release create "$TAG" artifacts/* \
             --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
             --title "Octavo ${TAG#v} (test build)" \
             --notes-file .github/release-notes.md \
             --prerelease
