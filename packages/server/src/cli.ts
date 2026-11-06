@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { recordAccess } from './activity.js';
 import { Vault } from '@octavo/core';
 import { startServer } from './index.js';
 import { createMcpServer } from './mcp.js';
@@ -132,6 +133,19 @@ async function main() {
     const vault = await Vault.open(vaultPath, { dailyFolder: values.daily });
     if (seed) await seedIfEmpty(vault);
     const server = createMcpServer(vault, { readOnly: values['read-only'] });
+    // Let the Octavo app (a different process) draw Claude's reads in the atlas trail.
+    vault.on('event', (e: { type: string; path?: string }) => {
+      if (e.type === 'access' && e.path) recordAccess(vault.root, e.path);
+    });
+    // Some clients keep the tool list from their first connection; telling them it changed
+    // (once they've finished connecting) prompts a refresh after an Octavo update.
+    server.server.oninitialized = () => {
+      try {
+        server.sendToolListChanged();
+      } catch {
+        /* not connected */
+      }
+    };
     await server.connect(new StdioServerTransport());
     console.error(`[octavo] MCP server (stdio) ready. Vault: ${vaultPath}`);
     const shutdown = () => {

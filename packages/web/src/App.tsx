@@ -769,12 +769,23 @@ export function App() {
       try {
         const r = await api.resolve(target, loadedPath.current ?? undefined);
         if (r.path) navigate(r.path, { heading, newTab: opts.newTab });
-        else createNote(target);
+        else if (r.trashed) {
+          // Don't silently recreate a deleted note as an empty one.
+          const ok = await confirm(
+            `“${target}” was deleted`,
+            `It's in the vault's trash (${r.trashed.trashPath}). Restore it with its old content?`,
+            { confirmLabel: 'Restore' },
+          );
+          if (!ok) return;
+          const s = await api.restoreTrashed(r.trashed.trashPath);
+          await refreshNotes();
+          navigate(s.path, { heading, newTab: opts.newTab });
+        } else createNote(target);
       } catch (err) {
         handleError(err);
       }
     },
-    [navigate, createNote, handleError],
+    [navigate, createNote, handleError, confirm, refreshNotes],
   );
 
   const renameNote = useCallback(

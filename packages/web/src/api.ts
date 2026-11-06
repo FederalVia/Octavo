@@ -58,6 +58,8 @@ export interface GraphNode {
   encrypted?: boolean;
   /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
   region?: string;
+  /** Tagged #surprise or `surprise: true`: its links are highlighted in the atlas. */
+  surprise?: boolean;
   degree: number;
 }
 
@@ -173,8 +175,9 @@ export const api = {
     }),
   merge: (from: string, into: string) =>
     request<{ from: string; into: string; updatedNotes: string[]; updatedLinks: number; trashedTo: string }>('POST', 'api/merge', { from, into }),
+  restoreTrashed: (trashPath: string) => request<NoteSummary>('POST', 'api/trash/restore', { trashPath }),
   resolve: (link: string, from?: string) =>
-    request<{ path: string | null }>(
+    request<{ path: string | null; trashed?: { trashPath: string; originalPath: string } }>(
       'GET',
       `api/resolve?link=${encodeURIComponent(link)}${from ? `&from=${encodeURIComponent(from)}` : ''}`,
     ),

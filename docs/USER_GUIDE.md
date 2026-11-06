@@ -54,7 +54,7 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 | Highlight a note's connections | Hover over it |
 
 - **Region dock** (bottom): one pill per region (Projects, Knowledge, People, Sources, Journal, Hubs) with its note count. Tap a pill to hide or show that region; double-tap to show only that one. **Find** highlights notes whose names match; press Enter to fly to the first.
-- **View menu** (the eye button, top right): note names on or off, and **Claude's trail**, a fading line through the notes Claude read or changed in the last 30 minutes, so you can see the shape of a whole session after the glow has gone. The trail survives a reload.
+- **View menu** (the eye button, top right): note names on or off, and **Claude's trail**, a fading line through the notes Claude read or changed in the last 30 minutes, so you can see the shape of a whole session after the glow has gone. The trail survives a reload. It also shows reads by Claude Desktop, which runs its own copy of Octavo. **Bridges between regions** dims the links inside each region and brightens the ones between regions. Links from notes tagged `#surprise` (or with `surprise: true` in their properties) are always drawn as bright dashed lines.
 
 ## Network view
 
@@ -99,7 +99,7 @@ Click a point, or pick a note from the drawer or the quick switcher, to open it 
 - **≡** shows the outline (headings). Click one to jump to it.
 - **⟲** opens the [version history](#version-history).
 - **✎** renames or moves the note. You can also double-click the title.
-- **🗑** deletes the note. It goes to the vault's `.trash` folder, so you can recover it.
+- **🗑** deletes the note. It goes to the vault's `.trash` folder, so you can recover it. If you later click a link to a deleted note, Octavo offers to restore it with its old content instead of creating a blank one.
 - **Under the note**:
   - *Linked from* shows notes that link here (backlinks).
   - *Links to* shows notes this one links to.
@@ -298,7 +298,7 @@ You can lock any note with a password: diary entries, health records, anything p
 
 ## Daily journal
 
-**Ctrl/Cmd+D** (or ◷) opens today's note, `Journal/YYYY-MM-DD.md`, and creates it if needed. Claude adds timestamped entries here when it uses `log_to_journal`. To use a different folder, start the server with `--daily <folder>`.
+**Ctrl/Cmd+D** (or ◷) opens today's note, `Journal/YYYY-MM-DD.md`, and creates it if needed. Claude adds timestamped entries here when it uses `log_to_journal`. To use a different folder, start the server with `--daily <folder>`. If you keep an index note named after the folder (`Journal.md`), each new daily note is added to it as a link.
 
 **Weekly and monthly notes:** command palette → *Open this week's note* (`Journal/Weekly/2026-W45.md`, with links to each day) or *Open this month's note* (`Journal/Monthly/2026-11.md`). From a terminal: `octavo weekly`, `octavo monthly`. Claude can open them with `open_periodic_note`, e.g. to plan the week.
 

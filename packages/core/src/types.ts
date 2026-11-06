@@ -75,6 +75,8 @@ export interface GraphNode {
   unresolved?: boolean;
   /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
   region?: string;
+  /** Tagged #surprise or `surprise: true`: its links are highlighted in the atlas. */
+  surprise?: boolean;
   /** Locked (encrypted) note. */
   encrypted?: boolean;
   /** Number of links in + out. */

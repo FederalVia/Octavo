@@ -24,3 +24,20 @@ import { readFileSync } from 'node:fs';
 test('VERSION matches package.json', () => {
   assert.equal(VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
 });
+
+import { recordAccess } from '../src/activity.js';
+import { startServer } from '../src/index.js';
+test("reads by another Octavo process (Claude Desktop's) reach the app as access events", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-activity-'));
+  const srv = await startServer({ vaultPath: dir, port: 0, webDir: '/nonexistent' });
+  try {
+    await srv.vault.write('Notes/Fermi.md', '# Fermi');
+    const got = new Promise<unknown>((resolve) => srv.vault.on('event', (e: { type: string }) => e.type === 'access' && resolve(e)));
+    recordAccess(dir, 'Notes/Fermi.md');
+    const e = await Promise.race([got, new Promise((r) => setTimeout(() => r('timeout'), 3000))]);
+    assert.deepEqual(e, { type: 'access', path: 'Notes/Fermi.md' });
+  } finally {
+    await srv.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

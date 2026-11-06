@@ -164,7 +164,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -193,6 +193,28 @@ describe('HTTP server', () => {
       assert.match(r.text, /Frontal region \(frontal\)/);
       r = await call('set_note_region', { path: 'Ada', region: 'auto' });
       assert.match(r.text, /Temporal region/);
+      // Bulk regions by folder, then back to automatic.
+      await srv.vault.write('Batch/One.md', '# One');
+      await srv.vault.write('Batch/Two.md', '# Two');
+      r = await call('set_note_region', { folder: 'Batch', region: 'occipital' });
+      assert.match(r.text, /^2 note\(s\) pinned to the Occipital region/);
+      assert.equal(srv.vault.regionOf('Batch/Two.md').region, 'occipital');
+      r = await call('set_note_region', { paths: ['Batch/One', 'Nope'], region: 'auto' });
+      assert.match(r.text, /1 note\(s\) placed automatically again\.\nSkipped 1:\n- Nope \(not found\)/);
+      // Orphans and missing notes.
+      r = await call('find_orphans', { folder: 'Batch' });
+      assert.match(r.text, /Orphans: nothing links to them \(2\):\n- Batch\/One\.md\n- Batch\/Two\.md/);
+      r = await call('find_orphans', { kind: 'missing' });
+      assert.match(r.text, /Missing notes: linked but not written yet/);
+      // Random note favouring notes nothing links to.
+      r = await call('random_note', { folder: 'Batch', favor: 'unlinked' });
+      assert.match(r.text, /^# Batch\//);
+      // Trash: a deleted note can be found and restored.
+      await call('delete_note', { path: 'Batch/Two' });
+      r = await call('read_note', { path: 'Batch/Two' });
+      assert.match(r.text, /in the trash/);
+      r = await call('restore_note', { path: 'Two' });
+      assert.match(r.text, /Restored Batch\/Two\.md/);
       r = await call('get_vault_overview', {});
       assert.match(r.text, /Brain regions: /);
       assert.match(r.text, /\(Octavo \d+\.\d+\.\d+\)/);
