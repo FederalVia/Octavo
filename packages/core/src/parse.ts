@@ -106,6 +106,19 @@ function lineAt(text: string, index: number, offset: number): number {
   return line + offset;
 }
 
+/**
+ * Locked notes keep `ultron-encrypted: v1` in their frontmatter and the
+ * ciphertext in an `ultron-encrypted` code block. Encryption and decryption
+ * happen in the user's browser; the server only ever stores the envelope.
+ */
+export const ENCRYPTED_KEY = 'ultron-encrypted';
+
+export function isEncryptedContent(content: string): boolean {
+  if (!content.startsWith('---')) return false;
+  const { frontmatter } = splitFrontmatter(content);
+  return frontmatter[ENCRYPTED_KEY] != null;
+}
+
 /** A reference to a non-Markdown file (image, PDF, audio…) rather than a note. */
 export function isAttachmentRef(target: string): boolean {
   return /\.[a-z0-9]{2,5}$/i.test(target) && !/\.md$/i.test(target);

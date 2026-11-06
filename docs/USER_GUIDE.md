@@ -16,6 +16,7 @@
 - [Tasks](#tasks)
 - [Insights: orphans, dead ends, unlinked mentions](#insights-orphans-dead-ends-unlinked-mentions)
 - [Version history](#version-history)
+- [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -244,6 +245,27 @@ Under each note, **Mentioned in** lists notes that use its name in plain text wi
 ## Version history
 
 Before a note changes, Ultron keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.ultron/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
+
+## Locked (encrypted) notes
+
+You can lock any note with a password: diary entries, health records, anything private.
+
+- **Lock**: open the note and click **🔐** (or command palette → *Lock note with a password*). Enter a password of at least 8 characters, twice.
+- **Read and edit**: a locked note shows a 🔒 screen. Enter the password to unlock it, then read and edit as usual. Every save is encrypted before it leaves your browser.
+- **Lock again**: click **🔓**, or command palette → *Lock all unlocked notes*. Notes also lock when you reload or close the tab, and after 15 minutes without activity.
+- **Change the password** or **remove encryption**: unlock the note, then use the command palette.
+
+**How it works.** The note is encrypted in your browser with AES-256-GCM, using a key derived from your password (PBKDF2-SHA256, 600,000 iterations, a random salt per note). The server, Claude, search and anyone who copies your files only ever see scrambled data. Your password is never sent anywhere.
+
+**Good to know:**
+
+- **There is no password recovery.** If you forget a note's password, its contents are gone for good. Consider keeping it in a password manager.
+- **The note's title (file name), folder and links *to* it stay visible.** Choose a neutral title if the title itself is sensitive.
+- **Locked notes are left out** of search, tasks, tags, mentions and the brain's link lines from that note. They appear in the brain with a 🔒.
+- **Claude can see that a locked note exists, but can't read, change or delete it.**
+- **Locking deletes the note's earlier plain-text versions from Ultron's version history.** Copies elsewhere, such as git history, backups or sync services, may still hold the old plain text.
+- **The file is still a `.md` file** with a short "this note is locked" message, so Obsidian and git show a placeholder. Don't edit that file by hand, or it can no longer be unlocked.
+- Encryption needs a secure page: `https://`, or `http://localhost` / `127.0.0.1`.
 
 ## Daily journal
 

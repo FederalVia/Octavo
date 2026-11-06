@@ -11,6 +11,7 @@ How to use it:
 - Use log_to_journal for a short running log of what happened in each session.
 - The app draws the vault as a brain, and folders decide the region: Projects/ and Decisions/ (frontal), Concepts/ and Tools/ (parietal), People/ and Orgs/ (temporal), Sources/, Repos/ and Reading/ (occipital), Journal/ and Logs/ (cerebellum), Home/Index notes (brain stem). Put new notes in the matching folder, or set \`region:\` in frontmatter.
 - Note paths are relative to the vault, e.g. "Projects/Ultron.md". The .md extension is optional, and a bare note name like "Ultron" resolves the same way a wikilink would.
+- Notes marked 🔒 locked are encrypted by the user. You can't read, edit or delete them, and you shouldn't try to infer their contents.
 - Never store secrets such as passwords or API keys in the vault.`;
 
 function text(value: unknown) {
@@ -28,7 +29,7 @@ function fmtDate(ms: number): string {
 
 function summaryLine(n: NoteSummary): string {
   const tags = n.tags.length ? ` ${n.tags.map((t) => '#' + t).join(' ')}` : '';
-  return `- ${n.path} (updated ${fmtDate(n.mtime)})${tags}`;
+  return `- ${n.path}${n.encrypted ? ' 🔒 locked' : ''} (updated ${fmtDate(n.mtime)})${tags}`;
 }
 
 type Handler<A> = (args: A) => Promise<ReturnType<typeof text>>;
@@ -108,6 +109,11 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       annotations: { readOnlyHint: true },
     },
     safe(async ({ path }) => {
+      if (vault.isEncrypted(path)) {
+        return text(
+          `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Ultron app, so don't guess at what it contains. Ask the user if you need information from it.`,
+        );
+      }
       const n = await vault.read(path);
       const out = n.links.length
         ? n.links.map((l) => `- [[${l.target}]] → ${l.path ?? '(not created yet)'}`).join('\n')
@@ -222,6 +228,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       annotations: { destructiveHint: true, idempotentHint: true },
     },
     safe(async ({ path, content, create_only }) => {
+      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; it can't be overwritten. Write to a different note.`);
       const existed = vault.has(path);
       const s = create_only ? await vault.create(path, content) : await vault.write(path, content);
       return text(`${existed ? 'Updated' : 'Created'} ${s.path}`);
@@ -289,6 +296,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       annotations: { destructiveHint: true },
     },
     safe(async ({ path }) => {
+      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; only the user can delete it, from the Ultron app.`);
       const r = await vault.delete(path);
       return text(`Moved ${r.path} to ${r.trashedTo}`);
     }),

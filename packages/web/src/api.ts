@@ -6,6 +6,8 @@ export interface NoteSummary {
   mtime: number;
   ctime: number;
   size: number;
+  /** Locked (encrypted) note. */
+  encrypted?: boolean;
 }
 
 export interface LinkRef {
@@ -52,6 +54,8 @@ export interface GraphNode {
   name: string;
   tags: string[];
   unresolved?: boolean;
+  /** Locked (encrypted) note. */
+  encrypted?: boolean;
   /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
   region?: string;
   degree: number;

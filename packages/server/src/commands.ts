@@ -74,6 +74,7 @@ export async function runNoteCommand(
       }
       case 'read': {
         need(args, 1, 'read <note>');
+        if (vault.isEncrypted(args.join(' '))) throw new Error(`${vault.resolve(args.join(' '))} is locked (encrypted). Unlock it in the Ultron app to read it.`);
         process.stdout.write((await vault.read(args.join(' '))).content);
         break;
       }

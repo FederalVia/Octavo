@@ -99,3 +99,9 @@ A Vite + React single-page app, served by the server (or by Vite in development,
 - **With a token**, every `/api` and `/mcp` request needs it. Comparisons are constant-time. The CLI warns if you bind to a non-loopback address without one.
 - **Paths** from clients and from Claude are normalised and confined to the vault. Absolute paths, `..` and hidden segments are rejected.
 - **Rendered Markdown is sanitised**. External links open in a new tab with `noopener`.
+- **Locked notes** are end-to-end encrypted by the browser (`packages/web/src/crypto.ts`):
+  - AES-256-GCM, with a fresh 96-bit IV for every save and a key from PBKDF2-SHA256 (600,000 iterations, a random 128-bit salt per note).
+  - The file keeps `ultron-encrypted: v1` in its frontmatter and the JSON envelope in an `ultron-encrypted` code block.
+  - The core marks such notes `encrypted` and indexes nothing from them. Plain-text operations (`append`, `edit`, `setTask`) refuse them with `EncryptedNoteError` (HTTP 423), and MCP read/write/delete return a "locked" message instead.
+  - The first encrypted write purges the note's plain-text history.
+  - Keys live only in the tab's memory and are cleared on reload, on "Lock", or after 15 minutes idle.

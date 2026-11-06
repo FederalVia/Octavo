@@ -95,6 +95,10 @@ async function hydrate(
       }
       const note = await api.note(resolved.path);
       if (isStale()) return;
+      if (note.encrypted) {
+        el.innerHTML = `<div class="embed-missing">🔒 ${note.name.replace(/</g, '&lt;')} is locked</div>`;
+        continue;
+      }
       const section = extractSection(note.content, heading);
       el.innerHTML = `<div class="embed-head"><a class="wikilink" href="#" data-target="${resolved.path.replace(/"/g, '&quot;')}" data-heading="${(heading ?? '').replace(/"/g, '&quot;')}">${note.name.replace(/</g, '&lt;')}${heading ? ` › ${heading.replace(/</g, '&lt;')}` : ''}</a></div><div class="embed-body markdown">${render(section, { fromPath: resolved.path, interactive: false })}</div>`;
       await hydrate(el, render, resolved.path, depth + 1, isStale);
@@ -152,6 +156,10 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
           return;
         }
         const note = await api.note(r.path);
+        if (note.encrypted) {
+          setHover({ x: rect.left, y: rect.bottom + 6, title: `🔒 ${note.name}`, html: '<p class="muted">This note is locked. Open it and enter its password to read it.</p>' });
+          return;
+        }
         const heading = link.dataset.heading || undefined;
         const section = extractSection(note.content, heading);
         setHover({

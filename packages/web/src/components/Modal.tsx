@@ -8,6 +8,8 @@ export type DialogRequest =
       initial?: string;
       placeholder?: string;
       confirmLabel?: string;
+      /** Mask the input (passwords). */
+      password?: boolean;
       resolve: (v: string | null) => void;
     }
   | { kind: 'confirm'; title: string; message?: string; confirmLabel?: string; danger?: boolean; resolve: (v: boolean) => void };
@@ -34,6 +36,7 @@ export function Dialog({ req, onDone }: { req: DialogRequest; onDone: () => void
   useEffect(() => {
     if (req.kind === 'prompt') {
       input.current?.focus();
+      if (req.password) return;
       const v = req.initial ?? '';
       // Select the name but not the folder prefix / extension.
       const start = v.lastIndexOf('/') + 1;
@@ -78,6 +81,8 @@ export function Dialog({ req, onDone }: { req: DialogRequest; onDone: () => void
           <input
             ref={input}
             className="input"
+            type={req.password ? 'password' : 'text'}
+            autoComplete={req.password ? 'new-password' : undefined}
             value={value}
             placeholder={req.placeholder}
             onChange={(e) => setValue(e.target.value)}

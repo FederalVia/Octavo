@@ -156,6 +156,21 @@ describe('HTTP server', () => {
       assert.equal(r.isError, true);
       r = await call('write_note', { path: '../escape', content: 'x' });
       assert.equal(r.isError, true);
+
+      // Locked notes: existence visible, contents not; no overwrite/delete/append.
+      await srv.vault.write('Secret.md', '---\nultron-encrypted: v1\n---\n# Locked\n\n```ultron-encrypted\n{}\n```\n');
+      r = await call('read_note', { path: 'Secret' });
+      assert.match(r.text, /locked \(encrypted\) note/);
+      assert.doesNotMatch(r.text, /ultron-encrypted/);
+      r = await call('write_note', { path: 'Secret', content: 'overwritten' });
+      assert.equal(r.isError, true);
+      r = await call('append_to_note', { path: 'Secret', content: 'x' });
+      assert.equal(r.isError, true);
+      r = await call('delete_note', { path: 'Secret' });
+      assert.equal(r.isError, true);
+      r = await call('list_notes', {});
+      assert.match(r.text, /Secret\.md 🔒 locked/);
+      assert.equal(srv.vault.isEncrypted('Secret'), true);
     } finally {
       await client.close();
     }

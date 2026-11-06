@@ -5,6 +5,8 @@ import { Overlay } from './Modal';
 interface Props {
   path: string;
   current: string;
+  /** Turn a stored version into readable text (decrypts versions of locked notes). */
+  decode?: (stored: string) => Promise<string>;
   onRestored: () => void;
   onClose: () => void;
 }
@@ -30,7 +32,7 @@ function diffLines(a: string, b: string): { type: ' ' | '+' | '-'; text: string 
 }
 
 /** File recovery: browse saved versions of a note, see what changed, restore one. */
-export function HistoryDialog({ path, current, onRestored, onClose }: Props) {
+export function HistoryDialog({ path, current, decode, onRestored, onClose }: Props) {
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [selected, setSelected] = useState<Version | null>(null);
   const [content, setContent] = useState<string>('');
@@ -50,7 +52,14 @@ export function HistoryDialog({ path, current, onRestored, onClose }: Props) {
     if (!selected) return;
     api
       .version(path, selected.id)
-      .then((r) => setContent(r.content))
+      .then(async (r) => {
+        if (!decode) return setContent(r.content);
+        try {
+          setContent(await decode(r.content));
+        } catch {
+          setContent('🔒 This version was encrypted with a different password and can’t be shown.');
+        }
+      })
       .catch((e) => setError(String(e.message ?? e)));
   }, [path, selected]);
 

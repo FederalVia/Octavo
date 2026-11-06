@@ -1729,3 +1729,40 @@ details.callout[open] > summary::after {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* ------------------------------------------------------------------ locked notes */
+
+.lock-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+.lock-screen h2 {
+  margin: 0;
+}
+.lock-screen p {
+  max-width: 360px;
+  margin: 0;
+}
+.lock-screen .input {
+  max-width: 300px;
+}
+.lock-icon {
+  font-size: 44px;
+  filter: drop-shadow(0 0 18px rgba(220, 202, 159, 0.35));
+}
+.lock-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+.lock-mark {
+  font-size: 0.85em;
+}
+.icon-btn.lock-on {
+  color: var(--accent);
+}
