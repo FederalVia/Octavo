@@ -188,6 +188,15 @@ function buildLayout(data: GraphData): Layout {
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
 
 const glints = new Map<string, HTMLCanvasElement>();
+const labelColors = new Map<string, string>();
+/** Region colour mixed halfway to white: tinted, but readable on top of its own region. */
+function labelColor(rgb: [number, number, number]): string {
+  const key = rgb.join(',');
+  let c = labelColors.get(key);
+  if (!c) labelColors.set(key, (c = `rgb(${rgb.map((v) => Math.round(v + (255 - v) * 0.55)).join(',')})`));
+  return c;
+}
+
 const lightColors = new Map<string, string>();
 /** A region colour, slightly brightened, as a CSS string (cached: no allocation per frame). */
 function lightColor(rgb: [number, number, number]): string {
@@ -512,15 +521,32 @@ export function AtlasView(props: Props) {
       ctx.globalCompositeOperation = quality === 2 ? 'lighter' : 'source-over';
       ctx.lineWidth = 1;
       const baseAlpha = (focusNode || filterOn ? 0.025 : 0.07) * (1.15 / Math.max(1, k * 0.6)) * (quality === 2 ? 1 : 0.9 * boostAlpha);
-      ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.5, baseAlpha * Math.max(1, k * 0.6))})`;
-      ctx.beginPath();
-      for (let li = 0; li < drawn; li++) {
-        const l = linkList[li];
-        if (!l.a.visible || !l.b.visible) continue;
-        ctx.moveTo(l.a.sx * k, l.a.sy * k);
-        ctx.lineTo(l.b.sx * k, l.b.sy * k);
+      const lineAlpha = Math.min(0.5, baseAlpha * Math.max(1, k * 0.6));
+      if (quality === 0) {
+        // Minimal quality: one neutral batch.
+        ctx.strokeStyle = `rgba(200, 196, 188, ${lineAlpha})`;
+        ctx.beginPath();
+        for (let li = 0; li < drawn; li++) {
+          const l = linkList[li];
+          if (!l.a.visible || !l.b.visible) continue;
+          ctx.moveTo(l.a.sx * k, l.a.sy * k);
+          ctx.lineTo(l.b.sx * k, l.b.sy * k);
+        }
+        ctx.stroke();
+      } else {
+        // Lines take a tint of the region they start in: six batches, one per region colour.
+        for (const reg of REGIONS) {
+          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.55, lineAlpha * 1.35)})`;
+          ctx.beginPath();
+          for (let li = 0; li < drawn; li++) {
+            const l = linkList[li];
+            if (l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
+            ctx.moveTo(l.a.sx * k, l.a.sy * k);
+            ctx.lineTo(l.b.sx * k, l.b.sy * k);
+          }
+          ctx.stroke();
+        }
       }
-      ctx.stroke();
       ctx.restore();
       ctx.globalCompositeOperation = 'lighter';
       if (focusNode && focusNode.visible) {
@@ -590,6 +616,8 @@ export function AtlasView(props: Props) {
       const densityDim = Object.fromEntries(
         REGIONS.map((r) => [r.key, Math.min(0.8, 9 / Math.pow(Math.max(1, L.counts[r.key]), 0.55))]),
       ) as Record<RegionKey, number>;
+      // Small vaults get bigger, brighter points so the colours read; big ones stay fine-grained.
+      const sizeBoost = L.nodes.length < 150 ? 1.6 : L.nodes.length < 600 ? 1.25 : 1;
       const margin = 40;
       const order = L.nodes
         .filter((n) => n.visible && n.sx > -margin && n.sy > -margin && n.sx < W + margin && n.sy < H + margin)
@@ -604,7 +632,7 @@ export function AtlasView(props: Props) {
         if (n.unresolved) alpha *= 0.4;
         const fireAge = Math.max(0, (now - n.firedAt) / 1000);
         const boost = fireAge < 1.5 ? 1 - fireAge / 1.5 : 0;
-        const r = nodeSize(n) * Math.max(0.55, n.scale / s.baseZoom) * (isFocus ? 1.6 : 1) * (1 + boost);
+        const r = nodeSize(n) * sizeBoost * Math.max(0.55, n.scale / s.baseZoom) * (isFocus ? 1.6 : 1) * (1 + boost);
         const density = densityDim[n.region];
         // Halos: everything at full quality; at lower quality only notes that matter right now.
         const important = n.hub || isFocus || boost > 0 || (focusNode !== null && near?.has(n.id));
@@ -692,9 +720,12 @@ export function AtlasView(props: Props) {
         if (!fits(x - 2, n.sy - 7, w + 4, 14) && !isFocus) continue;
         if (plainHub && n.hub) hubLabels++;
         ctx.globalAlpha = isFocus ? 1 : 0.45 + fog * 0.5;
-        ctx.fillStyle = 'rgba(17,16,20,0.7)';
-        ctx.fillText(text, x + 1, n.sy + 1);
-        ctx.fillStyle = isFocus ? '#ffffff' : reg.color;
+        // A dark outline keeps names readable over bright, dense regions.
+        ctx.lineWidth = 3;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(14,13,17,0.85)';
+        ctx.strokeText(text, x, n.sy);
+        ctx.fillStyle = isFocus ? '#ffffff' : labelColor(reg.rgb);
         ctx.fillText(text, x, n.sy);
       }
       ctx.globalAlpha = 1;
