@@ -77,6 +77,7 @@ console.log('Bundling the server CLI (used by Claude Desktop)…');
 await build({ ...common, entryPoints: [path.join(root, 'packages/server/dist/cli.js')], outfile: path.join(appDir, 'cli.mjs') });
 
 fs.cpSync(webDist, path.join(appDir, 'web'), { recursive: true });
+fs.copyFileSync(path.join(root, 'packages/desktop/src/preload.cjs'), path.join(appDir, 'preload.cjs'));
 fs.writeFileSync(
   path.join(appDir, 'package.json'),
   JSON.stringify(

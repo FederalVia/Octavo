@@ -1,4 +1,104 @@
+import { useEffect, useState } from 'react';
 import { Overlay } from './Modal';
+
+/** Desktop-only actions exposed by the Electron app (packages/desktop/src/preload.cjs). */
+interface DesktopBridge {
+  getState(): Promise<DesktopState | null>;
+  checkNetwork(): Promise<DesktopState>;
+  toggleRemote(): Promise<DesktopState>;
+  togglePhone(): Promise<DesktopState>;
+  showQr(): Promise<DesktopState>;
+}
+interface DesktopState {
+  phone: boolean;
+  remote: boolean;
+  remoteStatus: { state: string; step: string; url?: string; advice?: string } | null;
+}
+declare global {
+  interface Window {
+    octavoDesktop?: DesktopBridge;
+  }
+}
+
+function PhoneSection() {
+  const desktop = window.octavoDesktop;
+  const [state, setState] = useState<DesktopState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!desktop) return;
+    const load = () => desktop.getState().then(setState).catch(() => {});
+    load();
+    const t = setInterval(load, 2000);
+    return () => clearInterval(t);
+  }, [desktop]);
+
+  if (!desktop) {
+    return (
+      <p className="muted small settings-note">
+        In the Octavo desktop app, these controls appear here. From a terminal: <code>npm start -- --remote</code> (from anywhere) or{' '}
+        <code>npm start -- --phone</code> (home Wi-Fi). Both show a QR code to scan with your phone.
+      </p>
+    );
+  }
+  const run = async (fn: () => Promise<DesktopState>) => {
+    setBusy(true);
+    try {
+      setState(await fn());
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rs = state?.remoteStatus;
+  const remoteLabel = !state?.remote
+    ? 'Off'
+    : rs?.state === 'ready'
+      ? 'On: works from anywhere'
+      : rs?.state === 'error'
+        ? 'Problem: see details'
+        : rs?.step ?? 'Starting…';
+  return (
+    <>
+      <div className="setting-row">
+        <div>
+          <b>1. Check your network</b>
+          <span className="muted small">Can your router and internet provider accept direct connections? Takes about 10 seconds.</span>
+        </div>
+        <button className="btn" disabled={busy} onClick={() => run(desktop.checkNetwork)}>
+          Check
+        </button>
+      </div>
+      <div className="setting-row">
+        <div>
+          <b>2. Access from Anywhere</b>
+          <span className="muted small">Your phone connects directly to this PC over any Wi-Fi or mobile data. Status: {remoteLabel}</span>
+        </div>
+        <button className={`btn${state?.remote ? '' : ' primary'}`} disabled={busy} onClick={() => run(desktop.toggleRemote)}>
+          {state?.remote ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+      <div className="setting-row">
+        <div>
+          <b>Home Wi-Fi only</b>
+          <span className="muted small">Simpler: works while your phone is on the same Wi-Fi as this PC. Status: {state?.phone ? 'On' : 'Off'}</span>
+        </div>
+        <button className="btn" disabled={busy} onClick={() => run(desktop.togglePhone)}>
+          {state?.phone ? 'Turn off' : 'Turn on'}
+        </button>
+      </div>
+      {(state?.phone || state?.remote) && (
+        <div className="setting-row">
+          <div>
+            <b>QR code</b>
+            <span className="muted small">Scan it with your phone’s camera to open Octavo there.</span>
+          </div>
+          <button className="btn" disabled={busy} onClick={() => run(desktop.showQr)}>
+            Show QR code
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
 
 export interface VaultSettings {
   /** Show the lock (encryption) feature. Off by default; existing locked notes still open either way. */
@@ -80,9 +180,7 @@ export function SettingsDialog(p: Props) {
 
         <section>
           <h4>Use on your phone</h4>
-          <p className="muted small settings-note">
-            Desktop app: <b>File → Use on Your Phone</b>. From a terminal: <code>npm start -- --phone</code>. Either one shows a QR code to scan with your phone on the same Wi-Fi.
-          </p>
+          <PhoneSection />
         </section>
       </div>
     </Overlay>

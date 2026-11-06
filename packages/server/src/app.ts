@@ -362,6 +362,20 @@ export function createApp(opts: AppOptions): express.Express {
   // ------------------------------------------------------------------ Web UI
   if (opts.webDir && fs.existsSync(path.join(opts.webDir, 'index.html'))) {
     const webDir = opts.webDir;
+    // Home-screen apps (iOS especially) get their own storage, so the app's start
+    // address must carry the access key. Only a valid key is ever echoed back.
+    app.get('/manifest.webmanifest', (req, res, next) => {
+      const key = typeof req.query.token === 'string' ? req.query.token : '';
+      if (!key || (opts.token && !safeEqual(key, opts.token))) return next();
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(webDir, 'manifest.webmanifest'), 'utf8'));
+        manifest.start_url = `./?token=${encodeURIComponent(key)}`;
+        res.setHeader('Cache-Control', 'no-store');
+        res.type('application/manifest+json').send(JSON.stringify(manifest));
+      } catch {
+        next();
+      }
+    });
     app.use(express.static(webDir, { index: false, maxAge: '1h' }));
     app.get('/{*splat}', (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');

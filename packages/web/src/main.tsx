@@ -3,13 +3,31 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import 'katex/dist/katex.min.css';
 import './styles.css';
-import { setToken } from './api';
+import { getToken, setToken } from './api';
 
-// Phone links carry the access key once (?token=…): remember it, then remove it from the address bar.
+// Phone links carry the access key (?token=…): remember it.
 const urlToken = new URLSearchParams(location.search).get('token');
-if (urlToken) {
-  setToken(urlToken);
-  history.replaceState(null, '', location.pathname + location.hash);
+if (urlToken) setToken(urlToken);
+
+const key = getToken();
+if (key) {
+  // "Add to Home Screen" saves either the page address or the manifest's start
+  // address, and home-screen apps get their own storage, so both must carry the key.
+  const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const standalone = matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (link) link.href = `./manifest.webmanifest?token=${encodeURIComponent(key)}`;
+  const url = new URL(location.href);
+  if (isIos && !standalone) {
+    // In Safari, keep the key in the address bar so the home-screen icon includes it.
+    if (url.searchParams.get('token') !== key) {
+      url.searchParams.set('token', key);
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+  } else if (url.searchParams.has('token')) {
+    // Everywhere else, keep the key out of the address bar.
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
 }
 
 createRoot(document.getElementById('root')!).render(

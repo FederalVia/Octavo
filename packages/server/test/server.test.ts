@@ -35,6 +35,24 @@ describe('HTTP server', () => {
     assert.equal(res.status, 401);
   });
 
+  test('manifest carries a valid access key in its start address only', async () => {
+    const wdir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-web-'));
+    await fs.writeFile(path.join(wdir, 'index.html'), '<html></html>');
+    await fs.writeFile(path.join(wdir, 'manifest.webmanifest'), JSON.stringify({ name: 'Octavo', start_url: './' }));
+    const m = await startServer({ vaultPath: dir, port: 0, token: 'k1', webDir: wdir });
+    try {
+      const good = await (await fetch(`${m.url}/manifest.webmanifest?token=k1`)).json();
+      assert.equal(good.start_url, './?token=k1');
+      const bad = await (await fetch(`${m.url}/manifest.webmanifest?token=wrong`)).json();
+      assert.equal(bad.start_url, './', 'wrong keys are not echoed');
+      const none = await (await fetch(`${m.url}/manifest.webmanifest`)).json();
+      assert.equal(none.start_url, './');
+    } finally {
+      await m.close();
+      await fs.rm(wdir, { recursive: true, force: true });
+    }
+  });
+
   test('locks out an address after repeated wrong keys', async () => {
     const lockSrv = await startServer({ vaultPath: dir, port: 0, token: 'right-key', webDir: '/nonexistent' });
     try {
