@@ -337,6 +337,11 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
     onScrolled?.();
   }, [scrollToHeading, html, onScrolled]);
 
+  useEffect(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setHover(null);
+  }, [path]);
+
   const showHover = (link: HTMLAnchorElement) => {
     const target = link.dataset.target ?? '';
     if (!target) return;
@@ -379,11 +384,15 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
       <article
         className="preview markdown"
         ref={ref}
-        onMouseOver={(e) => {
+        // Link previews on hover are for a real mouse only: phones send a fake hover on every tap,
+        // which used to pop a preview of the note you just opened on top of it.
+        onPointerOver={(e) => {
+          if (e.pointerType !== 'mouse') return;
           const link = (e.target as HTMLElement).closest('a.wikilink') as HTMLAnchorElement | null;
           if (link && !link.closest('.hover-card')) showHover(link);
         }}
-        onMouseOut={(e) => {
+        onPointerOut={(e) => {
+          if (e.pointerType !== 'mouse') return;
           if ((e.target as HTMLElement).closest('a.wikilink')) hideHover();
         }}
         onAuxClick={(e) => {
@@ -446,6 +455,7 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
           const link = target.closest('a.wikilink') as HTMLAnchorElement | null;
           if (link) {
             e.preventDefault();
+            if (hoverTimer.current) clearTimeout(hoverTimer.current);
             setHover(null);
             const t = link.dataset.target ?? '';
             const h = link.dataset.heading || undefined;
