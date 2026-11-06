@@ -1968,3 +1968,17 @@ body {
   white-space: nowrap;
   max-width: calc(100vw - 24px);
 }
+
+/* Settings → Brains */
+.brain-row { flex-direction: column; align-items: stretch; gap: 8px; cursor: default; padding: 10px 0; border-top: 1px solid var(--border); }
+form.setting-row { cursor: default; }
+.brain-current { color: var(--accent); font-weight: 500; }
+.brain-path { overflow-wrap: anywhere; }
+.setting-row > .brain-actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; align-items: center; }
+.brain-actions .btn { white-space: nowrap; }
+.brain-actions .input { width: 160px; }
+.brain-error { color: var(--danger); }
+@media (max-width: 560px) {
+  form.setting-row { flex-direction: column; align-items: stretch; }
+}
+.settings-dialog .btn { white-space: nowrap; }

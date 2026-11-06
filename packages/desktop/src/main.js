@@ -70,7 +70,7 @@ async function openVault(vaultPath, { autoRemote = true } = {}) {
     fallbackToRandomPort: true,
   });
   await seedIfEmpty(server.vault);
-  saveConfig({ ...loadConfig(), vaultPath });
+  rememberBrain(vaultPath);
   if (win) {
     win.setTitle(`${path.basename(vaultPath)} · Octavo`);
     await win.loadURL(windowUrl());
@@ -291,6 +291,101 @@ async function toggleRemoteAccess() {
   buildMenu();
 }
 
+// ------------------------------------------------------------------ brains (separate vaults)
+
+const defaultVault = () => path.join(os.homedir(), 'Octavo');
+const brainsDir = () => path.join(os.homedir(), 'Octavo Brains');
+const samePath = (a, b) => {
+  const norm = (p) => path.resolve(p).replace(/[\\/]+$/, '');
+  return process.platform === 'linux' ? norm(a) === norm(b) : norm(a).toLowerCase() === norm(b).toLowerCase();
+};
+
+/** @returns {{ name: string, path: string }[]} */
+function brainList() {
+  const list = loadConfig().brains;
+  return Array.isArray(list) ? list.filter((b) => b && typeof b.path === 'string' && typeof b.name === 'string') : [];
+}
+
+function rememberBrain(vaultPath) {
+  const cfg = loadConfig();
+  const list = brainList();
+  if (!list.some((b) => samePath(b.path, vaultPath))) list.push({ name: path.basename(vaultPath) || 'Octavo', path: vaultPath });
+  saveConfig({ ...cfg, vaultPath, brains: list });
+}
+
+/** The name Claude sees for a brain's tools: "octavo" for the original brain, "octavo-<name>" for the others. */
+function mcpNames() {
+  const used = new Set();
+  return brainList().map((b) => {
+    let base = samePath(b.path, defaultVault())
+      ? 'octavo'
+      : `octavo-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'brain'}`;
+    let name = base;
+    for (let i = 2; used.has(name); i++) name = `${base}-${i}`;
+    used.add(name);
+    return name;
+  });
+}
+
+function brainsState() {
+  const names = mcpNames();
+  return {
+    brains: brainList().map((b, i) => ({
+      name: b.name,
+      path: b.path,
+      mcpName: names[i],
+      current: !!server && samePath(server.vault.root, b.path),
+    })),
+    folder: brainsDir(),
+  };
+}
+
+const findBrain = (p) => brainList().find((b) => typeof p === 'string' && samePath(b.path, p));
+
+async function switchBrain(p) {
+  const b = findBrain(p);
+  if (!b || (server && samePath(server.vault.root, b.path))) return;
+  await openVault(b.path);
+}
+
+async function createBrain(rawName) {
+  const name = String(rawName ?? '')
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .trim()
+    .replace(/[. ]+$/, '')
+    .slice(0, 60);
+  if (!name) throw new Error('Give the brain a name.');
+  if (/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(name)) throw new Error('That name isn’t allowed on Windows.');
+  if (brainList().some((b) => b.name.toLowerCase() === name.toLowerCase())) throw new Error(`You already have a brain called “${name}”.`);
+  const dir = path.join(brainsDir(), name);
+  fs.mkdirSync(dir, { recursive: true });
+  await openVault(dir);
+}
+
+function removeBrain(p) {
+  const b = findBrain(p);
+  if (!b || (server && samePath(server.vault.root, b.path))) return;
+  // Only forgets it: the notes stay in their folder.
+  saveConfig({ ...loadConfig(), brains: brainList().filter((x) => !samePath(x.path, b.path)) });
+  buildMenu();
+}
+
+/** claude_desktop_config.json entry for one brain. */
+function mcpEntry(vaultPath) {
+  return {
+    command: process.execPath,
+    args: [serverCliPath(), 'mcp', '--vault', vaultPath],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
+}
+
+/** Claude Desktop JSON for one brain (by path) or, with no path, all of them. */
+function brainsClaudeJson(p) {
+  const { brains } = brainsState();
+  const chosen = p ? brains.filter((b) => samePath(b.path, p)) : brains;
+  return JSON.stringify({ mcpServers: Object.fromEntries(chosen.map((b) => [b.mcpName, mcpEntry(b.path)])) }, null, 2);
+}
+
 async function chooseVault() {
   const res = await dialog.showOpenDialog(win ?? undefined, {
     title: 'Open or create a vault folder',
@@ -317,25 +412,14 @@ function webDir() {
 function claudeConfig() {
   const vaultPath = server?.vault.root ?? '';
   const httpUrl = server ? `${server.url}/mcp` : '';
-  const desktopJson = JSON.stringify(
-    {
-      mcpServers: {
-        'octavo': {
-          command: process.execPath,
-          args: [serverCliPath(), 'mcp', '--vault', vaultPath],
-          env: { ELECTRON_RUN_AS_NODE: '1' },
-        },
-      },
-    },
-    null,
-    2,
-  );
-  const claudeCode = `claude mcp add --transport http octavo ${httpUrl}`;
-  return { httpUrl, desktopJson, claudeCode };
+  const name = brainsState().brains.find((b) => b.current)?.mcpName ?? 'octavo';
+  const desktopJson = vaultPath ? brainsClaudeJson(vaultPath) : '';
+  const claudeCode = `claude mcp add --transport http ${name} ${httpUrl}`;
+  return { httpUrl, desktopJson, claudeCode, name };
 }
 
 async function showConnectClaude() {
-  const { httpUrl, desktopJson, claudeCode } = claudeConfig();
+  const { httpUrl, desktopJson, claudeCode, name } = claudeConfig();
   const { response } = await dialog.showMessageBox(win ?? undefined, {
     type: 'info',
     title: 'Connect Claude',
@@ -343,7 +427,8 @@ async function showConnectClaude() {
     detail:
       `While this app is open, its MCP endpoint is:\n${httpUrl}\n\n` +
       `Claude Code:\n${claudeCode}\n\n` +
-      `Claude Desktop: add the "octavo" entry to claude_desktop_config.json. It runs without this app being open.\n\n` +
+      `Claude Desktop: add the "${name}" entry to claude_desktop_config.json. It runs without this app being open.\n\n` +
+      `Each brain is added separately, so you can turn each one on or off per chat in Claude. Settings → Brains copies the setup for every brain.\n\n` +
       `Copy one of the configs below.`,
     buttons: ['Copy Claude Code command', 'Copy Claude Desktop JSON', 'Close'],
     defaultId: 0,
@@ -426,6 +511,11 @@ function sendShortcut(key, shift = false) {
   });
 }
 
+function openBrainSettings() {
+  win?.show();
+  win?.webContents.send('octavo:open-settings', 'brains');
+}
+
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   /** @type {Electron.MenuItemConstructorOptions[]} */
@@ -438,9 +528,23 @@ function buildMenu() {
         { label: 'Quick Switcher…', accelerator: 'CmdOrCtrl+O', registerAccelerator: false, click: () => sendShortcut('O') },
         { label: "Today's Journal", accelerator: 'CmdOrCtrl+D', registerAccelerator: false, click: () => sendShortcut('D') },
         { type: 'separator' },
-        { label: 'Open Vault Folder…', accelerator: 'CmdOrCtrl+Shift+O', click: chooseVault },
         {
-          label: 'Reveal Vault in File Manager',
+          label: 'Brains',
+          submenu: [
+            ...brainsState().brains.map((b) => ({
+              label: b.name,
+              type: 'radio',
+              checked: b.current,
+              click: () => switchBrain(b.path),
+            })),
+            { type: 'separator' },
+            { label: 'New Brain…', click: openBrainSettings },
+            { label: 'Add Existing Folder as Brain…', accelerator: 'CmdOrCtrl+Shift+O', click: chooseVault },
+            { label: 'Manage Brains…', click: openBrainSettings },
+          ],
+        },
+        {
+          label: 'Reveal Brain Folder',
           enabled: !!server,
           click: () => server && shell.openPath(server.vault.root),
         },
@@ -555,6 +659,35 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('octavo:update-state', (e) => (fromMainWindow(e) ? updateState : null));
   ipcMain.handle('octavo:check-updates', async (e) => (fromMainWindow(e) ? checkForUpdates() : null));
   ipcMain.handle('octavo:install-update', (e) => (fromMainWindow(e) ? installUpdate() : null));
+  // Brains: the renderer can only switch to or forget brains already in the list,
+  // and new brains are always created inside the Octavo Brains folder.
+  ipcMain.handle('octavo:brains', (e) => (fromMainWindow(e) ? brainsState() : null));
+  ipcMain.handle('octavo:switch-brain', async (e, p) => {
+    if (fromMainWindow(e)) await switchBrain(p);
+    return brainsState();
+  });
+  ipcMain.handle('octavo:create-brain', async (e, name) => {
+    if (!fromMainWindow(e)) return null;
+    try {
+      await createBrain(name);
+      return { ok: true, ...brainsState() };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err), ...brainsState() };
+    }
+  });
+  ipcMain.handle('octavo:remove-brain', (e, p) => {
+    if (fromMainWindow(e)) removeBrain(p);
+    return brainsState();
+  });
+  ipcMain.handle('octavo:copy-brain-config', (e, p) => {
+    if (!fromMainWindow(e)) return false;
+    clipboard.writeText(brainsClaudeJson(typeof p === 'string' ? p : undefined));
+    return true;
+  });
+  ipcMain.handle('octavo:reveal-brain', async (e, p) => {
+    const b = fromMainWindow(e) && findBrain(p);
+    if (b) await shell.openPath(b.path);
+  });
   ipcMain.handle('octavo:show-qr', async (e) => {
     if (fromMainWindow(e)) await showPhoneQr();
     return desktopState();

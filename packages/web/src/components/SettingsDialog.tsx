@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
 
 export interface UpdateState {
@@ -20,6 +20,140 @@ export interface DesktopBridge {
   checkForUpdates(): Promise<UpdateState | null>;
   installUpdate(): Promise<UpdateState | null>;
   onUpdate(callback: (s: UpdateState) => void): () => void;
+  getBrains?(): Promise<BrainsState | null>;
+  switchBrain?(path: string): Promise<BrainsState>;
+  createBrain?(name: string): Promise<BrainsState & { ok: boolean; error?: string }>;
+  removeBrain?(path: string): Promise<BrainsState>;
+  copyBrainConfig?(path?: string): Promise<boolean>;
+  revealBrain?(path: string): Promise<void>;
+  onOpenSettings?(callback: (section: string) => void): () => void;
+}
+
+export interface Brain {
+  name: string;
+  path: string;
+  /** Name of this brain's tools in Claude, e.g. "octavo-work". */
+  mcpName: string;
+  current: boolean;
+}
+export interface BrainsState {
+  brains: Brain[];
+  /** Where new brains are created. */
+  folder: string;
+}
+
+function BrainsSection({ focus }: { focus: boolean }) {
+  const desktop = window.octavoDesktop;
+  const [state, setState] = useState<BrainsState | null>(null);
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    desktop?.getBrains?.().then(setState).catch(() => {});
+  }, [desktop]);
+  useEffect(() => {
+    if (focus && state) ref.current?.scrollIntoView({ block: 'start' });
+  }, [focus, state]);
+  if (!desktop?.getBrains || !state) return null;
+
+  const copy = async (path?: string) => {
+    await desktop.copyBrainConfig?.(path);
+    setCopied(path ?? 'all');
+    setTimeout(() => setCopied(''), 2500);
+  };
+  const create = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await desktop.createBrain!(name);
+      // On success the window reloads into the new brain.
+      if (!r.ok) setError(r.error ?? 'Couldn’t create the brain.');
+      setState(r);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section ref={ref}>
+      <h4>Brains</h4>
+      <p className="muted small settings-note">
+        Each brain is a separate set of notes, so you can keep work, school or a single project apart. Claude gets one connection per brain, and
+        you can turn each on or off for a chat in Claude’s tools menu.
+      </p>
+      {state.brains.map((b) => (
+        <div className="setting-row brain-row" key={b.path}>
+          <div>
+            <b>
+              {b.name}
+              {b.current && <span className="brain-current"> · open now</span>}
+            </b>
+            <span className="muted small brain-path" title={b.path}>
+              {b.path}
+            </span>
+            <span className="muted small">
+              In Claude: <code>{b.mcpName}</code>
+            </span>
+          </div>
+          <div className="brain-actions">
+            {!b.current && (
+              <button className="btn primary" disabled={busy} onClick={() => desktop.switchBrain?.(b.path).then(setState)}>
+                Open
+              </button>
+            )}
+            <button className="btn" onClick={() => copy(b.path)}>
+              {copied === b.path ? 'Copied ✓' : 'Copy Claude setup'}
+            </button>
+            <button className="btn" onClick={() => desktop.revealBrain?.(b.path)} title="Show the folder">
+              Folder
+            </button>
+            {!b.current && (
+              <button
+                className="btn"
+                title="Remove from this list (the notes stay in their folder)"
+                onClick={() => {
+                  if (confirm(`Remove “${b.name}” from the list? Its notes stay in ${b.path}.`)) desktop.removeBrain?.(b.path).then(setState);
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <form
+        className="setting-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) create();
+        }}
+      >
+        <div>
+          <b>New brain</b>
+          <span className="muted small">Created in {state.folder}</span>
+          {error && <span className="small brain-error">{error}</span>}
+        </div>
+        <div className="brain-actions">
+          <input className="input" placeholder="Name, e.g. Work" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+          <button className="btn primary" type="submit" disabled={busy || !name.trim()}>
+            Create
+          </button>
+        </div>
+      </form>
+      {state.brains.length > 1 && (
+        <div className="setting-row">
+          <div>
+            <b>Claude setup for every brain</b>
+            <span className="muted small">Paste it into claude_desktop_config.json in place of your old Octavo entry.</span>
+          </div>
+          <button className="btn" onClick={() => copy()}>
+            {copied === 'all' ? 'Copied ✓' : 'Copy all'}
+          </button>
+        </div>
+      )}
+    </section>
+  );
 }
 
 /** Subscribe to the desktop app's update status (null in a browser). */
@@ -181,6 +315,8 @@ interface Props {
   viewMode: 'atlas' | 'network';
   setViewMode: (v: 'atlas' | 'network') => void;
   onClose: () => void;
+  /** Section to scroll to when opening, e.g. "brains". */
+  focus?: string;
 }
 
 function Toggle({ label, help, checked, onChange }: { label: string; help: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -206,6 +342,8 @@ export function SettingsDialog(p: Props) {
             ✕
           </button>
         </header>
+
+        <BrainsSection focus={p.focus === 'brains'} />
 
         <section>
           <h4>Privacy</h4>
