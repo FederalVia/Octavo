@@ -75,6 +75,8 @@ export interface DesktopBridge {
   copyBrainConfig?(path?: string): Promise<boolean>;
   revealBrain?(path: string): Promise<void>;
   onOpenSettings?(callback: (section: string) => void): () => void;
+  /** Open a note in a new app window. */
+  popOut?(path: string): Promise<void>;
 }
 
 export interface Brain {
@@ -358,6 +360,8 @@ interface Props {
   onChange: (s: VaultSettings) => void;
   vimMode: boolean;
   setVimMode: (v: boolean) => void;
+  livePreview: boolean;
+  setLivePreview: (v: boolean) => void;
   lineNumbers: boolean;
   setLineNumbers: (v: boolean) => void;
   viewMode: 'atlas' | 'network';
@@ -410,6 +414,12 @@ export function SettingsDialog(p: Props) {
 
         <section>
           <h4>Editor</h4>
+          <Toggle
+            label="Live preview"
+            help="Show formatting while you edit: Markdown symbols are hidden except on the line you’re typing on. Turn off to always see the raw Markdown."
+            checked={p.livePreview}
+            onChange={p.setLivePreview}
+          />
           <Toggle label="Vim keybindings" help="Modal editing in the note editor." checked={p.vimMode} onChange={p.setVimMode} />
           <Toggle label="Line numbers" help="Show line numbers while editing." checked={p.lineNumbers} onChange={p.setLineNumbers} />
         </section>

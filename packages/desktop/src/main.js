@@ -832,6 +832,25 @@ if (!app.requestSingleInstanceLock()) {
     const b = fromMainWindow(e) && findBrain(p);
     if (b) await shell.openPath(b.path);
   });
+  // Pop-out windows: the same app on another note. Only notes in the open brain.
+  ipcMain.handle('octavo:pop-out', async (e, p) => {
+    if (!fromMainWindow(e) || !server || typeof p !== 'string') return;
+    const rel = server.vault.resolve(p);
+    if (!rel) return;
+    const child = new BrowserWindow({
+      width: 900,
+      height: 900,
+      title: `${path.basename(rel, '.md')} · Octavo`,
+      backgroundColor: '#141317',
+      autoHideMenuBar: true,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    child.webContents.setWindowOpenHandler(({ url }) => {
+      if (/^https?:/.test(url)) shell.openExternal(url);
+      return { action: 'deny' };
+    });
+    await child.loadURL(`${windowUrl()}#/note/${rel.split('/').map(encodeURIComponent).join('/')}`);
+  });
   ipcMain.handle('octavo:show-qr', async (e) => {
     if (fromMainWindow(e)) await showPhoneQr();
     return desktopState();

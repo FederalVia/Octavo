@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { livePreview } from '../livePreview';
 import { EditorState, Compartment, Annotation, Transaction, type Extension } from '@codemirror/state';
 import {
   EditorView,
@@ -74,6 +75,10 @@ interface Props {
   onReady?: (handle: EditorHandle) => void;
   showLineNumbers?: boolean;
   vimMode?: boolean;
+  /** Show Markdown formatted while editing (hide marks except on the cursor's line). */
+  livePreview?: boolean;
+  /** URL for an attachment referenced from this note (images in live preview). */
+  fileUrl?: (ref: string) => string;
   /** Upload a pasted/dropped file; resolves to the saved vault path. */
   onUpload?: (file: File) => Promise<string>;
   /** Slash commands that need the app (e.g. picking a template). */
@@ -169,6 +174,12 @@ export function Editor(props: Props) {
   propsRef.current = props;
   const gutter = useRef(new Compartment());
   const vimC = useRef(new Compartment());
+  const lpC = useRef(new Compartment());
+  const lpExt = () =>
+    livePreview({
+      onOpenLink: (t, h) => propsRef.current.onOpenLink(t, h),
+      fileUrl: (ref) => (propsRef.current.fileUrl ? propsRef.current.fileUrl(ref) : ref),
+    });
   const extensions = useRef<Extension[]>([]);
   const lastDocKey = useRef(props.docKey);
 
@@ -306,6 +317,7 @@ export function Editor(props: Props) {
     extensions.current = [
         vimC.current.of(props.vimMode ? vim() : []),
         gutter.current.of(props.showLineNumbers ? lineNumbers() : []),
+        lpC.current.of(props.livePreview ? lpExt() : []),
         history(),
         drawSelection(),
         highlightActiveLine(),
@@ -398,6 +410,7 @@ export function Editor(props: Props) {
         effects: [
           gutter.current.reconfigure(propsRef.current.showLineNumbers ? lineNumbers() : []),
           vimC.current.reconfigure(propsRef.current.vimMode ? vim() : []),
+          lpC.current.reconfigure(propsRef.current.livePreview ? lpExt() : []),
         ],
       });
       v.scrollDOM.scrollTop = 0;
@@ -418,6 +431,11 @@ export function Editor(props: Props) {
   useEffect(() => {
     view.current?.dispatch({ effects: vimC.current.reconfigure(props.vimMode ? vim() : []) });
   }, [props.vimMode]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: lpC.current.reconfigure(props.livePreview ? lpExt() : []) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.livePreview]);
 
   return <div className="editor" ref={host} />;
 }

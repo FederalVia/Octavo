@@ -352,7 +352,10 @@ export function createApp(opts: AppOptions): express.Express {
     try {
       const period = req.params.period;
       if (period !== 'day' && period !== 'week' && period !== 'month') return void res.status(400).json({ error: 'period must be day, week or month' });
-      res.json(await vault.ensurePeriodicNote(period));
+      // Optional ?date=YYYY-MM-DD (e.g. clicking a day in the calendar); default today.
+      const q = typeof req.query.date === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(req.query.date) : null;
+      const date = q ? new Date(Number(q[1]), Number(q[2]) - 1, Number(q[3])) : new Date();
+      res.json(await vault.ensurePeriodicNote(period, date));
     } catch (err) {
       next(err);
     }
