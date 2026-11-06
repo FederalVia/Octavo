@@ -6,7 +6,7 @@ Welcome to **Ultron Mind**, a knowledge base of plain Markdown files that you an
 
 - Link notes with \`[[double brackets]]\`, like [[How to use Ultron Mind]].
 - Tag notes with \`#tags\`. #meta
-- Open the **graph** to see how everything connects.
+- Every note is a point in the **brain**. Click one to open it.
 - Claude reads and writes this vault through MCP, so it remembers things between conversations.
 
 ## Areas
@@ -28,7 +28,7 @@ tags: [meta]
 | Ctrl/Cmd + O | Quick switcher (open or create a note) |
 | Ctrl/Cmd + Shift + F | Search all notes |
 | Ctrl/Cmd + E | Toggle edit / preview |
-| Ctrl/Cmd + G | Graph view |
+| Ctrl/Cmd + G or Esc | Close the note and return to the brain |
 | Ctrl/Cmd + D | Today's journal note |
 
 ## Linking

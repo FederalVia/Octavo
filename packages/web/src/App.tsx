@@ -3,15 +3,15 @@ import { api, ApiError, setToken, subscribe, type GraphData, type NoteDetail, ty
 import { Editor, type EditorHandle } from './components/Editor';
 import { Preview } from './components/Preview';
 import { FileTree } from './components/FileTree';
-import { GraphView } from './components/GraphView';
+import { BrainView, type BrainHandle } from './components/BrainView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { Dialog, type DialogRequest } from './components/Modal';
-import { RightPanel, SearchPanel, TagsPanel } from './components/Panels';
+import { SearchPanel, TagsPanel } from './components/Panels';
 import { wordCount } from './markdown';
 
 type Mode = 'edit' | 'preview';
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
-type Route = { view: 'note'; path: string } | { view: 'graph' } | { view: 'home' };
+type Route = { view: 'note'; path: string } | { view: 'home' };
 
 function load<T>(key: string, fallback: T): T {
   try {
@@ -32,7 +32,6 @@ function store(key: string, value: unknown) {
 function parseHash(): Route {
   const h = decodeURIComponent(location.hash.replace(/^#\/?/, ''));
   if (h.startsWith('note/')) return { view: 'note', path: h.slice(5) };
-  if (h === 'graph') return { view: 'graph' };
   return { view: 'home' };
 }
 
@@ -58,8 +57,8 @@ export function App() {
   const [query, setQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
-  const [showLeft, setShowLeft] = useState(() => !narrow() && load('ultron.left', true));
-  const [showRight, setShowRight] = useState(() => !narrow() && load('ultron.right', true));
+  const [showLeft, setShowLeft] = useState<boolean>(() => !narrow() && load('ultron.left', false));
+  const [panelWide, setPanelWide] = useState<boolean>(() => load('ultron.panelWide', false));
   const [lineNumbers, setLineNumbers] = useState(() => load('ultron.lineNumbers', false));
   const [switcher, setSwitcher] = useState(false);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
@@ -82,7 +81,8 @@ export function App() {
 
   useEffect(() => store('ultron.mode', mode), [mode]);
   useEffect(() => void (!narrow() && store('ultron.left', showLeft)), [showLeft]);
-  useEffect(() => void (!narrow() && store('ultron.right', showRight)), [showRight]);
+  useEffect(() => store('ultron.panelWide', panelWide), [panelWide]);
+  const brain = useRef<BrainHandle | null>(null);
   useEffect(() => store('ultron.lineNumbers', lineNumbers), [lineNumbers]);
   const [isNarrow, setIsNarrow] = useState(narrow);
   useEffect(() => {
@@ -90,10 +90,7 @@ export function App() {
     const onChange = () => {
       setIsNarrow(mq.matches);
       // Sidebars become overlays on small screens: start closed.
-      if (mq.matches) {
-        setShowLeft(false);
-        setShowRight(false);
-      }
+      if (mq.matches) setShowLeft(false);
     };
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
@@ -333,8 +330,7 @@ export function App() {
 
   useEffect(() => {
     if (route.view === 'note' && route.path !== loadedPath.current) loadNote(route.path);
-    if (route.view === 'graph') refreshGraph().catch(handleError);
-  }, [route, loadNote, refreshGraph, handleError]);
+  }, [route, loadNote]);
 
   // ---------------------------------------------------------------- startup
   useEffect(() => {
@@ -344,12 +340,8 @@ export function App() {
         setVaultName(v.name);
         document.title = `${v.name} · Ultron Mind`;
         const list = await refreshNotes();
-        refreshGraph().catch(() => {});
-        if (parseHash().view === 'home') {
-          const home =
-            list.find((n) => /^(home|index|readme)\.md$/i.test(n.path)) ?? [...list].sort((a, b) => b.mtime - a.mtime)[0];
-          if (home) history.replaceState(null, '', noteHash(home.path)), setRoute({ view: 'note', path: home.path });
-        }
+        await refreshGraph().catch(() => {});
+        void list;
         setReady(true);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) handleError(err);
@@ -361,8 +353,11 @@ export function App() {
   // Live updates from the server (edits by Claude, other windows, other editors).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const toFire = new Set<string>();
     const unsub = subscribe(
       (e: VaultEvent) => {
+        if (e.type === 'change') toFire.add(e.path);
+        if (e.type === 'rename') toFire.add(e.to);
         if (e.type === 'rename' && e.from === loadedPath.current) {
           loadedPath.current = e.to;
           history.replaceState(null, '', noteHash(e.to));
@@ -371,7 +366,12 @@ export function App() {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
           refreshNotes().catch(() => {});
-          refreshGraph().catch(() => {});
+          // Light up the thoughts that just changed once the graph includes them.
+          const fire = [...toFire];
+          toFire.clear();
+          refreshGraph()
+            .then(() => setTimeout(() => fire.forEach((p) => brain.current?.fire(p)), 60))
+            .catch(() => {});
           refreshCurrentRef.current();
           setRefreshKey((k) => k + 1);
         }, 150);
@@ -519,14 +519,11 @@ export function App() {
         }
         await api.remove(path);
         const list = await refreshNotes();
+        void list;
         if (route.view === 'note' && route.path === path) {
-          const home = list.find((n) => /^(home|index|readme)\.md$/i.test(n.path)) ?? list[0];
-          if (home) navigate(home.path);
-          else {
-            setDetail(null);
-            history.replaceState(null, '', '#/');
-            setRoute({ view: 'home' });
-          }
+          setDetail(null);
+          history.replaceState(null, '', '#/');
+          setRoute({ view: 'home' });
         }
       } catch (err) {
         handleError(err);
@@ -572,9 +569,22 @@ export function App() {
     [save, applyDetail, handleError],
   );
 
+  const closePanel = useCallback(() => {
+    if (dirty.current) save();
+    if (location.hash && location.hash !== '#/') location.hash = '#/';
+  }, [save]);
+
   // ---------------------------------------------------------------- shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !dialog && !switcher) {
+        const inEditor = (e.target as HTMLElement | null)?.closest?.('.cm-editor, input, textarea');
+        if (!inEditor) {
+          if (showLeft && narrow()) setShowLeft(false);
+          else closePanel();
+        }
+        return;
+      }
       const m = isMac ? e.metaKey : e.ctrlKey;
       if (!m || dialog) return;
       const k = e.key.toLowerCase();
@@ -589,8 +599,7 @@ export function App() {
         setMode((x) => (x === 'edit' ? 'preview' : 'edit'));
       } else if (k === 'g') {
         e.preventDefault();
-        if (route.view === 'graph') history.back();
-        else location.hash = '#/graph';
+        closePanel();
       } else if (k === 'd') {
         e.preventDefault();
         openDaily();
@@ -607,7 +616,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, showSearch, route.view, openDaily, newNote, save]);
+  }, [dialog, switcher, showLeft, showSearch, closePanel, openDaily, newNote, save]);
 
   // ---------------------------------------------------------------- render
   const words = useMemo(() => wordCount(draft), [draft]);
@@ -623,7 +632,7 @@ export function App() {
     );
   }
 
-  const title = route.view === 'graph' ? 'Graph' : detail?.name ?? missing?.replace(/\.md$/, '').split('/').pop() ?? '';
+  const title = detail?.name ?? missing?.replace(/\.md$/, '').split('/').pop() ?? '';
   const saveLabel: Record<SaveState, string> = {
     saved: 'Saved',
     dirty: 'Editing…',
@@ -631,23 +640,50 @@ export function App() {
     error: 'Save failed',
     conflict: 'Conflict',
   };
+  const panelOpen = route.view === 'note' && (!!detail || !!missing);
+  const panelFraction = isNarrow ? 0 : panelWide ? 0.62 : 0.44;
+  const outgoing = detail
+    ? detail.links.filter((l, i, arr) => l.target && arr.findIndex((x) => (x.path ?? x.target) === (l.path ?? l.target)) === i)
+    : [];
 
   return (
-    <div className={`app${showLeft ? ' left-open' : ''}${showRight && route.view === 'note' ? ' right-open' : ''}`}>
+    <div className="app brain-app">
+      <BrainView
+        data={graph}
+        selected={panelOpen ? loadedPath.current : null}
+        rightInset={panelOpen ? panelFraction : 0}
+        onSelect={(p) => navigate(p)}
+        onSelectUnresolved={(name) => createNote(name)}
+        onBackground={closePanel}
+        onReady={(h) => (brain.current = h)}
+      />
+
+      {/* Floating toolbar */}
+      <div className="toolbar">
+        <button className="tb-btn" title={`Files, search & tags (${mod}+\\)`} onClick={() => setShowLeft((x) => !x)}>
+          ☰
+        </button>
+        <div className="tb-brand" title={vaultName}>
+          <img src="./favicon.svg" alt="" width={18} height={18} />
+          <span>{vaultName || 'Ultron Mind'}</span>
+        </div>
+        <button className="tb-btn" title={`Find or create a note (${mod}+O)`} onClick={() => setSwitcher(true)}>
+          ⌕
+        </button>
+        <button className="tb-btn" title={`New thought (${mod}+N)`} onClick={() => newNote()}>
+          ＋
+        </button>
+        <button className="tb-btn" title={`Today’s journal (${mod}+D)`} onClick={openDaily}>
+          ◷
+        </button>
+        <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
+      </div>
+
+      {ready && !panelOpen && notes.length > 0 && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag to move</div>}
+
+      {/* Drawer: files / search / tags */}
       {showLeft && (
-        <aside className="sidebar left">
-          <div className="sidebar-header">
-            <div className="vault-name" title={vaultName}>
-              <img src="./favicon.svg" alt="" width={18} height={18} />
-              {vaultName || 'Ultron Mind'}
-            </div>
-            <button className="icon-btn" title={`New note (${mod}+N)`} onClick={() => newNote()}>
-              ＋
-            </button>
-            <button className="icon-btn" title={`Today’s journal (${mod}+D)`} onClick={openDaily}>
-              ◷
-            </button>
-          </div>
+        <aside className="drawer">
           <div className="tabs">
             {(['files', 'search', 'tags'] as const).map((t) => (
               <button
@@ -658,6 +694,9 @@ export function App() {
                 {t[0].toUpperCase() + t.slice(1)}
               </button>
             ))}
+            <button className="icon-btn" title="Close" onClick={() => setShowLeft(false)}>
+              ✕
+            </button>
           </div>
           {leftTab === 'files' && (
             <FileTree
@@ -683,52 +722,47 @@ export function App() {
         </aside>
       )}
 
-      <main className="main">
-        <header className="topbar">
-          <button className="icon-btn" title={`Toggle sidebar (${mod}+\\)`} onClick={() => setShowLeft((x) => !x)}>
-            ☰
-          </button>
-          <button className="icon-btn hide-narrow" title="Back" onClick={() => history.back()}>
-            ‹
-          </button>
-          <button className="icon-btn hide-narrow" title="Forward" onClick={() => history.forward()}>
-            ›
-          </button>
-          <div className="title" onDoubleClick={() => detail && renameNote(detail.path)}>
-            {detail?.folder && route.view === 'note' && <span className="crumb">{detail.folder} / </span>}
+      {/* Note panel */}
+      <section
+        className={`note-panel${panelOpen ? ' open' : ''}`}
+        style={{ width: isNarrow ? '100%' : `${panelFraction * 100}%` }}
+        aria-hidden={!panelOpen}
+      >
+        <header className="panel-header">
+          <div className="panel-title" onDoubleClick={() => detail && renameNote(detail.path)}>
+            {detail?.folder && <span className="crumb">{detail.folder} / </span>}
             <span title={detail ? 'Double-click to rename' : undefined}>{title}</span>
           </div>
-          <button className="icon-btn" title={`Quick switcher (${mod}+O)`} onClick={() => setSwitcher(true)}>
-            ⌕
-          </button>
-          {route.view === 'note' && detail && (
-            <button
-              className="icon-btn mode-btn"
-              title={`Toggle edit/preview (${mod}+E)`}
-              onClick={() => setMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
-            >
-              {mode === 'edit' ? 'Preview' : 'Edit'}
-            </button>
+          {detail && (
+            <>
+              <button
+                className="icon-btn mode-btn"
+                title={`Toggle edit/preview (${mod}+E)`}
+                onClick={() => setMode((m) => (m === 'edit' ? 'preview' : 'edit'))}
+              >
+                {mode === 'edit' ? 'Read' : 'Edit'}
+              </button>
+              <button className="icon-btn hide-narrow" title={panelWide ? 'Narrower' : 'Wider'} onClick={() => setPanelWide((w) => !w)}>
+                {panelWide ? '⇥' : '⇤'}
+              </button>
+              <button className="icon-btn" title="Rename / move" onClick={() => renameNote(detail.path)}>
+                ✎
+              </button>
+              <button className="icon-btn" title="Delete" onClick={() => deleteNote(detail.path)}>
+                🗑
+              </button>
+            </>
           )}
-          <button
-            className={`icon-btn${route.view === 'graph' ? ' active' : ''}`}
-            title={`Graph view (${mod}+G)`}
-            onClick={() => (route.view === 'graph' ? history.back() : (location.hash = '#/graph'))}
-          >
-            ⬡
+          <button className="icon-btn" title="Close (Esc)" onClick={closePanel}>
+            ✕
           </button>
-          {route.view === 'note' && (
-            <button className="icon-btn" title="Toggle right panel" onClick={() => setShowRight((x) => !x)}>
-              ☷
-            </button>
-          )}
         </header>
 
         {saveState === 'conflict' && (
           <div className="banner">
             This note was changed somewhere else (maybe by Claude) while you were editing.
             <button className="btn" onClick={() => resolveConflict('theirs')}>
-              Load their version
+              Load theirs
             </button>
             <button className="btn primary" onClick={() => resolveConflict('mine')}>
               Keep mine
@@ -736,94 +770,92 @@ export function App() {
           </div>
         )}
 
-        <div className="content">
-          {route.view === 'graph' && (
-            <GraphView
-              data={graph}
-              currentPath={loadedPath.current}
-              onOpen={(p, unresolved) => (unresolved ? createNote(unresolved) : navigate(p))}
+        {missing && (
+          <div className="placeholder">
+            <h2>“{missing.replace(/\.md$/, '')}” doesn’t exist yet</h2>
+            <button className="btn primary" onClick={() => createNote(missing)}>
+              Write it
+            </button>
+          </div>
+        )}
+
+        <div className="panel-body" style={{ display: detail ? undefined : 'none' }}>
+          <div className="editor-wrap" style={{ display: mode === 'edit' ? undefined : 'none' }}>
+            <Editor
+              docKey={detail?.path ?? ''}
+              version={version}
+              value={draft}
+              onChange={onChange}
+              noteNames={noteNames}
+              tagNames={tagNames}
+              onOpenLink={openLink}
+              showLineNumbers={lineNumbers}
+              onReady={(h) => (editor.current = h)}
+            />
+          </div>
+          {mode === 'preview' && detail && (
+            <Preview
+              content={draft}
+              exists={exists}
+              namesKey={namesKey}
+              onOpenLink={openLink}
+              onTag={(t) => showSearch(`tag:${t}`)}
+              scrollToHeading={pendingHeading}
+              onScrolled={() => setPendingHeading(null)}
             />
           )}
-          {route.view === 'note' && missing && (
-            <div className="placeholder">
-              <h2>“{missing.replace(/\.md$/, '')}” doesn’t exist</h2>
-              <button className="btn primary" onClick={() => createNote(missing)}>
-                Create it
-              </button>
-            </div>
-          )}
-          {route.view === 'home' && ready && notes.length === 0 && (
-            <div className="placeholder">
-              <h2>Your vault is empty</h2>
-              <button className="btn primary" onClick={() => newNote('')}>
-                Create a note
-              </button>
-            </div>
-          )}
-          <div className="note-pane" style={{ display: route.view === 'note' && detail ? undefined : 'none' }}>
-            <div className="editor-wrap" style={{ display: mode === 'edit' ? undefined : 'none' }}>
-              <Editor
-                docKey={detail?.path ?? ''}
-                version={version}
-                value={draft}
-                onChange={onChange}
-                noteNames={noteNames}
-                tagNames={tagNames}
-                onOpenLink={openLink}
-                showLineNumbers={lineNumbers}
-                onReady={(h) => (editor.current = h)}
-              />
-            </div>
-            {mode === 'preview' && detail && (
-              <Preview
-                content={draft}
-                exists={exists}
-                namesKey={namesKey}
-                onOpenLink={openLink}
-                onTag={(t) => showSearch(`tag:${t}`)}
-                scrollToHeading={pendingHeading}
-                onScrolled={() => setPendingHeading(null)}
-              />
-            )}
-          </div>
         </div>
 
-        <footer className="statusbar">
-          <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
-          {route.view === 'note' && detail && (
-            <>
-              <span className={`save-state ${saveState}`}>{saveLabel[saveState]}</span>
-              <span>{words} words</span>
-              <span>{detail.backlinks.length} backlinks</span>
-              <label className="hide-narrow">
-                <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} /> Line numbers
-              </label>
-            </>
-          )}
-          <span className="spacer" />
-          <span className="hide-narrow">{notes.length} notes</span>
-        </footer>
-      </main>
+        {detail && (
+          <div className="connections">
+            <div className="conn-row">
+              <span className="conn-label">Linked from</span>
+              {detail.backlinks.length === 0 && <span className="muted small">nothing yet</span>}
+              {detail.backlinks.map((b) => (
+                <button key={b.path} className="chip" title={b.context.map((c) => c.text).join('\n')} onClick={() => navigate(b.path)}>
+                  ← {b.name}
+                </button>
+              ))}
+            </div>
+            <div className="conn-row">
+              <span className="conn-label">Links to</span>
+              {outgoing.length === 0 && <span className="muted small">nothing yet</span>}
+              {outgoing.map((l) => (
+                <button
+                  key={l.path ?? l.target}
+                  className={`chip${l.path ? '' : ' ghost'}`}
+                  title={l.path ?? 'Not written yet. Click to create'}
+                  onClick={() => (l.path ? navigate(l.path) : openLink(l.target))}
+                >
+                  {l.path ? l.path.replace(/\.md$/, '').split('/').pop() : l.target} →
+                </button>
+              ))}
+            </div>
+            {detail.tags.length > 0 && (
+              <div className="conn-row">
+                {detail.tags.map((t) => (
+                  <span key={t} className="tag" onClick={() => showSearch(`tag:${t}`)}>
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      {showRight && route.view === 'note' && (
-        <aside className="sidebar right">
-          <RightPanel
-            note={detail}
-            graph={graph}
-            onOpen={(p, line) => navigate(p, { line })}
-            onOpenLink={(t) => openLink(t)}
-            onTag={(t) => showSearch(`tag:${t}`)}
-            onHeading={(line, text) => {
-              if (mode === 'edit') editor.current?.scrollToLine(line);
-              else setPendingHeading(text);
-            }}
-          />
-        </aside>
-      )}
+        {detail && (
+          <footer className="statusbar">
+            <span className={`save-state ${saveState}`}>{saveLabel[saveState]}</span>
+            <span>{words} words</span>
+            <span className="spacer" />
+            <label className="hide-narrow">
+              <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} /> Line numbers
+            </label>
+          </footer>
+        )}
+      </section>
 
-      {isNarrow && (showLeft || (showRight && route.view === 'note')) && (
-        <div className="sidebar-backdrop" onClick={() => (setShowLeft(false), setShowRight(false))} />
-      )}
+      {isNarrow && showLeft && <div className="sidebar-backdrop" onClick={() => setShowLeft(false)} />}
 
       {switcher && (
         <QuickSwitcher notes={notes} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} onClose={() => setSwitcher(false)} />

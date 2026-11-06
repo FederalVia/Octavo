@@ -6,11 +6,12 @@ Notes are plain Markdown files in a folder (a *vault*), linked with `[[wikilinks
 
 ## Features
 
-- **Editor**: Markdown editing with syntax highlighting, `[[` link and `#` tag autocomplete, and Ctrl/Cmd-click to follow links. Toggle to a rendered preview.
-- **Links**: wikilinks (`[[Note]]`, `[[Note#Heading]]`, `[[Note|label]]`), relative `[text](note.md)` links, frontmatter `aliases`, and links to notes that don't exist yet (click one to create it).
-- **Backlinks, outgoing links, outline and tags** for each note, plus a local graph.
-- **Graph view**: force-directed, with zoom and pan, drag, highlight, local mode with depth, and filters for unresolved and orphan notes.
-- **Search**: full text, with `"phrases"`, `tag:x` / `#x` and `path:folder` filters.
+- **The brain**: the home screen is a living neural network. Every note is a glowing point, every link is a connection, and signals pulse along the links. Top-level folders get their own colours, like regions of a brain. Click a point to fly to it and open its note in a slide-in panel. Scroll or pinch to zoom, drag to pan, and drag points to rearrange them. Use "Search the mind…" to highlight matches (Enter opens the best one).
+- **Watch Claude think**: when Claude (or anything else) writes to a note, that point fires and sends signals to its neighbours. New notes grow into the network as they're created.
+- **Editor**: Markdown with syntax highlighting, `[[` link and `#` tag autocomplete, and Ctrl/Cmd-click to follow links. Toggle between reading and editing.
+- **Links**: wikilinks (`[[Note]]`, `[[Note#Heading]]`, `[[Note|label]]`), relative `[text](note.md)` links, frontmatter `aliases`, and links to notes that don't exist yet. These show as faint hollow points, and clicking one creates the note.
+- **Connections** for each note (linked from, links to, tags) appear under the note.
+- **Drawer** (☰) with a file tree (drag to move, right-click to rename or delete), full-text search (`"phrases"`, `tag:x`, `path:folder`) and tags.
 - **Quick switcher** (Ctrl/Cmd+O) to open or create notes, and **daily journal** notes (Ctrl/Cmd+D).
 - **Safe file handling**: atomic writes, conflict detection when a note changes under you (e.g. Claude edits it while you type), rename and move that rewrite every link to the note, and deletes that go to `.trash/`.
 - **Live sync**: the server watches the folder, so edits from Claude, other windows or another editor (including Obsidian itself) appear immediately.
