@@ -121,4 +121,8 @@ docs/          Guides and screenshots
 
 ## Status
 
-Octavo is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. Test builds aren't signed with a paid developer certificate yet, so Windows and macOS show a one-time warning.
+Octavo is approaching 1.0. It works and has tests, but expect some rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. Test builds aren't signed with a paid developer certificate yet, so Windows and macOS show a one-time warning.
+
+## License
+
+Octavo is free software, licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later). You can use, study, change and share it. If you distribute a modified version, or run one as a service other people use over a network, you must make your source code available under the same license.

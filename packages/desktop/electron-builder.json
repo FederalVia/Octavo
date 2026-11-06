@@ -1,7 +1,7 @@
 {
   "appId": "app.octavo.desktop",
   "productName": "Octavo",
-  "copyright": "Octavo",
+  "copyright": "Octavo contributors. Licensed under AGPL-3.0-or-later.",
   "directories": {
     "app": "release/app",
     "output": "release/dist",

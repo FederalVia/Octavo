@@ -552,6 +552,20 @@ export function SettingsDialog(p: Props) {
 
         <OfflineSection />
 
+        <section>
+          <h4>About</h4>
+          <p className="muted small settings-note">
+            Octavo is free software under the{' '}
+            <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">
+              GNU AGPL v3
+            </a>
+            . Source code:{' '}
+            <a href="https://github.com/FederalVia/Octavo" target="_blank" rel="noreferrer">
+              github.com/FederalVia/Octavo
+            </a>
+          </p>
+        </section>
+
         <UpdatesSection />
       </div>
     </Overlay>
