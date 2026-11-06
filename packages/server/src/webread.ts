@@ -7,11 +7,8 @@
  */
 import dns from 'node:dns/promises';
 import net from 'node:net';
-import { createRequire } from 'node:module';
+import domino from '@mixmark-io/domino';
 import TurndownService from 'turndown';
-
-// domino's bundled types declare a module named "domino", so load it untyped.
-const domino = createRequire(import.meta.url)('@mixmark-io/domino') as { createDocument(html: string): unknown };
 
 export interface ReadablePage {
   url: string;
