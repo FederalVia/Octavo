@@ -59,6 +59,20 @@ interface Layout {
   sampled: ALink[];
   /** Degree of about the 8th busiest note: in crowded vaults only notes at least this busy keep a halo. */
   topHubCut: number;
+  /** Size and territories the notes were placed in: kept across small updates so existing notes stay put. */
+  geo: Geometry;
+  /** Notes added, removed or moved to another region since `geo` was computed. */
+  drift: number;
+}
+
+type RegionDef = (typeof REGIONS)[number];
+
+/** The brain's size and each region's territory, fixed when the layout was last built from scratch. */
+interface Geometry {
+  /** Brain radius in world units. */
+  R: number;
+  present: RegionDef[];
+  weight: Record<RegionKey, number>;
 }
 
 /** Deterministic pseudo-random numbers from a string, so layouts are stable across reloads. */
@@ -74,7 +88,99 @@ function seeded(str: string): () => number {
   };
 }
 
-function buildLayout(data: GraphData): Layout {
+function makeGeometry(counts: Record<RegionKey, number>, total: number): Geometry {
+  // The brain grows slowly with the vault; notes fill its whole volume (see territory below).
+  const R = Math.max(240, 150 + Math.cbrt(total) * 26);
+  // Territories: each region owns the part of the brain nearest its anatomical centre, weighted by how
+  // many notes it holds (a power diagram), so a region with 800 notes spreads over far more of the
+  // brain than one with 50, and regions border each other instead of piling up in the middle.
+  const present = REGIONS.filter((r) => counts[r.key] > 0);
+  const weight = Object.fromEntries(
+    REGIONS.map((r) => [r.key, counts[r.key] ? Math.cbrt(counts[r.key] / total) * R * 0.9 : -Infinity]),
+  ) as Record<RegionKey, number>;
+  return { R, present, weight };
+}
+
+/** The region whose territory holds this point. */
+function owner(geo: Geometry, x: number, y: number, z: number): RegionKey {
+  const { R, present, weight } = geo;
+  let best: RegionKey = present[0]?.key ?? 'parietal';
+  let bestScore = -Infinity;
+  for (const r of present) {
+    const dx = x - r.center[0] * R * 0.75;
+    const dy = y - r.center[1] * R * 0.75;
+    const dz = z - r.center[2] * R * 0.75;
+    const score = weight[r.key] * weight[r.key] - (dx * dx + dy * dy + dz * dz);
+    if (score > bestScore) (bestScore = score), (best = r.key);
+  }
+  return best;
+}
+
+/** A random point inside the brain-shaped ellipsoid (same shape as the dust silhouette). */
+function inBrain(R: number, rnd: () => number): [number, number, number] {
+  for (let i = 0; i < 30; i++) {
+    const x = (rnd() * 2 - 1) * R * 0.92;
+    const y = (rnd() * 2 - 1) * R * 0.88;
+    const z = (rnd() * 2 - 1) * R * 1.22;
+    const e = (x / (R * 0.92)) ** 2 + (y / (R * 0.88)) ** 2 + (z / (R * 1.22)) ** 2;
+    if (e <= 1 && !(y < -R * 0.6 && Math.abs(x) > R * 0.45)) return [x, y, z];
+  }
+  return [0, 0, 0];
+}
+
+/** Where a note sits: a random spot in its region's territory, the same on every reload. */
+function placeNote(id: string, region: RegionKey, geo: Geometry): { x: number; y: number; z: number; phase: number } {
+  const { R } = geo;
+  const def = REGION_BY_KEY[region];
+  const rnd = seeded(id);
+  // Rejection sampling; falls back near the region's centre.
+  let pos: [number, number, number] | null = null;
+  for (let i = 0; i < 80 && !pos; i++) {
+    const p = inBrain(R, rnd);
+    if (owner(geo, p[0], p[1], p[2]) === region) pos = p;
+  }
+  if (!pos) {
+    const j = () => (rnd() - 0.5) * R * 0.25;
+    pos = [def.center[0] * R * 0.75 + j(), def.center[1] * R * 0.75 + j(), def.center[2] * R * 0.75 + j()];
+  }
+  return { x: pos[0], y: pos[1], z: pos[2], phase: rnd() * Math.PI * 2 };
+}
+
+/** Faint dust filling a brain-shaped ellipsoid gives the silhouette. */
+function makeDust(R: number): [number, number, number][] {
+  const rnd = seeded('dust');
+  const dust: [number, number, number][] = [];
+  for (let i = 0; i < 900; i++) {
+    const u = rnd() * 2 - 1;
+    const th = rnd() * Math.PI * 2;
+    const s = Math.sqrt(1 - u * u);
+    const d = 0.75 + rnd() * 0.45;
+    const y = u * d * R * 0.95;
+    if (y < -R * 0.75 && Math.abs(s * Math.sin(th)) > 0.4) continue; // flatten underside
+    dust.push([s * Math.cos(th) * d * R * 0.95, y, s * Math.sin(th) * d * R * 1.3 - R * 0.05]);
+  }
+  return dust;
+}
+
+/** A fixed pseudo-random rank per link, so the sample drawn in crowded vaults doesn't reshuffle on every edit. */
+function linkRank(a: string, b: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < a.length; i++) h = Math.imul(h ^ a.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ 0, 16777619);
+  for (let i = 0; i < b.length; i++) h = Math.imul(h ^ b.charCodeAt(i), 16777619);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  return h >>> 0;
+}
+
+/**
+ * Lay out the graph. Given the previous layout, notes that already existed keep their place and only new notes
+ * (or ones that moved to another region) are placed, in the same territories: an edit costs one pass over the
+ * lists instead of re-placing every note, and the brain doesn't shift under you. After many changes the
+ * territories are recomputed and everything is placed from scratch.
+ */
+function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
   const regionOf = new Map<string, RegionKey>();
   for (const n of data.nodes) if (!n.unresolved) regionOf.set(n.id, classify(n));
   // Unresolved targets join the region of whoever links to them.
@@ -85,38 +191,33 @@ function buildLayout(data: GraphData): Layout {
   const counts = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
   for (const n of data.nodes) if (!n.unresolved) counts[regionOf.get(n.id) ?? 'parietal']++;
   const total = Math.max(1, Object.values(counts).reduce((a, b) => a + b, 0));
-  // The brain grows slowly with the vault; notes fill its whole volume (see territory below).
-  const R = Math.max(240, 150 + Math.cbrt(total) * 26);
-  // Territories: each region owns the part of the brain nearest its anatomical centre, weighted by how
-  // many notes it holds (a power diagram), so a region with 800 notes spreads over far more of the
-  // brain than one with 50, and regions border each other instead of piling up in the middle.
-  const present = REGIONS.filter((r) => counts[r.key] > 0);
-  const weight = Object.fromEntries(
-    REGIONS.map((r) => [r.key, counts[r.key] ? Math.cbrt(counts[r.key] / total) * R * 0.9 : -Infinity]),
-  ) as Record<RegionKey, number>;
-  const owner = (x: number, y: number, z: number): RegionKey => {
-    let best: RegionKey = present[0]?.key ?? 'parietal';
-    let bestScore = -Infinity;
-    for (const r of present) {
-      const dx = x - r.center[0] * R * 0.75;
-      const dy = y - r.center[1] * R * 0.75;
-      const dz = z - r.center[2] * R * 0.75;
-      const score = weight[r.key] * weight[r.key] - (dx * dx + dy * dy + dz * dz);
-      if (score > bestScore) (bestScore = score), (best = r.key);
+
+  // Keep the previous territories unless too much has changed since they were computed.
+  let geo: Geometry | null = prev?.geo ?? null;
+  let drift = prev?.drift ?? 0;
+  if (prev && geo) {
+    let kept = 0;
+    let changed = 0;
+    for (const n of data.nodes) {
+      if (n.unresolved) continue;
+      const old = prev.byId.get(n.id);
+      if (old && !old.unresolved && old.region === (regionOf.get(n.id) ?? 'parietal')) kept++;
+      else changed++;
     }
-    return best;
-  };
-  /** A random point inside the brain-shaped ellipsoid (same shape as the dust silhouette). */
-  const inBrain = (rnd: () => number): [number, number, number] => {
-    for (let i = 0; i < 30; i++) {
-      const x = (rnd() * 2 - 1) * R * 0.92;
-      const y = (rnd() * 2 - 1) * R * 0.88;
-      const z = (rnd() * 2 - 1) * R * 1.22;
-      const e = (x / (R * 0.92)) ** 2 + (y / (R * 0.88)) ** 2 + (z / (R * 1.22)) ** 2;
-      if (e <= 1 && !(y < -R * 0.6 && Math.abs(x) > R * 0.45)) return [x, y, z];
-    }
-    return [0, 0, 0];
-  };
+    let prevNotes = 0;
+    for (const n of prev.nodes) if (!n.unresolved) prevNotes++;
+    drift += changed + (prevNotes - kept);
+    const g = geo;
+    // A region that had no notes has no territory yet.
+    const newRegion = REGIONS.some((r) => counts[r.key] > 0 && !g.present.includes(r));
+    if (newRegion || drift > Math.max(25, total * 0.1)) geo = null;
+  }
+  const reuse = prev && geo ? prev : null;
+  if (!geo) {
+    geo = makeGeometry(counts, total);
+    drift = 0;
+  }
+  const R = geo.R;
 
   // Hubs: the most connected notes get a lens glint.
   const degrees = data.nodes.filter((n) => !n.unresolved).map((n) => n.degree).sort((a, b) => b - a);
@@ -131,18 +232,9 @@ function buildLayout(data: GraphData): Layout {
   for (const n of data.nodes) {
     if (n.unresolved) continue;
     const region = regionOf.get(n.id) ?? 'parietal';
-    const def = REGION_BY_KEY[region];
-    const rnd = seeded(n.id);
-    // A random spot in this region's territory (rejection sampling; falls back near its centre).
-    let pos: [number, number, number] | null = null;
-    for (let i = 0; i < 80 && !pos; i++) {
-      const p = inBrain(rnd);
-      if (owner(p[0], p[1], p[2]) === region) pos = p;
-    }
-    if (!pos) {
-      const j = () => (rnd() - 0.5) * R * 0.25;
-      pos = [def.center[0] * R * 0.75 + j(), def.center[1] * R * 0.75 + j(), def.center[2] * R * 0.75 + j()];
-    }
+    const old = prev?.byId.get(n.id);
+    // Already placed in these territories: stay put. Otherwise a random spot in this region's territory.
+    const pos = reuse && old && !old.unresolved && old.region === region ? old : placeNote(n.id, region, geo);
     const node: ANode = {
       id: n.id,
       name: n.name,
@@ -150,11 +242,11 @@ function buildLayout(data: GraphData): Layout {
       degree: n.degree,
       unresolved: false,
       hub: n.degree >= hubCut,
-      x: pos[0],
-      y: pos[1],
-      z: pos[2],
-      phase: rnd() * Math.PI * 2,
-      firedAt: -1e9,
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
+      phase: pos.phase,
+      firedAt: old?.firedAt ?? -1e9,
       sx: 0,
       sy: 0,
       depth: 0,
@@ -164,13 +256,26 @@ function buildLayout(data: GraphData): Layout {
     nodes.push(node);
     byId.set(n.id, node);
   }
-  // Unresolved: faint points floating just outside the note that mentions them.
+  // Unresolved: faint points floating just outside the note that (first) mentions them.
+  const firstSource = new Map<string, string>();
+  for (const l of data.links) if (!firstSource.has(l.target)) firstSource.set(l.target, l.source);
   for (const n of data.nodes) {
     if (!n.unresolved) continue;
-    const link = data.links.find((l) => l.target === n.id);
-    const anchor = link ? byId.get(link.source) : undefined;
+    const source = firstSource.get(n.id);
+    const anchor = source ? byId.get(source) : undefined;
     if (!anchor) continue;
-    const rnd = seeded(n.id);
+    const old = prev?.byId.get(n.id);
+    let pos: { x: number; y: number; z: number; phase: number };
+    if (reuse && old?.unresolved) pos = old;
+    else {
+      const rnd = seeded(n.id);
+      pos = {
+        x: anchor.x + (rnd() - 0.5) * 50,
+        y: anchor.y + (rnd() - 0.5) * 50,
+        z: anchor.z + (rnd() - 0.5) * 50,
+        phase: rnd() * Math.PI * 2,
+      };
+    }
     const node: ANode = {
       ...anchor,
       id: n.id,
@@ -178,10 +283,11 @@ function buildLayout(data: GraphData): Layout {
       degree: n.degree,
       unresolved: true,
       hub: false,
-      x: anchor.x + (rnd() - 0.5) * 50,
-      y: anchor.y + (rnd() - 0.5) * 50,
-      z: anchor.z + (rnd() - 0.5) * 50,
-      phase: rnd() * Math.PI * 2,
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
+      phase: pos.phase,
+      firedAt: old?.firedAt ?? -1e9,
     };
     nodes.push(node);
     byId.set(n.id, node);
@@ -207,27 +313,15 @@ function buildLayout(data: GraphData): Layout {
     }
   }
 
-  // Faint dust filling a brain-shaped ellipsoid gives the silhouette.
-  const rnd = seeded('dust');
-  const dust: [number, number, number][] = [];
-  for (let i = 0; i < 900; i++) {
-    const u = rnd() * 2 - 1;
-    const th = rnd() * Math.PI * 2;
-    const s = Math.sqrt(1 - u * u);
-    const d = 0.75 + rnd() * 0.45;
-    const y = u * d * R * 0.95;
-    if (y < -R * 0.75 && Math.abs(s * Math.sin(th)) > 0.4) continue; // flatten underside
-    dust.push([s * Math.cos(th) * d * R * 0.95, y, s * Math.sin(th) * d * R * 1.3 - R * 0.05]);
-  }
+  const dust = reuse ? reuse.dust : makeDust(R);
 
-  const shuffle = seeded('links');
-  const sampled = [...links];
-  for (let i = sampled.length - 1; i > 0; i--) {
-    const j = Math.floor(shuffle() * (i + 1));
-    [sampled[i], sampled[j]] = [sampled[j], sampled[i]];
-  }
+  // A random but stable order: an edit adds or drops its own links without reshuffling the rest of the sample.
+  const ranks = new Float64Array(links.length);
+  for (let i = 0; i < links.length; i++) ranks[i] = linkRank(links[i].a.id, links[i].b.id);
+  const order = Array.from(links.keys()).sort((i, j) => ranks[i] - ranks[j]);
+  const sampled = order.map((i) => links[i]);
   const topHubCut = degrees[Math.min(degrees.length - 1, 7)] ?? Infinity;
-  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled, topHubCut };
+  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled, topHubCut, geo, drift };
 }
 
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
@@ -324,7 +418,12 @@ export function AtlasView(props: Props) {
     }
   }, [labels, hidden, showTrail, bridges]);
 
-  const layout = useMemo(() => (props.data ? buildLayout(props.data) : null), [props.data]);
+  // Each update builds on the last layout, so existing notes keep their place and only changes cost anything.
+  const lastLayout = useRef<Layout | null>(null);
+  const layout = useMemo(() => {
+    if (!props.data) return null;
+    return (lastLayout.current = buildLayout(props.data, lastLayout.current));
+  }, [props.data]);
 
   const st = useRef({
     layout: null as Layout | null,
@@ -359,19 +458,47 @@ export function AtlasView(props: Props) {
   st.current.hidden = hidden;
   st.current.filter = filter.trim().toLowerCase();
 
-  // Swap in a new layout, carrying over firing state.
+  // Swap in a new layout, carrying over firing state. Not mid-drag: that would hitch the rotation, so a layout
+  // that arrives while dragging waits for the pointer to be released (a newer one replaces it meanwhile).
   useEffect(() => {
     const s = st.current;
     if (!layout) return;
-    if (s.layout) {
-      for (const n of layout.nodes) {
-        const old = s.layout.byId.get(n.id);
-        if (old) n.firedAt = old.firedAt;
+    const apply = () => {
+      if (s.layout) {
+        for (const n of layout.nodes) {
+          const old = s.layout.byId.get(n.id);
+          if (old) n.firedAt = old.firedAt;
+        }
       }
+      s.layout = layout;
+      s.rings = s.rings.filter((r) => layout.byId.has(r.node.id)).map((r) => ({ ...r, node: layout.byId.get(r.node.id)! }));
+      s.pulses = [];
+      if (s.hover) s.hover = layout.byId.get(s.hover.id) ?? null;
+      s.kick();
+    };
+    const busy = () => !!s.drag || s.pointers.size > 0;
+    if (!s.layout || !busy()) {
+      apply();
+      return;
     }
-    s.layout = layout;
-    s.rings = s.rings.filter((r) => layout.byId.has(r.node.id)).map((r) => ({ ...r, node: layout.byId.get(r.node.id)! }));
-    s.pulses = [];
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The canvas's own pointerup handler runs first (the event bubbles here), then this checks it ended the drag.
+    const onUp = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (busy()) return;
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        apply();
+      });
+    };
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
   }, [layout]);
 
   useEffect(() => {

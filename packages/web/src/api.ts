@@ -152,6 +152,29 @@ export class OfflineError extends Error {
 }
 
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await send(method, url, body);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
+  return data as T;
+}
+
+/** The raw JSON text of a response, for callers that skip parsing when it hasn't changed. */
+async function requestText(method: string, url: string): Promise<string> {
+  const res = await send(method, url);
+  const text = await res.text();
+  if (!res.ok) {
+    let data: { error?: string } = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      /* not JSON */
+    }
+    throw new ApiError(res.status, data.error ?? res.statusText, data);
+  }
+  return text;
+}
+
+async function send(method: string, url: string, body?: unknown): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -167,9 +190,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     throw err;
   }
   setOffline(res.headers.get('X-Octavo-Offline') === '1');
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
-  return data as T;
+  return res;
 }
 
 export const api = {
@@ -195,7 +216,8 @@ export const api = {
     ),
   search: (q: string) => request<{ results: SearchResult[] }>('GET', `api/search?q=${encodeURIComponent(q)}`),
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
-  graph: () => request<GraphData>('GET', 'api/graph'),
+  /** The graph (GraphData) as JSON text: compare it with the last one before parsing. */
+  graphText: () => requestText('GET', 'api/graph'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
   snippets: () => request<{ folder: string; snippets: { name: string; css: string }[] }>('GET', 'api/snippets'),
   periodic: (period: 'day' | 'week' | 'month', date?: string) =>

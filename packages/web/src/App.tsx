@@ -76,6 +76,12 @@ function noteHash(path: string): string {
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const mod = isMac ? '⌘' : 'Ctrl';
 const narrow = () => window.matchMedia('(max-width: 800px)').matches;
+/** Minimum time between graph refreshes while notes keep changing. */
+const GRAPH_GAP_MS = 1000;
+/** Vault events are batched until they pause for this long… */
+const EVENT_SETTLE_MS = 400;
+/** …or until the first unhandled one is this old, so a long burst of edits still shows up as it happens. */
+const EVENT_MAX_WAIT_MS = 2000;
 
 export function App() {
   const [vaultName, setVaultName] = useState('');
@@ -208,8 +214,36 @@ export function App() {
     return r.notes;
   }, []);
 
-  const refreshGraph = useCallback(async () => {
-    setGraph(await api.graph());
+  // Graph refreshes are coalesced: one request in flight, at most one queued behind it (every caller asking
+  // meanwhile shares it), at least GRAPH_GAP_MS apart, and an unchanged graph isn't parsed or re-rendered.
+  // A burst of edits by Claude then costs a handful of refreshes instead of one per edit.
+  const graphJob = useRef({ text: '', last: 0, running: null as Promise<void> | null, queued: null as Promise<void> | null });
+  const refreshGraph = useCallback((): Promise<void> => {
+    const job = graphJob.current;
+    if (job.queued) return job.queued;
+    const fetchGraph = async () => {
+      const wait = job.last + GRAPH_GAP_MS - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      job.last = Date.now();
+      const text = await api.graphText();
+      if (text === job.text) return;
+      job.text = text;
+      setGraph(JSON.parse(text) as GraphData);
+    };
+    const queued: Promise<void> = (job.running ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => {
+        job.queued = null;
+        const run = fetchGraph();
+        job.running = run;
+        const done = () => {
+          if (job.running === run) job.running = null;
+        };
+        run.then(done, done);
+        return run;
+      });
+    job.queued = queued;
+    return queued;
   }, []);
 
   const nameIndex = useMemo(() => {
@@ -692,6 +726,7 @@ export function App() {
   // Live updates from the server (edits by Claude, other windows, other editors).
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let firstPending = 0;
     const toFire = new Set<string>();
     let needNotes = false;
     let needGraph = false;
@@ -724,7 +759,10 @@ export function App() {
           setRoute({ view: 'note', path: e.to });
         }
         if (timer) clearTimeout(timer);
+        if (!firstPending) firstPending = Date.now();
         timer = setTimeout(() => {
+          timer = null;
+          firstPending = 0;
           if (needNotes) refreshNotes().catch(() => {});
           // Light up the thoughts that just changed once the graph includes them.
           const fire = [...toFire];
@@ -735,7 +773,7 @@ export function App() {
           needNotes = needGraph = false;
           refreshCurrentRef.current();
           setRefreshKey((k) => k + 1);
-        }, 400);
+        }, Math.max(0, Math.min(EVENT_SETTLE_MS, firstPending + EVENT_MAX_WAIT_MS - Date.now())));
       },
       (ok) => {
         setConnected(ok);

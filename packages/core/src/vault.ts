@@ -188,6 +188,8 @@ export class Vault extends EventEmitter {
   private watcher: fs.FSWatcher | null = null;
   private pending = new Map<string, NodeJS.Timeout>();
   private rescanTimer: NodeJS.Timeout | null = null;
+  /** graph() result, until any note is (re)indexed or removed. */
+  private graphCache: GraphData | null = null;
 
   private constructor(root: string, opts: VaultOptions) {
     super();
@@ -246,6 +248,7 @@ export class Vault extends EventEmitter {
 
   private setIndexed(note: IndexedNote) {
     this.unindex(note.path);
+    this.graphCache = null;
     this.notes.set(note.path, note);
     this.addToMap(this.byName, note.name.toLowerCase(), note.path);
     for (const a of note.aliases) this.addToMap(this.byAlias, a.toLowerCase(), note.path);
@@ -254,6 +257,7 @@ export class Vault extends EventEmitter {
   private unindex(rel: string): boolean {
     const old = this.notes.get(rel);
     if (!old) return false;
+    this.graphCache = null;
     this.notes.delete(rel);
     this.removeFromMap(this.byName, old.name.toLowerCase(), rel);
     for (const a of old.aliases) this.removeFromMap(this.byAlias, a.toLowerCase(), rel);
@@ -562,7 +566,9 @@ export class Vault extends EventEmitter {
     };
   }
 
+  /** Every note and link. Cached until the index changes: treat the result as read-only. */
   graph(): GraphData {
+    if (this.graphCache) return this.graphCache;
     const nodes = new Map<string, GraphNode>();
     const links = new Map<string, { source: string; target: string }>();
     for (const n of this.notes.values()) {
@@ -595,7 +601,7 @@ export class Vault extends EventEmitter {
         nodes.get(target)!.degree++;
       }
     }
-    return { nodes: [...nodes.values()], links: [...links.values()] };
+    return (this.graphCache = { nodes: [...nodes.values()], links: [...links.values()] });
   }
 
   /**
