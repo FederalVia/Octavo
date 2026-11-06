@@ -142,6 +142,13 @@ Notes are kept in the folder set by `OCTAVO_VAULT_DIR` (default `./vault`). To u
 
 ---
 
+
+### Behind your own reverse proxy
+
+The wrong-key lockout counts per address. Behind a reverse proxy every request comes from the proxy, so one person guessing would lock out all your devices. Tell Octavo which proxy to trust and it uses the real client address from `X-Forwarded-For` instead: `--trust-proxy loopback` (proxy on the same machine, e.g. `tailscale serve`), `--trust-proxy uniquelocal` (proxy on a private network, e.g. Docker), or the proxy's address. The same setting is `OCTAVO_TRUST_PROXY` in the environment. The Caddy and Tailscale compose files already set it.
+
+Only use it when every request reaches Octavo through that proxy. If Octavo's port is also reachable directly from the trusted addresses, a client there could make up its own address and get unlimited guesses.
+
 ## When direct access is impossible (CGNAT)
 
 If your provider uses CGNAT and won't give you a public address, no app can connect directly into your home. The way around it is a relay service in the middle. [Tailscale](https://tailscale.com) is free for personal use. `docker-compose.tailscale.yml` contains a ready-made setup, with instructions at the top of that file.

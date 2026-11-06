@@ -7,6 +7,7 @@
  */
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { Agent, fetch as undiciFetch } from 'undici';
 import domino from '@mixmark-io/domino';
 import TurndownService from 'turndown';
 
@@ -22,89 +23,232 @@ export interface ReadablePage {
 
 export class WebReadError extends Error {}
 
-function privateAddress(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+// ---------------------------------------------------------------------------------------------
+// Which addresses count as "not the public internet"
+
+// Separate lists per family: a BlockList matches IPv4 addresses against IPv6 rules too (as ::ffff:a.b.c.d),
+// so one combined list with ::ffff:0:0/96 in it would block every IPv4 address.
+const BLOCKED_V4 = new net.BlockList();
+const BLOCKED_V6 = new net.BlockList();
+for (const [addr, prefix] of [
+  ['0.0.0.0', 8], // "this network", unspecified
+  ['10.0.0.0', 8], // private
+  ['100.64.0.0', 10], // carrier-grade NAT (also Tailscale)
+  ['127.0.0.0', 8], // loopback
+  ['169.254.0.0', 16], // link-local, cloud metadata (169.254.169.254)
+  ['172.16.0.0', 12], // private
+  ['192.0.0.0', 24], // IETF protocol assignments
+  ['192.0.2.0', 24], // documentation
+  ['192.168.0.0', 16], // private
+  ['198.18.0.0', 15], // benchmarking
+  ['198.51.100.0', 24], // documentation
+  ['203.0.113.0', 24], // documentation
+  ['224.0.0.0', 4], // multicast
+  ['240.0.0.0', 4], // reserved, broadcast
+] as const) BLOCKED_V4.addSubnet(addr, prefix, 'ipv4');
+for (const [addr, prefix] of [
+  ['::', 128], // unspecified
+  ['::1', 128], // loopback
+  ['::', 96], // IPv4-compatible (deprecated): no public site resolves to these
+  ['::ffff:0:0', 96], // IPv4-mapped: likewise
+  ['64:ff9b::', 96], // NAT64 well-known prefix
+  ['64:ff9b:1::', 48], // local-use NAT64
+  ['100::', 64], // discard
+  ['2001:db8::', 32], // documentation
+  ['fc00::', 7], // unique local
+  ['fe80::', 10], // link-local
+  ['fec0::', 10], // old site-local
+  ['ff00::', 8], // multicast
+] as const) BLOCKED_V6.addSubnet(addr, prefix, 'ipv6');
+
+/** The 16 bytes of an IPv6 address (handles "::" and a dotted IPv4 tail), or null if it isn't one. */
+function ipv6Bytes(ip: string): number[] | null {
+  if (!net.isIPv6(ip)) return null;
+  let s = ip.replace(/%.*$/, '').toLowerCase();
+  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (v4) {
+    const [a, b, c, d] = v4[1].split('.').map(Number);
+    s = s.slice(0, -v4[1].length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
   }
-  const v = ip.toLowerCase();
-  if (v.startsWith('::ffff:')) return privateAddress(v.slice(7));
-  return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb') || v.startsWith('ff');
+  const [head, tail] = s.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail ? tail.split(':') : [];
+  const groups = tail === undefined ? h : [...h, ...Array(8 - h.length - t.length).fill('0'), ...t];
+  if (groups.length !== 8) return null;
+  return groups.flatMap((g) => {
+    const n = parseInt(g, 16);
+    return [n >> 8, n & 255];
+  });
 }
 
-async function assertPublic(u: URL, allowPrivate = false): Promise<void> {
+/** IPv4 addresses hidden inside IPv6 ones: mapped, compatible, NAT64 and 6to4. */
+function embeddedIPv4(ip: string): string | null {
+  const b = ipv6Bytes(ip);
+  if (!b) return null;
+  const zero = (from: number, to: number) => b.slice(from, to).every((x) => x === 0);
+  const tail = () => b.slice(12, 16).join('.');
+  if (zero(0, 10) && b[10] === 0xff && b[11] === 0xff) return tail(); // ::ffff:a.b.c.d (mapped)
+  if (zero(0, 12) && !zero(12, 16)) return tail(); // ::a.b.c.d (compatible), but not :: or ::1 (blocked anyway)
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && zero(4, 12)) return tail(); // 64:ff9b::a.b.c.d
+  if (b[0] === 0x20 && b[1] === 0x02) return b.slice(2, 6).join('.'); // 2002:aabb:ccdd:: (6to4)
+  return null;
+}
+
+/** Is this address anywhere other than the public internet? Exported for tests. */
+export function privateAddress(ip: string): boolean {
+  const addr = ip.replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  if (net.isIPv4(addr)) return BLOCKED_V4.check(addr, 'ipv4');
+  if (!net.isIPv6(addr)) return true; // not an IP address at all: refuse rather than guess
+  if (BLOCKED_V6.check(addr, 'ipv6')) return true;
+  // Backstop for IPv4 wrapped in IPv6 (catches 6to4, 2002::/16, carrying a private address).
+  const v4 = embeddedIPv4(addr);
+  return v4 !== null && BLOCKED_V4.check(v4, 'ipv4');
+}
+
+const LOCAL_NAME = /^(localhost|.*\.local|.*\.internal|.*\.localhost)$/i;
+const BLOCKED_MESSAGE = 'Local network addresses can’t be opened in the web viewer';
+
+type Resolved = { address: string; family: number };
+export type Resolver = (hostname: string) => Promise<Resolved[]>;
+const systemResolver: Resolver = (hostname) => dns.lookup(hostname, { all: true, verbatim: true });
+
+/** Marks a refusal from inside the connection's lookup, so it can be reported as a refusal. */
+class BlockedAddressError extends Error {
+  readonly code = 'OCTAVO_BLOCKED_ADDRESS';
+}
+
+/**
+ * A `lookup` for the connection itself: resolve once, refuse if any answer is private, and hand the
+ * socket exactly the answers that were checked. There's no second resolution between "checked" and
+ * "connected", so a name can't pass the check and then point somewhere else (DNS rebinding).
+ * Exported for tests.
+ */
+export function checkedLookup(resolve: Resolver, allowPrivate = false, isPrivate: (ip: string) => boolean = privateAddress) {
+  return (
+    hostname: string,
+    options: { family?: number | string; all?: boolean } | number | undefined,
+    callback: (err: NodeJS.ErrnoException | null, address?: string | Resolved[], family?: number) => void,
+  ): void => {
+    const opts = typeof options === 'object' && options ? options : {};
+    const want = opts.family === 4 || opts.family === 'IPv4' ? 4 : opts.family === 6 || opts.family === 'IPv6' ? 6 : 0;
+    const host = hostname.replace(/^\[|\]$/g, '');
+    const finish = (list: Resolved[]) => {
+      const usable = want ? list.filter((a) => a.family === want) : list;
+      if (!usable.length) return callback(Object.assign(new Error(`Couldn’t find ${host}`), { code: 'ENOTFOUND' }));
+      if (opts.all) callback(null, usable);
+      else callback(null, usable[0].address, usable[0].family);
+    };
+    if (!allowPrivate && LOCAL_NAME.test(host)) return callback(new BlockedAddressError(BLOCKED_MESSAGE));
+    if (net.isIP(host)) {
+      if (!allowPrivate && isPrivate(host)) return callback(new BlockedAddressError(BLOCKED_MESSAGE));
+      return finish([{ address: host, family: net.isIP(host) }]);
+    }
+    resolve(host).then(
+      (list) => {
+        if (!allowPrivate && (!list.length || list.some((a) => isPrivate(a.address)))) return callback(new BlockedAddressError(BLOCKED_MESSAGE));
+        finish(list);
+      },
+      () => callback(Object.assign(new Error(`Couldn’t find ${host}`), { code: 'ENOTFOUND' })),
+    );
+  };
+}
+
+/** Quick refusals before connecting (scheme, local names, IP literals: those never reach `lookup`). */
+function assertPublic(u: URL, allowPrivate: boolean, isPrivate: (ip: string) => boolean): void {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new WebReadError('Only http and https pages can be opened');
   if (allowPrivate) return;
   const host = u.hostname.replace(/^\[|\]$/g, '');
-  if (/^(localhost|.*\.local|.*\.internal|.*\.localhost)$/i.test(host)) throw new WebReadError('Local addresses can’t be opened in the web viewer');
-  const addrs = net.isIP(host) ? [{ address: host }] : await dns.lookup(host, { all: true }).catch(() => {
-    throw new WebReadError(`Couldn’t find ${host}`);
-  });
-  if (!addrs.length || addrs.some((a) => privateAddress(a.address))) throw new WebReadError('Local network addresses can’t be opened in the web viewer');
+  if (LOCAL_NAME.test(host)) throw new WebReadError('Local addresses can’t be opened in the web viewer');
+  if (net.isIP(host) && isPrivate(host)) throw new WebReadError(BLOCKED_MESSAGE);
+}
+
+/** Find the refusal or DNS failure behind a fetch error (undici wraps them in `cause`). */
+function causeOf(err: unknown): { blocked: boolean; notFound?: string } {
+  let e: unknown = err;
+  for (let i = 0; i < 5 && e; i++) {
+    const c = e as { code?: string; message?: string; cause?: unknown };
+    if (c.code === 'OCTAVO_BLOCKED_ADDRESS') return { blocked: true };
+    if (c.code === 'ENOTFOUND') return { blocked: false, notFound: c.message };
+    e = c.cause;
+  }
+  return { blocked: false };
 }
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
-async function fetchPage(start: string, allowPrivate = false): Promise<{ url: string; html: string }> {
+async function fetchPage(start: string, opts: ReadOptions = {}): Promise<{ url: string; html: string }> {
+  const allowPrivate = !!opts.allowPrivate;
+  const isPrivate = opts.isPrivate ?? privateAddress;
   let url: URL;
   try {
     url = new URL(start);
   } catch {
     throw new WebReadError('That isn’t a web address');
   }
-  for (let hop = 0; hop < 6; hop++) {
-    await assertPublic(url, allowPrivate);
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 15000);
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        redirect: 'manual',
-        signal: ctrl.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OctavoReader/1.0)', Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' },
-      });
-    } catch (err) {
-      clearTimeout(timer);
-      throw new WebReadError(ctrl.signal.aborted ? 'The page took too long to load' : `Couldn’t load the page: ${(err as Error).message}`);
-    }
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-      clearTimeout(timer);
-      url = new URL(res.headers.get('location')!, url);
-      continue;
-    }
-    try {
-      if (!res.ok) throw new WebReadError(`The site answered ${res.status} ${res.statusText}`);
-      const type = res.headers.get('content-type') ?? '';
-      if (type && !/html|xml|text\/plain/i.test(type)) throw new WebReadError('That address isn’t a web page (it’s a file). Open it in your browser instead.');
-      const reader = res.body?.getReader();
-      if (!reader) return { url: url.toString(), html: '' };
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.length;
-        if (size > MAX_BYTES) {
-          await reader.cancel();
-          break;
-        }
-        chunks.push(value);
-      }
-      const buf = Buffer.concat(chunks);
-      const charset = /charset=([\w-]+)/i.exec(type)?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(buf.subarray(0, 2048).toString('latin1'))?.[1] ?? 'utf-8';
-      let html: string;
+  // Every connection, on every redirect hop, resolves through the checked lookup.
+  const agent = new Agent({ connect: { lookup: checkedLookup(opts.resolve ?? systemResolver, allowPrivate, isPrivate) as never }, connections: 4 });
+  try {
+    for (let hop = 0; hop < 6; hop++) {
+      assertPublic(url, allowPrivate, isPrivate);
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 15000);
+      let res: Awaited<ReturnType<typeof undiciFetch>>;
       try {
-        html = new TextDecoder(charset).decode(buf);
-      } catch {
-        html = buf.toString('utf8');
+        res = await undiciFetch(url, {
+          redirect: 'manual',
+          signal: ctrl.signal,
+          dispatcher: agent,
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; OctavoReader/1.0)', Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5' },
+        });
+      } catch (err) {
+        clearTimeout(timer);
+        const cause = causeOf(err);
+        if (cause.blocked) throw new WebReadError(BLOCKED_MESSAGE);
+        if (cause.notFound) throw new WebReadError(cause.notFound);
+        throw new WebReadError(ctrl.signal.aborted ? 'The page took too long to load' : `Couldn’t load the page: ${(err as Error).message}`);
       }
-      if (/text\/plain/i.test(type)) html = `<pre>${html.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
-      return { url: url.toString(), html };
-    } finally {
-      clearTimeout(timer);
+      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+        clearTimeout(timer);
+        await res.body?.cancel().catch(() => {});
+        url = new URL(res.headers.get('location')!, url);
+        continue;
+      }
+      try {
+        if (!res.ok) throw new WebReadError(`The site answered ${res.status} ${res.statusText}`);
+        const type = res.headers.get('content-type') ?? '';
+        if (type && !/html|xml|text\/plain/i.test(type)) throw new WebReadError('That address isn’t a web page (it’s a file). Open it in your browser instead.');
+        const reader = res.body?.getReader();
+        if (!reader) return { url: url.toString(), html: '' };
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.length;
+          if (size > MAX_BYTES) {
+            await reader.cancel();
+            break;
+          }
+          chunks.push(value);
+        }
+        const buf = Buffer.concat(chunks);
+        const charset = /charset=([\w-]+)/i.exec(type)?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(buf.subarray(0, 2048).toString('latin1'))?.[1] ?? 'utf-8';
+        let html: string;
+        try {
+          html = new TextDecoder(charset).decode(buf);
+        } catch {
+          html = buf.toString('utf8');
+        }
+        if (/text\/plain/i.test(type)) html = `<pre>${html.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!)}</pre>`;
+        return { url: url.toString(), html };
+      } finally {
+        clearTimeout(timer);
+      }
     }
+    throw new WebReadError('Too many redirects');
+  } finally {
+    void agent.close().catch(() => {});
   }
-  throw new WebReadError('Too many redirects');
 }
 
 const DROP = 'script,style,noscript,iframe,object,embed,form,button,input,select,textarea,svg,canvas,nav,footer,aside,dialog,template,[hidden],[aria-hidden="true"],[role="navigation"],[role="banner"],[role="contentinfo"],[role="complementary"],[role="dialog"]';
@@ -150,9 +294,18 @@ function pickContent(doc: { body: El; querySelector(s: string): El | null; query
   return best ?? explicit ?? doc.body;
 }
 
-/** `allowPrivate` is for tests only: the app never passes it. */
-export async function readPage(target: string, opts: { allowPrivate?: boolean } = {}): Promise<ReadablePage> {
-  const { url, html } = await fetchPage(target, opts.allowPrivate);
+/** Test seams: the app never passes any of these. */
+export interface ReadOptions {
+  /** Skip every address check. */
+  allowPrivate?: boolean;
+  /** Replace DNS. */
+  resolve?: Resolver;
+  /** Replace the private-address rule (lets tests treat a loopback server as "public"). */
+  isPrivate?: (ip: string) => boolean;
+}
+
+export async function readPage(target: string, opts: ReadOptions = {}): Promise<ReadablePage> {
+  const { url, html } = await fetchPage(target, opts);
   const doc = domino.createDocument(html) as unknown as {
     title: string;
     body: El;

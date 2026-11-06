@@ -41,3 +41,15 @@ test("reads by another Octavo process (Claude Desktop's) reach the app as access
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('parseTrustProxy reads the CLI/env setting', async () => {
+  const { parseTrustProxy } = await import('../src/app.js');
+  assert.equal(parseTrustProxy(undefined), undefined);
+  assert.equal(parseTrustProxy(''), undefined);
+  assert.equal(parseTrustProxy('false'), undefined);
+  assert.equal(parseTrustProxy('0'), undefined);
+  assert.equal(parseTrustProxy('true'), true);
+  assert.equal(parseTrustProxy('1'), 1);
+  assert.equal(parseTrustProxy(' loopback '), 'loopback');
+  assert.equal(parseTrustProxy('10.0.0.2, uniquelocal'), '10.0.0.2, uniquelocal');
+});
