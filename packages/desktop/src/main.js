@@ -1,8 +1,9 @@
-import { app, BrowserWindow, Menu, Notification, clipboard, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
@@ -409,11 +410,12 @@ function createWindow() {
     minHeight: 400,
     title: 'Octavo',
     backgroundColor: '#1b1a21',
-    autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // Lets Settings show the phone/remote-access controls (see preload.cjs).
+      preload: path.join(path.dirname(fileURLToPath(import.meta.url)), 'preload.cjs'),
     },
   });
 
@@ -443,6 +445,31 @@ if (!app.requestSingleInstanceLock()) {
       if (win.isMinimized()) win.restore();
       win.focus();
     }
+  });
+
+  // Desktop actions for the in-app Settings. Only Octavo's own main window may call them.
+  const fromMainWindow = (e) => win && e.sender === win.webContents;
+  const desktopState = () => ({
+    phone: phoneEnabled(),
+    remote: remoteEnabled(),
+    remoteStatus: remote ? remote.current : null,
+  });
+  ipcMain.handle('octavo:state', (e) => (fromMainWindow(e) ? desktopState() : null));
+  ipcMain.handle('octavo:check-network', async (e) => {
+    if (fromMainWindow(e)) await checkNetwork();
+    return desktopState();
+  });
+  ipcMain.handle('octavo:toggle-remote', async (e) => {
+    if (fromMainWindow(e)) await toggleRemoteAccess();
+    return desktopState();
+  });
+  ipcMain.handle('octavo:toggle-phone', async (e) => {
+    if (fromMainWindow(e)) await togglePhoneAccess();
+    return desktopState();
+  });
+  ipcMain.handle('octavo:show-qr', async (e) => {
+    if (fromMainWindow(e)) await showPhoneQr();
+    return desktopState();
   });
 
   app.whenReady().then(async () => {

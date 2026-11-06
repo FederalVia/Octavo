@@ -1,7 +1,7 @@
 {
   "name": "@octavo/desktop",
   "productName": "Octavo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Octavo desktop app",
   "type": "module",
@@ -10,8 +10,8 @@
     "start": "electron ."
   },
   "dependencies": {
-    "@octavo/server": "0.1.0",
-    "@octavo/web": "0.1.0",
+    "@octavo/server": "*",
+    "@octavo/web": "*",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
