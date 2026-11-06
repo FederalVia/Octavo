@@ -145,7 +145,7 @@ function buildMenu() {
       label: 'View',
       submenu: [
         { label: 'Search', accelerator: 'CmdOrCtrl+Shift+F', registerAccelerator: false, click: () => sendShortcut('F', true) },
-        { label: 'Graph', accelerator: 'CmdOrCtrl+G', registerAccelerator: false, click: () => sendShortcut('G') },
+        { label: 'Back to Brain', accelerator: 'CmdOrCtrl+G', registerAccelerator: false, click: () => sendShortcut('G') },
         { label: 'Toggle Edit / Preview', accelerator: 'CmdOrCtrl+E', registerAccelerator: false, click: () => sendShortcut('E') },
         { type: 'separator' },
         { role: 'reload' },
