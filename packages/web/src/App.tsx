@@ -11,6 +11,7 @@ import { HistoryDialog } from './components/HistoryDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
 import { taskLines, wordCount } from './markdown';
+import { deriveKey, isLocked, keyForContent, lockContent, unlockContent, WrongPasswordError, type NoteKey } from './crypto';
 
 type Mode = 'edit' | 'preview';
 type DrawerTab = 'files' | 'search' | 'tags' | 'tasks' | 'bookmarks' | 'insights';
@@ -119,6 +120,13 @@ export function App() {
   const needsRefresh = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedPath = useRef<string | null>(null);
+  /** Keys of locked notes unlocked in this tab (memory only; gone on reload). */
+  const noteKeys = useRef(new Map<string, NoteKey>());
+  /** Is the open note a locked (encrypted) note? */
+  const encryptedRef = useRef(false);
+  const [locked, setLocked] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => store('ultron.mode', mode), [mode]);
   useEffect(() => void (!narrow() && store('ultron.left', showLeft)), [showLeft]);
@@ -141,7 +149,7 @@ export function App() {
 
   // ---------------------------------------------------------------- dialogs
   const prompt = useCallback(
-    (title: string, initial = '', opts: { message?: string; confirmLabel?: string; placeholder?: string } = {}) =>
+    (title: string, initial = '', opts: { message?: string; confirmLabel?: string; placeholder?: string; password?: boolean } = {}) =>
       new Promise<string | null>((resolve) => setDialog({ kind: 'prompt', title, initial, resolve, ...opts })),
     [],
   );
@@ -227,7 +235,13 @@ export function App() {
       setSaveState('saving');
       const content = draftRef.current;
       try {
-        const res = await api.save(path, content, force ? undefined : baseMtime.current);
+        let payload = content;
+        if (encryptedRef.current) {
+          const key = noteKeys.current.get(path);
+          if (!key) throw new Error('This note is locked. Unlock it before saving.');
+          payload = await lockContent(content, key);
+        }
+        const res = await api.save(path, payload, force ? undefined : baseMtime.current);
         baseMtime.current = res.mtime;
         if (draftRef.current === content) {
           dirty.current = false;
@@ -272,12 +286,31 @@ export function App() {
   );
 
   // ---------------------------------------------------------------- loading
-  const applyDetail = useCallback((d: NoteDetail, replaceContent: boolean) => {
+  const applyDetail = useCallback(async (d: NoteDetail, replaceContent: boolean) => {
+    const enc = !!d.encrypted || isLocked(d.content);
+    encryptedRef.current = enc;
+    let content = d.content;
+    if (enc && replaceContent) {
+      const key = noteKeys.current.get(d.path);
+      content = '';
+      if (key) {
+        try {
+          content = await unlockContent(d.content, key);
+        } catch (err) {
+          // Changed elsewhere with another password, or damaged: ask again.
+          noteKeys.current.delete(d.path);
+          if (!(err instanceof WrongPasswordError)) setUnlockError((err as Error).message);
+        }
+      }
+      setLocked(!noteKeys.current.has(d.path));
+    } else if (!enc) {
+      setLocked(false);
+    }
     setDetail(d);
     setMissing(null);
     if (replaceContent) {
-      draftRef.current = d.content;
-      setDraft(d.content);
+      draftRef.current = content;
+      setDraft(content);
       baseMtime.current = d.mtime;
       dirty.current = false;
       setSaveState('saved');
@@ -324,7 +357,7 @@ export function App() {
     try {
       const d = await api.note(path);
       if (loadedPath.current !== path) return;
-      const same = d.mtime === baseMtime.current || d.content === draftRef.current;
+      const same = d.mtime === baseMtime.current || (!d.encrypted && d.content === draftRef.current);
       if (same) {
         if (d.content === draftRef.current) baseMtime.current = d.mtime;
         applyDetail(d, false);
@@ -737,6 +770,137 @@ export function App() {
     saveBookmarks([...bookmarks, { type: 'url', url, title: title || undefined }]);
   }, [prompt, bookmarks, saveBookmarks]);
 
+  // ---------------------------------------------------------------- locked notes
+
+  const askNewPassword = useCallback(
+    async (title: string): Promise<string | null> => {
+      const pw = await prompt(title, '', {
+        password: true,
+        confirmLabel: 'Next',
+        message:
+          'The note is encrypted in your browser, so only someone with this password can read it, including Claude and the server. If you forget the password, the note cannot be recovered. The note’s title stays visible.',
+      });
+      if (!pw) return null;
+      if (pw.length < 8) {
+        await confirm('Password too short', 'Use at least 8 characters. A short passphrase of several words works well.', { confirmLabel: 'OK' });
+        return null;
+      }
+      const again = await prompt('Confirm password', '', { password: true, confirmLabel: 'Lock note' });
+      if (again !== pw) {
+        if (again != null) await confirm('Passwords don’t match', 'Nothing was changed.', { confirmLabel: 'OK' });
+        return null;
+      }
+      return pw;
+    },
+    [prompt, confirm],
+  );
+
+  /** Encrypt the open note (or re-encrypt it with a new password). */
+  const lockNote = useCallback(
+    async (changePassword = false) => {
+      const path = loadedPath.current;
+      if (!path || !detail) return;
+      if (locked) return;
+      const pw = await askNewPassword(changePassword ? 'New password for this note' : 'Lock this note with a password');
+      if (!pw) return;
+      try {
+        const key = await deriveKey(pw);
+        const payload = await lockContent(draftRef.current, key);
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        const res = await api.save(path, payload);
+        noteKeys.current.set(path, key);
+        encryptedRef.current = true;
+        baseMtime.current = res.mtime;
+        dirty.current = false;
+        setSaveState('saved');
+        setDetail((d) => (d ? { ...d, encrypted: true, mtime: res.mtime } : d));
+        refreshNotes().catch(() => {});
+        refreshGraph().catch(() => {});
+      } catch (err) {
+        handleError(err);
+      }
+    },
+    [detail, locked, askNewPassword, refreshNotes, refreshGraph, handleError],
+  );
+
+  const unlockNote = useCallback(
+    async (password: string) => {
+      if (!detail) return;
+      setUnlocking(true);
+      setUnlockError('');
+      try {
+        const fresh = await api.note(detail.path);
+        const key = await keyForContent(fresh.content, password);
+        noteKeys.current.set(fresh.path, key);
+        await applyDetail(fresh, true);
+      } catch (err) {
+        setUnlockError(err instanceof WrongPasswordError ? 'Wrong password' : (err as Error).message);
+      } finally {
+        setUnlocking(false);
+      }
+    },
+    [detail, applyDetail],
+  );
+
+  /** Forget the key(s) and hide the plaintext. */
+  const lockNow = useCallback(
+    async (all = false) => {
+      if (dirty.current) await save();
+      if (all) noteKeys.current.clear();
+      else if (loadedPath.current) noteKeys.current.delete(loadedPath.current);
+      if (encryptedRef.current && loadedPath.current && !noteKeys.current.has(loadedPath.current)) {
+        draftRef.current = '';
+        setDraft('');
+        setVersion((v) => v + 1);
+        setLocked(true);
+        setMode('preview');
+      }
+    },
+    [save],
+  );
+
+  const removeEncryption = useCallback(async () => {
+    const path = loadedPath.current;
+    if (!path || locked || !encryptedRef.current) return;
+    const ok = await confirm(
+      'Remove encryption?',
+      'The note will be saved as plain text again, so Claude, search and other apps can read it.',
+      { confirmLabel: 'Remove encryption', danger: true },
+    );
+    if (!ok) return;
+    try {
+      const res = await api.save(path, draftRef.current);
+      encryptedRef.current = false;
+      noteKeys.current.delete(path);
+      baseMtime.current = res.mtime;
+      dirty.current = false;
+      setDetail((d) => (d ? { ...d, encrypted: false, mtime: res.mtime } : d));
+      refreshNotes().catch(() => {});
+      refreshGraph().catch(() => {});
+      refreshCurrentRef.current();
+    } catch (err) {
+      handleError(err);
+    }
+  }, [locked, confirm, refreshNotes, refreshGraph, handleError]);
+
+  // Auto-lock: forget all keys after 15 minutes without activity.
+  useEffect(() => {
+    let last = Date.now();
+    const bump = () => (last = Date.now());
+    window.addEventListener('pointerdown', bump);
+    window.addEventListener('keydown', bump);
+    const t = setInterval(() => {
+      if (noteKeys.current.size && Date.now() - last > 15 * 60 * 1000) lockNow(true);
+    }, 30_000);
+    return () => {
+      window.removeEventListener('pointerdown', bump);
+      window.removeEventListener('keydown', bump);
+      clearInterval(t);
+    };
+  }, [lockNow]);
+
+  const isEncrypted = !!detail?.encrypted;
+
   const openDrawer = useCallback((tab: DrawerTab) => {
     setLeftTab(tab);
     setShowLeft(true);
@@ -800,6 +964,7 @@ export function App() {
     { id: 'daily', label: 'Open today’s journal', hint: `${mod}+D`, keywords: 'daily note', run: openDaily },
     { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
     { id: 'random', label: 'Open random note', run: openRandom },
+    { id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) },
     { id: 'search', label: 'Search all notes', hint: `${mod}+Shift+F`, run: () => showSearch() },
     { id: 'tasks', label: 'Show all tasks', keywords: 'todo checkbox', run: () => openDrawer('tasks') },
     { id: 'bookmarks', label: 'Show bookmarks', run: () => openDrawer('bookmarks') },
@@ -813,6 +978,15 @@ export function App() {
           { id: 'toggle', label: mode === 'edit' ? 'Switch to reading view' : 'Switch to editing', hint: `${mod}+E`, run: () => setMode((m) => (m === 'edit' ? 'preview' : 'edit')) },
           { id: 'tpl', label: 'Insert template…', run: () => setTimeout(() => setPalette('templates'), 0) },
           { id: 'bookmark', label: isBookmarked ? 'Remove bookmark' : 'Bookmark this note', run: toggleBookmark },
+          ...(!isEncrypted
+            ? [{ id: 'lock', label: 'Lock note with a password', keywords: 'encrypt private secret', run: () => lockNote() }]
+            : locked
+              ? []
+              : [
+                  { id: 'lock-now', label: 'Lock note now', keywords: 'encrypt hide', run: () => lockNow() },
+                  { id: 'lock-pw', label: 'Change note password', keywords: 'encrypt', run: () => lockNote(true) },
+                  { id: 'unlock-perm', label: 'Remove encryption from note', keywords: 'decrypt unlock', run: removeEncryption },
+                ]),
           { id: 'history', label: 'Show version history', keywords: 'recovery restore snapshot', run: () => setHistoryOpen(true) },
           { id: 'extract', label: 'Extract selection to new note', keywords: 'split composer refactor', run: extractSelection },
           { id: 'copy', label: 'Copy link to this note', run: copyLink },
@@ -843,6 +1017,10 @@ export function App() {
     conflict: 'Conflict',
   };
   const panelOpen = route.view === 'note' && (!!detail || !!missing);
+  const graphView = useMemo(
+    () => (graph ? { ...graph, nodes: graph.nodes.map((n) => (n.encrypted ? { ...n, name: `🔒 ${n.name}` } : n)) } : null),
+    [graph],
+  );
   const panelFraction = isNarrow ? 0 : panelWide ? 0.62 : 0.44;
   const outgoing = detail
     ? detail.links.filter((l, i, arr) => l.target && arr.findIndex((x) => (x.path ?? x.target) === (l.path ?? l.target)) === i)
@@ -852,7 +1030,7 @@ export function App() {
     <div className="app brain-app">
       {(() => {
         const viewProps = {
-          data: graph,
+          data: graphView,
           selected: panelOpen ? loadedPath.current : null,
           rightInset: panelOpen ? panelFraction : 0,
           onSelect: (p: string) => navigate(p),
@@ -962,7 +1140,7 @@ export function App() {
             {detail?.folder && <span className="crumb">{detail.folder} / </span>}
             <span title={detail ? 'Double-click to rename' : undefined}>{title}</span>
           </div>
-          {detail && (
+          {detail && !locked && (
             <>
               <button
                 className="icon-btn mode-btn"
@@ -973,6 +1151,13 @@ export function App() {
               </button>
               <button className="icon-btn hide-narrow" title={panelWide ? 'Narrower' : 'Wider'} onClick={() => setPanelWide((w) => !w)}>
                 {panelWide ? '⇥' : '⇤'}
+              </button>
+              <button
+                className={`icon-btn${isEncrypted ? ' lock-on' : ''}`}
+                title={!isEncrypted ? 'Lock note with a password' : locked ? 'Locked' : 'Lock now'}
+                onClick={() => (!isEncrypted ? lockNote() : locked ? undefined : lockNow())}
+              >
+                {isEncrypted ? (locked ? '🔒' : '🔓') : '🔐'}
               </button>
               <button className={`icon-btn${isBookmarked ? ' starred' : ''}`} title={isBookmarked ? 'Remove bookmark' : 'Bookmark this note'} onClick={toggleBookmark}>
                 {isBookmarked ? '★' : '☆'}
@@ -1041,7 +1226,28 @@ export function App() {
           </div>
         )}
 
-        <div className="panel-body" style={{ display: detail ? undefined : 'none' }}>
+        {detail && locked && (
+          <form
+            className="lock-screen"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const input = (e.currentTarget.elements.namedItem('pw') as HTMLInputElement);
+              unlockNote(input.value);
+              input.value = '';
+            }}
+          >
+            <div className="lock-icon">🔒</div>
+            <h2>{detail.name} is locked</h2>
+            <p className="muted">Enter the note’s password to read and edit it. It’s decrypted only in this browser tab.</p>
+            <input name="pw" className="input" type="password" autoComplete="current-password" placeholder="Password" autoFocus />
+            {unlockError && <div className="lock-error">{unlockError}</div>}
+            <button className="btn primary" type="submit" disabled={unlocking}>
+              {unlocking ? 'Unlocking…' : 'Unlock'}
+            </button>
+          </form>
+        )}
+
+        <div className="panel-body" style={{ display: detail && !locked ? undefined : 'none' }}>
           <div className="editor-wrap" style={{ display: mode === 'edit' ? undefined : 'none' }}>
             <Editor
               docKey={detail?.path ?? ''}
@@ -1076,7 +1282,7 @@ export function App() {
           )}
         </div>
 
-        {detail && (
+        {detail && !locked && (
           <div className="connections">
             <div className="conn-row">
               <span className="conn-label">Linked from</span>
@@ -1125,13 +1331,14 @@ export function App() {
           </div>
         )}
 
-        {detail && (
+        {detail && !locked && (
           <footer className="statusbar">
             <span className={`save-state ${saveState}`}>{saveLabel[saveState]}</span>
             <span>
               {counts.words} words · {counts.chars} chars
             </span>
             {vimMode && mode === 'edit' && <span className="vim-badge">VIM</span>}
+            {isEncrypted && <span title="Encrypted in your browser; auto-locks after 15 minutes idle">🔓 Unlocked · encrypted on save</span>}
             <span className="spacer" />
             <label className="hide-narrow">
               <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} /> Line numbers
@@ -1166,6 +1373,15 @@ export function App() {
         <HistoryDialog
           path={detail.path}
           current={draft}
+          decode={
+            isEncrypted
+              ? async (stored) => {
+                  const key = noteKeys.current.get(detail.path);
+                  if (!key || !isLocked(stored)) return stored;
+                  return unlockContent(stored, key);
+                }
+              : undefined
+          }
           onClose={() => setHistoryOpen(false)}
           onRestored={() => {
             dirty.current = false;

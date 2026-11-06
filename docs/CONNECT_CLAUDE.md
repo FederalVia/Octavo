@@ -96,6 +96,7 @@ When it connects, the server gives Claude instructions to:
 - keep one topic per note and connect notes with `[[wikilinks]]` and `#tags`
 - file notes by region: `Projects/`, `Concepts/`, `People/`, `Sources/`, `Journal/`
 - keep a short session log with `log_to_journal`
+- leave 🔒 locked notes alone: it can see they exist, but can't read, overwrite or delete them
 - never store secrets (passwords, API keys) in the vault
 
 To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, for example:

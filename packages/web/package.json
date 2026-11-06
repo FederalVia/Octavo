@@ -10,7 +10,8 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "devDependencies": {
     "@types/d3-force": "^3.0.10",

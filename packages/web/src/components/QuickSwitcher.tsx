@@ -101,7 +101,10 @@ export function QuickSwitcher({ notes, onOpen, onCreate, onClose }: Props) {
                 choose(i);
               }}
             >
-              <span className="switcher-name">{n.name}</span>
+              <span className="switcher-name">
+                {n.encrypted ? '🔒 ' : ''}
+                {n.name}
+              </span>
               {n.folder && <span className="switcher-path">{n.folder}</span>}
             </div>
           ))}

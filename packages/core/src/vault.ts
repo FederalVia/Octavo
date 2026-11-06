@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { maskCode, parseNote, parseWikiInner, splitFrontmatter, type ParsedLink } from './parse.js';
+import { isEncryptedContent, maskCode, parseNote, parseWikiInner, splitFrontmatter, type ParsedLink } from './parse.js';
 import { normalizeFolderPath, normalizeNotePath, noteFolder, noteName, stripMd, VaultPathError } from './paths.js';
 import { searchNotes } from './search.js';
 import type {
@@ -42,6 +42,13 @@ export class NoteExistsError extends Error {
   }
 }
 
+export class EncryptedNoteError extends Error {
+  constructor(public readonly notePath: string) {
+    super(`${notePath} is a locked (encrypted) note. It can only be read or changed after unlocking it in the Ultron app.`);
+    this.name = 'EncryptedNoteError';
+  }
+}
+
 export class EditMatchError extends Error {
   constructor(message: string) {
     super(message);
@@ -76,7 +83,16 @@ export interface VaultOverview {
 const HOME_CANDIDATES = ['home.md', 'index.md', 'readme.md', 'start here.md'];
 
 function summarize(n: IndexedNote): NoteSummary {
-  return { path: n.path, name: n.name, folder: n.folder, tags: n.tags, mtime: n.mtime, ctime: n.ctime, size: n.size };
+  return {
+    path: n.path,
+    name: n.name,
+    folder: n.folder,
+    tags: n.tags,
+    mtime: n.mtime,
+    ctime: n.ctime,
+    size: n.size,
+    ...(n.encrypted ? { encrypted: true } : {}),
+  };
 }
 
 function pad(n: number): string {
@@ -173,8 +189,13 @@ export class Vault extends EventEmitter {
   }
 
   private buildIndexed(rel: string, content: string, stat: fs.Stats): IndexedNote {
-    const parsed = parseNote(content);
+    const encrypted = isEncryptedContent(content);
+    // A locked note's placeholder text isn't real content: index nothing from it.
+    const parsed = encrypted
+      ? { frontmatter: splitFrontmatter(content).frontmatter, tags: [], aliases: [], links: [], headings: [] }
+      : parseNote(content);
     return {
+      encrypted,
       path: rel,
       name: noteName(rel),
       folder: noteFolder(rel),
@@ -444,7 +465,7 @@ export class Vault extends EventEmitter {
   }
 
   search(query: string, limit = 20): SearchResult[] {
-    return searchNotes(this.notes.values(), query, limit);
+    return searchNotes([...this.notes.values()].filter((n) => !n.encrypted), query, limit);
   }
 
   async read(nameOrPath: string): Promise<NoteDetail> {
@@ -467,7 +488,14 @@ export class Vault extends EventEmitter {
     const links = new Map<string, { source: string; target: string }>();
     for (const n of this.notes.values()) {
       const region = typeof n.frontmatter.region === 'string' ? n.frontmatter.region : undefined;
-      nodes.set(n.path, { id: n.path, name: n.name, tags: n.tags, degree: 0, ...(region ? { region } : {}) });
+      nodes.set(n.path, {
+        id: n.path,
+        name: n.name,
+        tags: n.tags,
+        degree: 0,
+        ...(region ? { region } : {}),
+        ...(n.encrypted ? { encrypted: true } : {}),
+      });
     }
     for (const n of this.notes.values()) {
       for (const l of n.links) {
@@ -580,7 +608,13 @@ export class Vault extends EventEmitter {
     if (stat && opts.expectedMtime != null && Math.abs(stat.mtimeMs - opts.expectedMtime) > 1) {
       throw new NoteConflictError(rel, stat.mtimeMs);
     }
-    if (stat) await this.snapshot(rel, content);
+    const wasEncrypted = stat ? (this.notes.get(rel)?.encrypted ?? false) : false;
+    if (stat && isEncryptedContent(content) && !wasEncrypted) {
+      // Locking a note: earlier plain-text versions must not linger in the history folder.
+      await this.purgeHistory(rel);
+    } else if (stat) {
+      await this.snapshot(rel, content);
+    }
     const newStat = await this.atomicWrite(rel, content);
     const note = this.buildIndexed(rel, content, newStat);
     this.setIndexed(note);
@@ -608,6 +642,7 @@ export class Vault extends EventEmitter {
     const rel = this.resolve(nameOrPath) ?? normalizeNotePath(nameOrPath);
     const existing = this.notes.get(rel);
     if (existing) await this.refreshFile(rel, true);
+    if (this.notes.get(rel)?.encrypted) throw new EncryptedNoteError(rel);
     const current = this.notes.get(rel)?.content ?? '';
     const block = text.replace(/\s+$/, '');
 
@@ -654,6 +689,7 @@ export class Vault extends EventEmitter {
   ): Promise<NoteSummary & { replacements: number }> {
     const note = this.requireNote(nameOrPath);
     await this.refreshFile(note.path, true);
+    if (this.notes.get(note.path)!.encrypted) throw new EncryptedNoteError(note.path);
     const content = this.notes.get(note.path)!.content;
     if (!oldText) throw new EditMatchError('old_text must not be empty');
     const count = content.split(oldText).length - 1;
@@ -820,6 +856,17 @@ export class Vault extends EventEmitter {
    * Keep a copy of a note's previous content before it is overwritten.
    * At most one snapshot per note every 5 minutes, and the newest 50 are kept.
    */
+  private async purgeHistory(rel: string): Promise<void> {
+    this.lastSnapshot.delete(rel);
+    await fsp.rm(this.historyDir(rel), { recursive: true, force: true }).catch(() => {});
+  }
+
+  /** Is this a locked (encrypted) note? */
+  isEncrypted(nameOrPath: string): boolean {
+    const rel = this.resolve(nameOrPath);
+    return !!(rel && this.notes.get(rel)?.encrypted);
+  }
+
   private async snapshot(rel: string, nextContent: string): Promise<void> {
     const prev = this.notes.get(rel)?.content ?? (await fsp.readFile(this.abs(rel), 'utf8').catch(() => null));
     if (prev == null || prev === nextContent || prev.trim() === '') return;
@@ -881,7 +928,7 @@ export class Vault extends EventEmitter {
     const re = new RegExp(`(^|[^\\p{L}\\p{N}_\\[])(${names.map(esc).join('|')})(?=$|[^\\p{L}\\p{N}_\\]])`, 'iu');
     const out: Backlink[] = [];
     for (const n of this.notes.values()) {
-      if (n.path === target.path) continue;
+      if (n.path === target.path || n.encrypted) continue;
       if (n.links.some((l) => this.resolveLink(l, n.path) === target.path)) continue;
       const { body } = splitFrontmatter(n.content);
       const offset = n.content.slice(0, n.content.length - body.length).split('\n').length - 1;
@@ -927,7 +974,7 @@ export class Vault extends EventEmitter {
   /** Every Markdown task (`- [ ] ...`) in the vault. Status is the character between the brackets. */
   tasks(opts: { includeDone?: boolean } = {}): { path: string; name: string; line: number; status: string; text: string }[] {
     const out: { path: string; name: string; line: number; status: string; text: string }[] = [];
-    for (const n of [...this.notes.values()].sort((a, b) => a.path.localeCompare(b.path))) {
+    for (const n of [...this.notes.values()].filter((x) => !x.encrypted).sort((a, b) => a.path.localeCompare(b.path))) {
       const lines = n.content.split('\n');
       const masked = maskCode(n.content).split('\n');
       masked.forEach((line, i) => {
@@ -945,6 +992,7 @@ export class Vault extends EventEmitter {
   async setTask(nameOrPath: string, line: number, status?: string): Promise<NoteSummary> {
     const note = this.requireNote(nameOrPath);
     await this.refreshFile(note.path, true);
+    if (this.notes.get(note.path)!.encrypted) throw new EncryptedNoteError(note.path);
     const lines = this.notes.get(note.path)!.content.split('\n');
     const current = lines[line - 1];
     const m = current == null ? null : /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(current);

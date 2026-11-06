@@ -124,7 +124,10 @@ export function FileTree(props: Props) {
             }}
             title={n.path}
           >
-            <span className="tree-name">{n.name}</span>
+            <span className="tree-name">
+              {n.encrypted && <span className="lock-mark">🔒 </span>}
+              {n.name}
+            </span>
           </div>
         ))}
       </>

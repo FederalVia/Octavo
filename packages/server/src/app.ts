@@ -5,6 +5,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
   EditMatchError,
+  EncryptedNoteError,
   NoteConflictError,
   NoteExistsError,
   NoteNotFoundError,
@@ -357,6 +358,8 @@ export function createApp(opts: AppOptions): express.Express {
       res.status(409).json({ error: err.message, currentMtime: err.currentMtime });
     } else if (err instanceof NoteExistsError) {
       res.status(409).json({ error: err.message });
+    } else if (err instanceof EncryptedNoteError) {
+      res.status(423).json({ error: err.message, encrypted: true });
     } else if (err instanceof VaultPathError || err instanceof EditMatchError) {
       res.status(400).json({ error: err.message });
     } else {

@@ -15,6 +15,8 @@ export interface IndexedNote {
   mtime: number;
   ctime: number;
   size: number;
+  /** Locked note: content is an encrypted envelope only the user's browser can open. */
+  encrypted: boolean;
 }
 
 export interface NoteSummary {
@@ -25,6 +27,8 @@ export interface NoteSummary {
   mtime: number;
   ctime: number;
   size: number;
+  /** Present and true for locked (encrypted) notes. */
+  encrypted?: boolean;
 }
 
 export interface LinkRef {
@@ -71,6 +75,8 @@ export interface GraphNode {
   unresolved?: boolean;
   /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
   region?: string;
+  /** Locked (encrypted) note. */
+  encrypted?: boolean;
   /** Number of links in + out. */
   degree: number;
 }
