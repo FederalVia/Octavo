@@ -69,6 +69,8 @@ export interface GraphNode {
   tags: string[];
   /** True for link targets that don't exist as files yet. */
   unresolved?: boolean;
+  /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
+  region?: string;
   /** Number of links in + out. */
   degree: number;
 }

@@ -12,6 +12,18 @@ import {
   type SimulationLinkDatum,
 } from 'd3-force';
 import type { GraphData, GraphNode } from '../api';
+import { REGIONS, classify, type RegionKey } from '../regions';
+
+/** Flat graph palette: grey for general knowledge, distinct colours for the other regions. */
+export const NETWORK_COLORS: Record<RegionKey, [number, number, number]> = {
+  parietal: [160, 164, 170],
+  frontal: [242, 196, 92],
+  temporal: [92, 207, 156],
+  occipital: [84, 156, 250],
+  cerebellum: [222, 96, 96],
+  stem: [235, 235, 240],
+};
+const rgba = (c: [number, number, number], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
 /** Imperative controls the app uses to make the brain react to events. */
 export interface BrainHandle {
@@ -22,7 +34,7 @@ export interface BrainHandle {
 }
 
 interface Node extends GraphNode, SimulationNodeDatum {
-  hue: number;
+  rgb: [number, number, number];
   phase: number;
   born: number;
   firedAt: number;
@@ -57,32 +69,20 @@ interface Props {
   onReady?: (handle: BrainHandle) => void;
 }
 
-// Brain-region palette: each top-level folder gets its own hue.
-const PALETTE = [265, 190, 320, 150, 30, 220, 0, 95, 285, 170];
-function hueFor(id: string, folders: string[]): number {
-  const top = id.includes('/') ? id.slice(0, id.indexOf('/')) : '';
-  if (!top) return PALETTE[0];
-  const i = folders.indexOf(top);
-  if (i >= 0) return PALETTE[(i + 1) % PALETTE.length];
-  let h = 0;
-  for (const ch of top) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
-
 /** Pre-rendered glow sprites, one per hue, for cheap drawing. */
 const glowCache = new Map<string, HTMLCanvasElement>();
-function glowSprite(hue: number, light: number): HTMLCanvasElement {
-  const key = `${hue}:${light}`;
+function glowSprite(rgb: [number, number, number]): HTMLCanvasElement {
+  const key = rgb.join(',');
   let c = glowCache.get(key);
   if (c) return c;
   c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, `hsla(${hue}, 100%, ${light}%, 0.9)`);
-  grad.addColorStop(0.18, `hsla(${hue}, 100%, ${light - 10}%, 0.45)`);
-  grad.addColorStop(0.45, `hsla(${hue}, 100%, ${light - 20}%, 0.12)`);
-  grad.addColorStop(1, `hsla(${hue}, 100%, ${light - 25}%, 0)`);
+  grad.addColorStop(0, `rgba(${key}, 0.8)`);
+  grad.addColorStop(0.25, `rgba(${key}, 0.3)`);
+  grad.addColorStop(0.6, `rgba(${key}, 0.06)`);
+  grad.addColorStop(1, `rgba(${key}, 0)`);
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
   glowCache.set(key, c);
@@ -102,10 +102,10 @@ export function BrainView(props: Props) {
   const propsRef = useRef(props);
   propsRef.current = props;
 
-  const folders = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of props.data?.nodes ?? []) if (!n.unresolved && n.id.includes('/')) set.add(n.id.slice(0, n.id.indexOf('/')));
-    return [...set].sort();
+  const regionCounts = useMemo(() => {
+    const c = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
+    for (const n of props.data?.nodes ?? []) if (!n.unresolved) c[classify(n)]++;
+    return c;
   }, [props.data]);
 
   const s = useRef({
@@ -129,7 +129,6 @@ export function BrainView(props: Props) {
     width: 0,
     height: 0,
     fitted: false,
-    stars: [] as { x: number; y: number; r: number; a: number }[],
   });
   s.current.filter = filter.trim().toLowerCase();
 
@@ -139,17 +138,18 @@ export function BrainView(props: Props) {
     const data = props.data;
     if (!data) return;
     const now = performance.now();
+    const colorOf = (n: GraphNode): [number, number, number] => (n.unresolved ? [110, 112, 118] : NETWORK_COLORS[classify(n)]);
     const old = st.byId;
     const first = old.size === 0;
     const nodes: Node[] = data.nodes.map((n) => {
       const prev = old.get(n.id);
-      if (prev) return Object.assign(prev, n, { hue: hueFor(n.id, folders) });
+      if (prev) return Object.assign(prev, n, { rgb: colorOf(n) });
       // New thoughts appear near a connected node if there is one.
       const anchorLink = data.links.find((l) => l.source === n.id || l.target === n.id);
       const anchor = anchorLink ? old.get(anchorLink.source === n.id ? anchorLink.target : anchorLink.source) : undefined;
       return {
         ...n,
-        hue: hueFor(n.id, folders),
+        rgb: colorOf(n),
         phase: Math.random() * Math.PI * 2,
         born: first ? now - 10000 : now,
         firedAt: -1e9,
@@ -165,7 +165,7 @@ export function BrainView(props: Props) {
       if (!a || !b) continue;
       let h = 0;
       for (const ch of linkId(l)) h = (h * 33 + ch.charCodeAt(0)) >>> 0;
-      links.push({ source: a, target: b, bend: ((h % 1000) / 1000 - 0.5) * 0.35 });
+      links.push({ source: a, target: b, bend: ((h % 1000) / 1000 - 0.5) * 0.08 });
     }
     st.neighbors = new Map();
     st.adjacency = new Map();
@@ -211,7 +211,7 @@ export function BrainView(props: Props) {
       st.sim.alpha(0.05).restart();
       st.fitted = false;
     }
-  }, [props.data, folders]);
+  }, [props.data]);
 
   // ------------------------------------------------------------ render loop + interaction
   useEffect(() => {
@@ -232,18 +232,12 @@ export function BrainView(props: Props) {
       canvas.style.width = `${r.width}px`;
       canvas.style.height = `${r.height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      st.stars = Array.from({ length: Math.round((r.width * r.height) / 9000) }, () => ({
-        x: Math.random() * r.width,
-        y: Math.random() * r.height,
-        r: Math.random() * 1.1 + 0.2,
-        a: Math.random() * 0.5 + 0.1,
-      }));
     };
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     resize();
 
-    const nodeRadius = (n: Node) => (n.unresolved ? 2.5 : 3.5 + Math.sqrt(n.degree) * 1.8);
+    const nodeRadius = (n: Node) => (n.unresolved ? 2 : 2.6 + Math.sqrt(n.degree) * 1.15);
     const centerX = () => (st.width * (1 - propsRef.current.rightInset)) / 2;
     const centerY = () => st.height / 2;
 
@@ -329,98 +323,69 @@ export function BrainView(props: Props) {
       const matches = (n: Node) => !filterOn || n.name.toLowerCase().includes(st.filter);
       const t = now / 1000;
 
-      // Background: deep space + vignette + faint stars.
+      // Background: flat charcoal.
       ctx.globalCompositeOperation = 'source-over';
-      ctx.fillStyle = '#05040b';
-      ctx.fillRect(0, 0, W, H);
-      const bg = ctx.createRadialGradient(centerX(), H / 2, 0, centerX(), H / 2, Math.max(W, H) * 0.7);
-      bg.addColorStop(0, 'rgba(60, 30, 110, 0.35)');
-      bg.addColorStop(0.5, 'rgba(20, 12, 45, 0.25)');
-      bg.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, W, H);
-      for (const star of st.stars) {
-        ctx.globalAlpha = star.a * (0.7 + 0.3 * Math.sin(t * 0.8 + star.x));
-        ctx.fillStyle = '#c8c0ff';
-        ctx.fillRect(star.x, star.y, star.r, star.r);
-      }
       ctx.globalAlpha = 1;
+      ctx.fillStyle = '#1e1e21';
+      ctx.fillRect(0, 0, W, H);
 
       ctx.save();
       ctx.translate(centerX() + cam.x, centerY() + cam.y);
       ctx.scale(cam.k, cam.k);
 
-      // Gentle "breathing" displacement, purely visual.
-      const wob = (n: Node) => ({
-        x: n.x! + Math.sin(t * 0.6 + n.phase) * 1.6,
-        y: n.y! + Math.cos(t * 0.5 + n.phase * 1.3) * 1.6,
-      });
       const pos = new Map<Node, { x: number; y: number }>();
-      for (const n of st.nodes) if (n.x != null) pos.set(n, wob(n));
+      for (const n of st.nodes) if (n.x != null) pos.set(n, { x: n.x, y: n.y! });
 
-      const curve = (l: Link) => {
-        const a = pos.get(l.source)!;
-        const b = pos.get(l.target)!;
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        return { a, b, cx: mx - dy * l.bend, cy: my + dx * l.bend };
-      };
-
-      // Synapses (links).
-      ctx.globalCompositeOperation = 'lighter';
+      // Links: thin grey lines, batched.
       ctx.lineCap = 'round';
+      ctx.lineWidth = 0.7 / cam.k;
+      ctx.strokeStyle = focus || filterOn ? 'rgba(170,170,180,0.08)' : 'rgba(170,170,180,0.22)';
+      ctx.beginPath();
       for (const l of st.links) {
-        if (!pos.has(l.source) || !pos.has(l.target)) continue;
-        const hot = focus && (l.source === focus || l.target === focus);
-        const dim = (focus && !hot) || (filterOn && !(matches(l.source) && matches(l.target)));
-        const { a, b, cx, cy } = curve(l);
-        const hue = hot ? focus!.hue : (l.source.hue + l.target.hue) / 2;
-        ctx.strokeStyle = `hsla(${hue}, 90%, ${hot ? 70 : 60}%, ${hot ? 0.55 : dim ? 0.05 : 0.14})`;
-        ctx.lineWidth = (hot ? 1.6 : 0.9) / Math.sqrt(cam.k);
-        ctx.beginPath();
+        const a = pos.get(l.source);
+        const b = pos.get(l.target);
+        if (!a || !b) continue;
         ctx.moveTo(a.x, a.y);
-        ctx.quadraticCurveTo(cx, cy, b.x, b.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+      if (focus) {
+        ctx.strokeStyle = rgba(focus.rgb, 0.85);
+        ctx.lineWidth = 1.4 / cam.k;
+        ctx.beginPath();
+        for (const l of st.adjacency.get(focus.id) ?? []) {
+          const a = pos.get(l.source);
+          const b = pos.get(l.target);
+          if (!a || !b) continue;
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
         ctx.stroke();
       }
 
-      // Ambient firing: random signals; focused node's connections fire more.
-      if (st.links.length) {
-        const ambient = Math.min(6, st.links.length * 0.02) * dt * 10;
-        if (Math.random() < ambient) {
-          const l = st.links[(Math.random() * st.links.length) | 0];
-          spawnPulse(l, Math.random() < 0.5, false);
-        }
-        if (focus && Math.random() < dt * 4) {
-          const ls = st.adjacency.get(focus.id);
-          if (ls?.length) {
-            const l = ls[(Math.random() * ls.length) | 0];
-            spawnPulse(l, l.source === focus, true);
-          }
+      // Signals only from the focused note (subtle) and fired notes.
+      if (focus && Math.random() < dt * 3) {
+        const ls = st.adjacency.get(focus.id);
+        if (ls?.length) {
+          const l = ls[(Math.random() * ls.length) | 0];
+          spawnPulse(l, l.source === focus, true);
         }
       }
-
-      // Signals travelling along synapses.
       for (let i = st.pulses.length - 1; i >= 0; i--) {
         const p = st.pulses[i];
         p.t += dt * p.speed;
         if (p.t >= 1) {
           st.pulses.splice(i, 1);
-          // A strong signal arriving makes the target flicker.
-          const arrived = p.forward ? p.link.target : p.link.source;
-          if (p.strong) arrived.firedAt = Math.max(arrived.firedAt, now - 500);
           continue;
         }
-        if (!pos.has(p.link.source) || !pos.has(p.link.target)) continue;
-        const { a, b, cx, cy } = curve(p.link);
+        const a = pos.get(p.link.source);
+        const b = pos.get(p.link.target);
+        if (!a || !b) continue;
         const u = p.forward ? p.t : 1 - p.t;
-        const x = (1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * cx + u * u * b.x;
-        const y = (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * cy + u * u * b.y;
         const from = p.forward ? p.link.source : p.link.target;
-        const size = (p.strong ? 14 : 9) / Math.sqrt(cam.k);
-        ctx.globalAlpha = Math.sin(p.t * Math.PI) * (p.strong ? 1 : 0.7);
-        ctx.drawImage(glowSprite(from.hue, 80), x - size / 2, y - size / 2, size, size);
+        const size = 10 / Math.sqrt(cam.k);
+        ctx.globalAlpha = Math.sin(p.t * Math.PI);
+        ctx.drawImage(glowSprite(from.rgb), a.x + (b.x - a.x) * u - size / 2, a.y + (b.y - a.y) * u - size / 2, size, size);
       }
       ctx.globalAlpha = 1;
 
@@ -434,14 +399,14 @@ export function BrainView(props: Props) {
         }
         const p = pos.get(r.node);
         if (!p) continue;
-        ctx.strokeStyle = `hsla(${r.node.hue}, 100%, 75%, ${(1 - age / 1.6) * 0.8})`;
-        ctx.lineWidth = 2 / cam.k;
+        ctx.strokeStyle = rgba(r.node.rgb, (1 - age / 1.6) * 0.8);
+        ctx.lineWidth = 1.5 / cam.k;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, nodeRadius(r.node) + age * 60, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, nodeRadius(r.node) + age * 50, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Neurons (nodes).
+      // Nodes: solid dots.
       for (const n of st.nodes) {
         const p = pos.get(n);
         if (!p) continue;
@@ -449,69 +414,52 @@ export function BrainView(props: Props) {
         const isHover = n === st.hover;
         const near = focusSet?.has(n.id);
         let alpha = 1;
-        if (focus && !isSel && !isHover && !near && n !== focus) alpha = 0.28;
-        if (filterOn) alpha = matches(n) ? 1 : 0.12;
+        if (focus && !isSel && !isHover && !near && n !== focus) alpha = 0.25;
+        if (filterOn) alpha = matches(n) ? 1 : 0.1;
         // rAF timestamps can trail performance.now() slightly, so clamp ages at 0.
         const age = Math.max(0, (now - n.born) / 1000);
         const grow = age < 1.2 ? Math.max(0.05, 1 - Math.pow(1 - age / 1.2, 3)) : 1;
         const fireAge = Math.max(0, (now - n.firedAt) / 1000);
         const fireBoost = fireAge < 1.5 ? 1 - fireAge / 1.5 : 0;
-        const breath = 1 + Math.sin(t * 1.4 + n.phase) * 0.08;
-        const r = nodeRadius(n) * grow * breath * (1 + fireBoost * 0.6) * (isSel || isHover ? 1.25 : 1);
-        const light = n.unresolved ? 55 : isSel ? 82 : 72;
-
-        ctx.globalAlpha = alpha * (n.unresolved ? 0.45 : 1);
-        const glow = r * (5 + fireBoost * 5 + (isSel ? 3 : 0));
-        ctx.drawImage(glowSprite(n.hue, light), p.x - glow, p.y - glow, glow * 2, glow * 2);
-
-        // Bright core.
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = alpha;
-        if (n.unresolved) {
-          ctx.strokeStyle = `hsla(${n.hue}, 60%, 70%, 0.6)`;
-          ctx.lineWidth = 1 / cam.k;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = `hsl(${n.hue}, 100%, ${88 + fireBoost * 10}%)`;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r * 0.55, 0, Math.PI * 2);
-          ctx.fill();
+        const r = nodeRadius(n) * grow * (1 + fireBoost * 0.5) * (isSel || isHover ? 1.3 : 1);
+        if (fireBoost > 0 || isSel) {
+          const glow = r * 4;
+          ctx.globalAlpha = alpha * Math.max(fireBoost, isSel ? 0.7 : 0);
+          ctx.drawImage(glowSprite(n.rgb), p.x - glow, p.y - glow, glow * 2, glow * 2);
         }
+        ctx.globalAlpha = alpha * (n.unresolved ? 0.6 : 1);
+        ctx.fillStyle = isHover || fireBoost > 0.5 ? '#ffffff' : rgba(n.rgb, 1);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.fill();
         if (isSel) {
-          ctx.strokeStyle = `hsla(${n.hue}, 100%, 85%, ${0.6 + Math.sin(t * 3) * 0.3})`;
+          ctx.strokeStyle = 'rgba(255,255,255,0.85)';
           ctx.lineWidth = 1.5 / cam.k;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, r + 5 / cam.k + Math.sin(t * 3) * 1.5 / cam.k, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, r + 3.5 / cam.k, 0, Math.PI * 2);
           ctx.stroke();
         }
-        ctx.globalCompositeOperation = 'lighter';
       }
       ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = 'source-over';
 
       // Labels.
       const fontPx = 12;
       ctx.font = `500 ${fontPx / cam.k}px system-ui, -apple-system, "Segoe UI", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      const showAll = cam.k > 1.3 || (st.nodes.length <= 40 && cam.k > 0.75);
+      const showAll = cam.k > 1.6 || (st.nodes.length <= 40 && cam.k > 0.75);
       for (const n of st.nodes) {
         const p = pos.get(n);
         if (!p) continue;
         const important = n === focus || n.id === selectedId || focusSet?.has(n.id) || (filterOn && matches(n));
-        const big = n.degree >= 6 && cam.k > 0.6;
-        if (!important && !showAll && !big) continue;
-        let alpha = important ? 1 : showAll ? Math.min(1, (cam.k - 0.5) * 1.5) : 0.75;
+        if (!important && !showAll) continue;
+        let alpha = important ? 1 : Math.min(1, (cam.k - (st.nodes.length <= 40 ? 0.5 : 1.4)) * 1.5);
         if (focus && !important) alpha *= 0.35;
         if (filterOn && !matches(n)) alpha = 0;
         if (alpha <= 0.02) continue;
-        const y = p.y + nodeRadius(n) * 1.4 + 3 / cam.k;
+        const y = p.y + nodeRadius(n) + 3 / cam.k;
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = 'rgba(5,4,11,0.75)';
-        ctx.fillText(n.name, p.x + 0.8 / cam.k, y + 0.8 / cam.k);
-        ctx.fillStyle = n.unresolved ? 'rgba(200,190,230,0.6)' : `hsl(${n.hue}, 60%, ${important ? 92 : 80}%)`;
+        ctx.fillStyle = important ? '#f2f2f4' : 'rgba(205,205,212,0.85)';
         ctx.fillText(n.name, p.x, y);
       }
       ctx.globalAlpha = 1;
@@ -677,20 +625,14 @@ export function BrainView(props: Props) {
           <div className="brain-stats">
             <b>{stats.notes}</b> thoughts · <b>{stats.links}</b> connections
           </div>
-          {folders.length > 0 && (
-            <div className="brain-legend">
-              {folders.map((f) => (
-                <span key={f} className="legend-item">
-                  <i style={{ background: `hsl(${hueFor(f + '/x', folders)}, 100%, 70%)` }} />
-                  {f}
-                </span>
-              ))}
-              <span className="legend-item">
-                <i style={{ background: `hsl(${PALETTE[0]}, 100%, 70%)` }} />
-                (root)
+          <div className="brain-legend">
+            {REGIONS.filter((r) => regionCounts[r.key] > 0).map((r) => (
+              <span key={r.key} className="legend-item" title={r.subtitle}>
+                <i style={{ background: rgba(NETWORK_COLORS[r.key], 1) }} />
+                {r.label}
               </span>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
       {stats && stats.notes === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
