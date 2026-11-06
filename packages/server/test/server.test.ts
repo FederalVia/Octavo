@@ -164,7 +164,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -215,6 +215,16 @@ describe('HTTP server', () => {
       assert.match(r.text, /in the trash/);
       r = await call('restore_note', { path: 'Two' });
       assert.match(r.text, /Restored Batch\/Two\.md/);
+      // Properties and queries.
+      r = await call('set_property', { path: 'Batch/One', key: 'status', value: 'active' });
+      assert.match(r.text, /Set status: "active" on Batch\/One\.md/);
+      await call('set_property', { path: 'Batch/Two', key: 'status', value: 'done' });
+      r = await call('query_notes', { query: 'TABLE status FROM "Batch" WHERE status != "done"' });
+      assert.match(r.text, /\| Note \| status \|\n\| --- \| --- \|\n\| \[\[Batch\/One\]\] \| active \|\n\n1 note$/);
+      r = await call('query_notes', { query: 'TABLE x FROM' });
+      assert.match(r.text, /^Error: /);
+      r = await call('set_property', { path: 'Batch/One', key: 'status', value: null });
+      assert.match(r.text, /Removed "status"/);
       r = await call('get_vault_overview', {});
       assert.match(r.text, /Brain regions: /);
       assert.match(r.text, /\(Octavo \d+\.\d+\.\d+\)/);

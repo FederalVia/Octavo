@@ -227,6 +227,8 @@ export function createRenderer(ctxBase: RenderContext) {
       code({ text, lang }) {
         // URI-encoded: the sanitizer strips attributes containing "-->", which Mermaid arrows use.
         if (lang === 'tasks') return `<div class="tasks-query" data-q="${encodeURIComponent(text)}"><div class="muted small">Loading tasks…</div></div>`;
+        if (lang === 'query' || lang === 'dataview' || lang === 'base')
+          return `<div class="notes-query" data-q="${encodeURIComponent(text)}" data-lang="${lang === 'base' ? 'base' : 'dql'}"><div class="muted small">Loading…</div></div>`;
         if (lang === 'mermaid') return `<div class="mermaid-block" data-src="${encodeURIComponent(text)}"><pre>${escapeHtml(text)}</pre></div>`;
         return false; // default rendering
       },

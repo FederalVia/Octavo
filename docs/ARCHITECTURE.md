@@ -38,7 +38,7 @@ The `Vault` class (`src/vault.ts`) holds an in-memory index of every `.md` file 
 ## packages/server
 
 - `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, `src/cli.ts` is the `octavo` command, and `src/commands.ts` holds its note commands.
-- **MCP** (`src/mcp.ts`) registers 22 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `octavo mcp` connects one server to stdin/stdout and logs to stderr.
+- **MCP** (`src/mcp.ts`) registers 24 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `octavo mcp` connects one server to stdin/stdout and logs to stderr.
 - **Starter notes** (`src/seed.ts`) are written into an empty vault on first run.
 
 ### REST API

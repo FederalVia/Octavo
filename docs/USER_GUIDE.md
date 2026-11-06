@@ -17,6 +17,7 @@
 - [Insights: orphans, dead ends, unlinked mentions](#insights-orphans-dead-ends-unlinked-mentions)
 - [Version history](#version-history)
 - [Locked (encrypted) notes](#locked-encrypted-notes)
+- [Queries (Bases)](#queries-bases)
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -136,6 +137,7 @@ Octavo reads standard Markdown plus these extras. The demo vault's **Formatting 
 | `Some paragraph ^my-id` | A block id, so `[[Note#^my-id]]` can link to or embed exactly that paragraph |
 | ```` ```js ```` code block | Code, highlighted in the editor and in reading view |
 | ```` ```tasks ```` code block | A live list of tasks from the whole vault (see [Tasks](#tasks)) |
+| ```` ```query ```` code block | A live table, list or cards of notes (see [Queries](#queries-bases)) |
 | `\| a \| b \|` tables | Tables (`/table` inserts one). In reading view, right-click a cell (or tap it, then ⋯) to sort, insert, move, align or delete rows and columns |
 
 ## Images and attachments
@@ -295,6 +297,39 @@ You can lock any note with a password: diary entries, health records, anything p
 - **Locking deletes the note's earlier plain-text versions from Octavo's version history.** Copies elsewhere, such as git history, backups or sync services, may still hold the old plain text.
 - **The file is still a `.md` file** with a short "this note is locked" message, so Obsidian and git show a placeholder. Don't edit that file by hand, or it can no longer be unlocked.
 - On your phone over home Wi-Fi (`http://`), the same encryption runs in JavaScript. Unlocking takes a moment longer but is just as secure, and the password never leaves the phone.
+
+## Queries (Bases)
+
+A ` ```query ` code block turns notes into a live table, list or cards, like a small database. It updates as notes change.
+
+````markdown
+```query
+TABLE status, due AS "Due" FROM "Projects" WHERE status != "done" SORT due ASC
+```
+````
+
+- **TABLE**, **LIST** or **CARDS**, then the columns (`AS "Label"` renames one; `TABLE WITHOUT ID` hides the note name).
+- **FROM** picks notes: `"Folder"` (subfolders included), `#tag`, `[[Note]]` (notes that link to it; `[[]]` is this note). Combine with `and`, `or`, `not`.
+- **WHERE** filters: `status = "active"`, `priority >= 2`, `due < date(today)`, `contains(file.tags, "idea")`, `!reviewed`. Join with `and` / `or`.
+- **SORT** `field ASC|DESC`, **GROUP BY** `field`, **LIMIT** `n`.
+- **Fields** are a note's properties and inline `key:: value` lines, plus `file.name`, `file.folder`, `file.path`, `file.tags`, `file.mtime` (modified), `file.ctime` (created), `file.size`, `file.links` and `file.inlinks` (link counts). `this.field` reads the note the query is in.
+- **Functions:** `contains`, `startswith`, `endswith`, `length`, `lower`, `upper`, `default(a, b)`, `number`, `round`, `date(today)` (also `yesterday`, `tomorrow`, `now`, a date), `dur(7 days)`, `days(due)` (days from today, negative when past).
+
+Click a column header to sort (click again to reverse, a third time to go back to the query's order). **Click a cell** in a property column to edit that property; press Enter to save or Esc to cancel. Lists are edited as `a, b, c`.
+
+` ```dataview ` blocks work the same way, so most Dataview `TABLE` and `LIST` queries from Obsidian work as they are. A ` ```base ` block takes the same settings as YAML:
+
+````markdown
+```base
+from: '#person'
+where: role
+columns: [role, file.mtime AS "Updated"]
+sort: file.mtime desc
+view: cards
+```
+````
+
+From a terminal: `octavo query 'LIST FROM #project WHERE due < date(today)'` and `octavo set "Octavo" status done`. Claude can use the same queries with `query_notes`, and set properties with `set_property`.
 
 ## Daily journal
 

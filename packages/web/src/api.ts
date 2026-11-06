@@ -10,6 +10,18 @@ export interface NoteSummary {
   encrypted?: boolean;
 }
 
+export type QueryValue = string | number | boolean | null | QueryValue[];
+
+export interface QueryResult {
+  view: 'table' | 'list' | 'cards';
+  showName: boolean;
+  columns: { label: string; property?: string }[];
+  rows: { path: string; name: string; values: QueryValue[]; group?: QueryValue }[];
+  total: number;
+  grouped: boolean;
+  errors: string[];
+}
+
 export interface LinkRef {
   target: string;
   path: string | null;
@@ -207,6 +219,9 @@ export const api = {
   mentions: (p: string) => request<{ mentions: Backlink[] }>('GET', `api/mentions/${encodePath(p)}`),
   insights: () => request<Insights>('GET', 'api/insights'),
   tasks: (done = false) => request<{ tasks: Task[] }>('GET', `api/tasks${done ? '?done=1' : ''}`),
+  query: (q: string, opts: { lang?: 'base' | 'dql'; from?: string } = {}) =>
+    request<QueryResult>('GET', `api/query?q=${encodeURIComponent(q)}${opts.lang ? `&lang=${opts.lang}` : ''}${opts.from ? `&from=${encodeURIComponent(opts.from)}` : ''}`),
+  setProperty: (p: string, key: string, value: unknown) => request<NoteSummary>('POST', 'api/property', { path: p, key, value }),
   setTask: (p: string, line: number, status?: string) => request<NoteSummary>('POST', 'api/tasks', { path: p, line, status }),
   getConfig: <T,>(name: string) => request<{ value: T | null }>('GET', `api/config/${name}`),
   setConfig: (name: string, value: unknown) => request<{ ok: boolean }>('PUT', `api/config/${name}`, { value }),

@@ -8,6 +8,7 @@ import { parseTaskQuery, runTaskQuery } from '../taskQuery';
 import { dueLabel } from './Panels';
 import { editTableInContent, type TableAction } from '../tables';
 import { Properties } from './Properties';
+import { renderNoteQuery } from './noteQuery';
 
 interface TableMenu {
   x: number;
@@ -168,6 +169,12 @@ async function hydrate(
   }
 
   await highlightCode(root, isStale);
+
+  for (const el of root.querySelectorAll<HTMLElement>('.notes-query:not([data-done])')) {
+    if (isStale()) return;
+    el.dataset.done = '1';
+    await renderNoteQuery(el, fromPath);
+  }
 
   for (const el of root.querySelectorAll<HTMLElement>('.tasks-query:not([data-done])')) {
     if (isStale()) return;

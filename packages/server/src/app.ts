@@ -317,6 +317,26 @@ export function createApp(opts: AppOptions): express.Express {
     res.json(vault.insights());
   });
 
+  api.get('/query', (req, res) => {
+    const q = typeof req.query.q === 'string' ? req.query.q : '';
+    const lang = req.query.lang === 'base' || req.query.lang === 'dql' ? req.query.lang : undefined;
+    const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+    res.json(vault.query(q, { lang, thisPath: from }));
+  });
+
+  api.post('/property', async (req, res, next) => {
+    try {
+      const { path: p, key, value } = req.body ?? {};
+      if (typeof p !== 'string' || typeof key !== 'string' || !key.trim()) {
+        res.status(400).json({ error: 'Body must include "path" and "key"' });
+        return;
+      }
+      res.json(await vault.setProperty(p, key.trim(), value ?? null));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   api.get('/tasks', (req, res) => {
     res.json({ tasks: vault.tasks({ includeDone: req.query.done === '1' }) });
   });

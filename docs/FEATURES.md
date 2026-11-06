@@ -69,7 +69,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Templates with `{{date}}`, `{{time}}`, `{{title}}` | ✅ | Notes in `Templates/`; also `{{date:YYYY-MM-DD}}` formats. `/template` or the command palette |
 | Unique note creator (timestamp titles) | ✅ | Command palette → *New unique note* |
 | Properties / metadata | ✅ | Shown as a properties table and used for tags, aliases and region. **Edit** (or *Edit properties* in the command palette) gives typed fields: text, list, number, checkbox, date |
-| Bases (database views) | 🚧 | |
+| Bases (database views) | ✅ | ` ```query `, ` ```dataview ` or ` ```base ` blocks: live tables, lists or cards of notes filtered by folder, tag, links and properties. Click a column to sort, click a cell to edit that property. See [Queries](USER_GUIDE.md#queries-bases) |
 | Canvas | 🚧 | |
 | Workspaces (saved layouts) | ✅ | Command palette → *Save workspace* / *Open workspace*: open tabs, split view, sidebar and brain view, saved with the vault |
 | Note composer (split / merge) | ✅ | *Extract selection to new note*, and *Merge this note into another…* (links are updated; Claude can use `merge_notes`) |
@@ -110,8 +110,9 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: daily note, add a task | ✅ | `octavo daily [text]`, `octavo task <text>` |
 | CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
-| CLI: query Bases, install plugins/themes, terminal UI | 🚧 | |
-| AI access | ✅ | MCP server with 22 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
+| CLI: query notes, set properties | ✅ | `octavo query 'TABLE status FROM #project'`, `octavo set <note> <key> [value]` |
+| CLI: install plugins/themes, terminal UI | 🚧 | |
+| AI access | ✅ | MCP server with 24 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)
@@ -139,4 +140,5 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Templater | 🟡 | Templates with variables: `{{title}}`, `{{folder}}`, `{{date:dddd D MMMM}}`, offsets like `{{date+7d}}`, `{{weekday}}`, `{{week}}`… No scripting, by design: notes can be written by Claude and other tools, so templates never run code |
 | Periodic Notes | ✅ | Daily, weekly (`Journal/Weekly/2026-W45`) and monthly (`Journal/Monthly/2026-11`) notes, from the command palette, `octavo weekly`/`monthly`, or Claude's `open_periodic_note` |
 | Calendar | ✅ | Calendar tab in the sidebar: journal days, weekly/monthly notes and due tasks; click a day to open or create its note |
-| Dataview, Excalidraw, Outliner | 🚧 | |
+| Dataview | ✅ | The common Dataview syntax: `TABLE`/`LIST` with `FROM`, `WHERE`, `SORT`, `GROUP BY`, `LIMIT`, inline `key:: value` fields and `file.*` fields. Not JavaScript queries |
+| Excalidraw, Outliner | 🚧 | |
