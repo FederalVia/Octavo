@@ -459,7 +459,8 @@ export class Vault extends EventEmitter {
     const nodes = new Map<string, GraphNode>();
     const links = new Map<string, { source: string; target: string }>();
     for (const n of this.notes.values()) {
-      nodes.set(n.path, { id: n.path, name: n.name, tags: n.tags, degree: 0 });
+      const region = typeof n.frontmatter.region === 'string' ? n.frontmatter.region : undefined;
+      nodes.set(n.path, { id: n.path, name: n.name, tags: n.tags, degree: 0, ...(region ? { region } : {}) });
     }
     for (const n of this.notes.values()) {
       for (const l of n.links) {

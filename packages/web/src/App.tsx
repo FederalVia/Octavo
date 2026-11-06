@@ -4,6 +4,7 @@ import { Editor, type EditorHandle } from './components/Editor';
 import { Preview } from './components/Preview';
 import { FileTree } from './components/FileTree';
 import { BrainView, type BrainHandle } from './components/BrainView';
+import { AtlasView } from './components/AtlasView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { SearchPanel, TagsPanel } from './components/Panels';
@@ -82,6 +83,8 @@ export function App() {
   useEffect(() => store('ultron.mode', mode), [mode]);
   useEffect(() => void (!narrow() && store('ultron.left', showLeft)), [showLeft]);
   useEffect(() => store('ultron.panelWide', panelWide), [panelWide]);
+  const [viewMode, setViewMode] = useState<'atlas' | 'network'>(() => load('ultron.view', 'atlas'));
+  useEffect(() => store('ultron.view', viewMode), [viewMode]);
   const brain = useRef<BrainHandle | null>(null);
   useEffect(() => store('ultron.lineNumbers', lineNumbers), [lineNumbers]);
   const [isNarrow, setIsNarrow] = useState(narrow);
@@ -648,25 +651,39 @@ export function App() {
 
   return (
     <div className="app brain-app">
-      <BrainView
-        data={graph}
-        selected={panelOpen ? loadedPath.current : null}
-        rightInset={panelOpen ? panelFraction : 0}
-        onSelect={(p) => navigate(p)}
-        onSelectUnresolved={(name) => createNote(name)}
-        onBackground={closePanel}
-        onReady={(h) => (brain.current = h)}
-      />
+      {(() => {
+        const viewProps = {
+          data: graph,
+          selected: panelOpen ? loadedPath.current : null,
+          rightInset: panelOpen ? panelFraction : 0,
+          onSelect: (p: string) => navigate(p),
+          onSelectUnresolved: (name: string) => createNote(name),
+          onBackground: closePanel,
+          onReady: (h: BrainHandle) => (brain.current = h),
+        };
+        return viewMode === 'atlas' ? <AtlasView key="atlas" {...viewProps} /> : <BrainView key="network" {...viewProps} />;
+      })()}
 
       {/* Floating toolbar */}
       <div className="toolbar">
         <button className="tb-btn" title={`Files, search & tags (${mod}+\\)`} onClick={() => setShowLeft((x) => !x)}>
           ☰
         </button>
+        <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
         <div className="tb-brand" title={vaultName}>
-          <img src="./favicon.svg" alt="" width={18} height={18} />
-          <span>{vaultName || 'Ultron Mind'}</span>
+          <span>{(vaultName || 'Ultron Mind').toUpperCase()}</span>
+          <span className="faint"> — </span>
+          {viewMode === 'atlas' ? 'ATLAS' : 'NETWORK'}
+          <span className="faint"> — </span>
+          {graph ? graph.nodes.filter((n) => !n.unresolved).length : 0} notes
         </div>
+        <button
+          className="tb-btn"
+          title={viewMode === 'atlas' ? 'Switch to flat network view' : 'Switch to 3D atlas view'}
+          onClick={() => setViewMode((v) => (v === 'atlas' ? 'network' : 'atlas'))}
+        >
+          {viewMode === 'atlas' ? '⋰' : '◎'}
+        </button>
         <button className="tb-btn" title={`Find or create a note (${mod}+O)`} onClick={() => setSwitcher(true)}>
           ⌕
         </button>
@@ -676,10 +693,9 @@ export function App() {
         <button className="tb-btn" title={`Today’s journal (${mod}+D)`} onClick={openDaily}>
           ◷
         </button>
-        <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
       </div>
 
-      {ready && !panelOpen && notes.length > 0 && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag to move</div>}
+      {ready && !panelOpen && notes.length > 0 && viewMode === 'network' && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag to move</div>}
 
       {/* Drawer: files / search / tags */}
       {showLeft && (

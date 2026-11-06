@@ -6,8 +6,23 @@ Notes are plain Markdown files in a folder (a *vault*), linked with `[[wikilinks
 
 ## Features
 
-- **The brain**: the home screen is a living neural network. Every note is a glowing point, every link is a connection, and signals pulse along the links. Top-level folders get their own colours, like regions of a brain. Click a point to fly to it and open its note in a slide-in panel. Scroll or pinch to zoom, drag to pan, and drag points to rearrange them. Use "Search the mind…" to highlight matches (Enter opens the best one).
-- **Watch Claude think**: when Claude (or anything else) writes to a note, that point fires and sends signals to its neighbours. New notes grow into the network as they're created.
+- **Two brain views** (switch with the toolbar button):
+  - **Atlas** (default): a 3D brain you can rotate (drag to rotate, Shift+drag to pan, scroll or pinch to zoom). Notes are grouped into anatomical regions, the busiest notes get a lens glint, and connections between regions form glowing bundles. It has a region legend with counts, Labels/All/None and per-region toggles, search, an orientation marker, and a slow auto-rotate when idle.
+  - **Network**: a flat force-directed graph in the classic dark style, with grey links and dots coloured by region.
+  - In either view, click a point to fly to it and open its note in a slide-in panel.
+- **Brain regions**: notes are placed by folder name, tag, or a frontmatter `region:` value:
+
+  | Region | Holds | Matched by folders/tags like |
+  | --- | --- | --- |
+  | Frontal | Projects, decisions | `Projects`, `Decisions`, `Goals`, `Tasks`, `Areas` |
+  | Parietal | Concepts, tools (default) | `Concepts`, `Tools`, `Ideas`, `Notes`, `Wiki` |
+  | Temporal | People, orgs | `People`, `Contacts`, `Orgs`, `Companies`, `Teams` |
+  | Occipital | Sources, reading | `Sources`, `Repos`, `Reading`, `Books`, `Articles`, `Resources` |
+  | Cerebellum | Daily notes, logs | `Journal`, `Daily`, `Logs`, `Meetings`, `Incidents`, date-named notes |
+  | Brain stem | Index, routing | root `Home`/`Index`/`README`, `Inbox`, `MOCs` |
+
+  Numbered folders like `00 - Current Projects` work too.
+- **Watch Claude think**: when Claude (or anything else) writes to a note, that point fires and sends signals along its connections.
 - **Editor**: Markdown with syntax highlighting, `[[` link and `#` tag autocomplete, and Ctrl/Cmd-click to follow links. Toggle between reading and editing.
 - **Links**: wikilinks (`[[Note]]`, `[[Note#Heading]]`, `[[Note|label]]`), relative `[text](note.md)` links, frontmatter `aliases`, and links to notes that don't exist yet. These show as faint hollow points, and clicking one creates the note.
 - **Connections** for each note (linked from, links to, tags) appear under the note.

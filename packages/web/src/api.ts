@@ -52,6 +52,8 @@ export interface GraphNode {
   name: string;
   tags: string[];
   unresolved?: boolean;
+  /** Frontmatter `region` override (frontal, parietal, temporal, occipital, cerebellum, stem). */
+  region?: string;
   degree: number;
 }
 

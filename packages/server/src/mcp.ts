@@ -9,6 +9,7 @@ How to use it:
 - Save things worth remembering: decisions, facts about the user and their preferences, project context, and lessons learned. Update an existing note with append_to_note or edit_note rather than creating near-duplicates; search first.
 - Keep one topic per note, give it a clear name, and connect notes with [[wikilinks]] (e.g. [[Project Ultron]]) and #tags. Linking to a note that doesn't exist yet is fine: it marks a topic to fill in later.
 - Use log_to_journal for a short running log of what happened in each session.
+- The app draws the vault as a brain, and folders decide the region: Projects/ and Decisions/ (frontal), Concepts/ and Tools/ (parietal), People/ and Orgs/ (temporal), Sources/, Repos/ and Reading/ (occipital), Journal/ and Logs/ (cerebellum), Home/Index notes (brain stem). Put new notes in the matching folder, or set \`region:\` in frontmatter.
 - Note paths are relative to the vault, e.g. "Projects/Ultron.md". The .md extension is optional, and a bare note name like "Ultron" resolves the same way a wikilink would.
 - Never store secrets such as passwords or API keys in the vault.`;
 
