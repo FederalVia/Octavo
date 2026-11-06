@@ -48,3 +48,24 @@ test('canvases are listed, read, written with conflict checks', async () => {
     vault.close();
   }
 });
+
+test('drawings (.excalidraw) are listed, read and written; links to them are attachments, not notes', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-drawing-'));
+  await fs.writeFile(path.join(dir, 'Note.md'), 'See ![[Sketch.excalidraw]] and [[Board.canvas]].\n');
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    const w = await vault.writeDrawing('Sketch', null, { createOnly: true });
+    assert.equal(w.path, 'Sketch.excalidraw');
+    assert.deepEqual(vault.drawings(), ['Sketch.excalidraw']);
+    const r = await vault.readDrawing('Sketch');
+    assert.equal(r.data.type, 'excalidraw');
+    assert.deepEqual(r.data.elements, []);
+    await vault.writeDrawing('Sketch', { ...r.data, elements: [{ id: 'x', type: 'rectangle' }] }, { expectedMtime: r.mtime });
+    assert.equal((await vault.readDrawing('Sketch.excalidraw')).data.elements.length, 1);
+    await assert.rejects(vault.writeDrawing('Sketch', { type: 'other', elements: [] }), /isn’t an Excalidraw drawing/);
+    // Neither link counts as a missing note.
+    assert.deepEqual(vault.unresolvedLinks(), []);
+  } finally {
+    vault.close();
+  }
+});

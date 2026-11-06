@@ -1,4 +1,4 @@
-import { CanvasFormatError, normalizeCanvasPath, serializeCanvas, validateCanvas, type CanvasData } from './canvas.js';
+import { CanvasFormatError, emptyDrawing, normalizeCanvasPath, normalizeDrawingPath, serializeCanvas, validateCanvas, validateDrawing, type CanvasData, type DrawingData } from './canvas.js';
 import { parseNoteQuery, runQuery, type QueryResult } from './query.js';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -1137,6 +1137,49 @@ export class Vault extends EventEmitter {
     }
     await fsp.mkdir(path.dirname(abs), { recursive: true });
     await fsp.writeFile(abs, serializeCanvas(clean));
+    if (!stat) {
+      this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
+      this.emitEvent({ type: 'rescan' });
+    }
+    return { path: rel, mtime: (await fsp.stat(abs)).mtimeMs };
+  }
+
+  // ---------------------------------------------------------------- drawings
+
+  /** Every .excalidraw drawing in the vault. */
+  drawings(): string[] {
+    const out: string[] = [];
+    for (const set of this.attachments.values()) for (const rel of set) if (rel.toLowerCase().endsWith('.excalidraw')) out.push(rel);
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+
+  async readDrawing(input: string): Promise<{ path: string; data: DrawingData; mtime: number }> {
+    const rel = this.resolveAttachment(/\.excalidraw$/i.test(input) ? input : `${input}.excalidraw`) ?? normalizeDrawingPath(input);
+    let text: string;
+    let mtime: number;
+    try {
+      [text, mtime] = await Promise.all([fsp.readFile(this.abs(rel), 'utf8'), fsp.stat(this.abs(rel)).then((s) => s.mtimeMs)]);
+    } catch {
+      throw new NoteNotFoundError(rel);
+    }
+    let parsed: unknown;
+    try {
+      parsed = text.trim() ? JSON.parse(text) : emptyDrawing();
+    } catch {
+      throw new CanvasFormatError(`${rel} isn't valid JSON`);
+    }
+    return { path: rel, data: validateDrawing(parsed), mtime };
+  }
+
+  async writeDrawing(input: string, data: unknown, opts: { expectedMtime?: number; createOnly?: boolean } = {}): Promise<{ path: string; mtime: number }> {
+    const rel = normalizeDrawingPath(input);
+    const clean = validateDrawing(data ?? emptyDrawing());
+    const abs = this.abs(rel);
+    const stat = await fsp.stat(abs).catch(() => null);
+    if (stat && opts.createOnly) throw new NoteExistsError(rel);
+    if (stat && opts.expectedMtime !== undefined && Math.abs(stat.mtimeMs - opts.expectedMtime) > 1) throw new NoteConflictError(rel, stat.mtimeMs);
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, JSON.stringify(clean, null, 2) + '\n');
     if (!stat) {
       this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
       this.emitEvent({ type: 'rescan' });

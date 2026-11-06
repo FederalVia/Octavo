@@ -141,6 +141,9 @@ export function createRenderer(ctxBase: RenderContext) {
         renderer(token) {
           const t = token as Tokens.Generic & { target: string; heading?: string; alias?: string; embed: boolean };
           if (t.embed && isMediaRef(t.target)) return mediaHtml(t.target, t.alias, ctx.fromPath);
+          if (t.embed && /\.excalidraw$/i.test(t.target)) {
+            return `<div class="embed-drawing" data-target="${escapeHtml(t.target)}" role="button" tabindex="0" title="Open drawing"><div class="embed-loading">✎ ${escapeHtml(t.target.split('/').pop()!.replace(/\.excalidraw$/i, ''))}</div></div>`;
+          }
           if (t.embed && t.target) {
             return `<div class="embed-note" data-target="${escapeHtml(t.target)}" data-heading="${escapeHtml(t.heading ?? '')}"><div class="embed-loading">${escapeHtml(t.target)}</div></div>`;
           }
@@ -290,7 +293,7 @@ export function createRenderer(ctxBase: RenderContext) {
       const { body } = splitFrontmatter(content);
       const html = marked.parse(preprocess(body), { async: false }) as string;
       return DOMPurify.sanitize(html, {
-        ADD_ATTR: ['target', 'open', 'data-task', 'data-status', 'data-src', 'aria-checked', 'tabindex', 'controls', 'preload', 'loading'],
+        ADD_ATTR: ['target', 'open', 'role', 'data-task', 'data-status', 'data-src', 'aria-checked', 'tabindex', 'controls', 'preload', 'loading'],
         ADD_TAGS: ['iframe', 'audio', 'video', 'details', 'summary'],
       });
     } finally {

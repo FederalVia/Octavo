@@ -59,6 +59,48 @@ export async function renderTaskQuery(el: HTMLElement) {
   el.innerHTML = errors + body;
 }
 
+
+/** Draw an embedded `.excalidraw` drawing as a picture. */
+async function renderDrawingEmbed(el: HTMLElement) {
+  const target = el.dataset.target ?? '';
+  const name = target.split('/').pop()!.replace(/\.excalidraw$/i, '');
+  try {
+    const d = (await api.drawing(target)).data as { elements?: unknown[]; appState?: Record<string, unknown>; files?: Record<string, unknown> };
+    const live = (d.elements ?? []).filter((x) => !(x as { isDeleted?: boolean }).isDeleted);
+    if (!live.length) {
+      el.innerHTML = `<div class="embed-loading">✎ ${escapeText(name)}: empty drawing, click to draw</div>`;
+      return;
+    }
+    const lib = await import('@excalidraw/excalidraw');
+    const svg = await lib.exportToSvg({
+      elements: live as never,
+      appState: { ...(d.appState ?? {}), exportBackground: false, exportWithDarkMode: document.documentElement.dataset.theme !== 'light' } as never,
+      files: (d.files ?? {}) as never,
+      exportPadding: 12,
+    });
+    svg.removeAttribute('width');
+    svg.removeAttribute('height');
+    const cap = document.createElement('div');
+    cap.className = 'embed-drawing-caption';
+    cap.textContent = `✎ ${name}`;
+    el.replaceChildren(svg, cap);
+  } catch {
+    el.innerHTML = `<div class="embed-missing">“${escapeText(target)}” doesn’t exist yet</div>`;
+  }
+}
+
+// A drawing was saved: redraw its pictures in open notes.
+if (typeof window !== 'undefined') {
+  window.addEventListener('octavo:drawing-saved', (e) => {
+    const p = ((e as CustomEvent<string>).detail ?? '').toLowerCase();
+    const file = p.split('/').pop();
+    for (const el of document.querySelectorAll<HTMLElement>('.embed-drawing')) {
+      const t = (el.dataset.target ?? '').toLowerCase();
+      if (t === p || t === file || t.endsWith('/' + file)) void renderDrawingEmbed(el);
+    }
+  });
+}
+
 /** Syntax-highlight fenced code blocks with the same language parsers the editor uses. */
 async function highlightCode(root: HTMLElement, isStale: () => boolean) {
   const blocks = [...root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]:not([data-hl])')];
@@ -171,6 +213,13 @@ async function hydrate(
   }
 
   await highlightCode(root, isStale);
+
+  // ![[sketch.excalidraw]]: a picture of the drawing (the drawing library loads only when a note has one).
+  for (const el of root.querySelectorAll<HTMLElement>('.embed-drawing:not([data-done])')) {
+    if (isStale()) return;
+    el.dataset.done = '1';
+    await renderDrawingEmbed(el);
+  }
 
   for (const el of root.querySelectorAll<HTMLElement>('.notes-query:not([data-done])')) {
     if (isStale()) return;
@@ -459,6 +508,12 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
           if (box && onToggleTask) {
             e.preventDefault();
             onToggleTask(Number(box.dataset.task));
+            return;
+          }
+          const sketch = target.closest('.embed-drawing') as HTMLElement | null;
+          if (sketch) {
+            e.preventDefault();
+            onOpenLink(sketch.dataset.target ?? '');
             return;
           }
           const web = target.closest('a[href^="http://"], a[href^="https://"]') as HTMLAnchorElement | null;

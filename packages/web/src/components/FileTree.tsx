@@ -8,13 +8,13 @@ interface Folder {
   notes: Item[];
 }
 
-type Item = NoteSummary & { canvas?: boolean };
+type Item = NoteSummary & { board?: 'canvas' | 'drawing' };
 
 interface Props {
   notes: NoteSummary[];
-  /** .canvas files, shown in their folders. */
-  canvases?: string[];
-  onOpenCanvas?: (path: string) => void;
+  /** Canvases and drawings, shown in their folders. */
+  boards?: { path: string; kind: 'canvas' | 'drawing' }[];
+  onOpenBoard?: (path: string, kind: 'canvas' | 'drawing') => void;
   currentPath: string | null;
   onOpen: (path: string, opts?: { newTab?: boolean }) => void;
   onSplit?: (path: string) => void;
@@ -56,9 +56,9 @@ export function FileTree(props: Props) {
     () =>
       buildTree([
         ...props.notes,
-        ...(props.canvases ?? []).map((c): Item => ({ path: c, name: c.replace(/\.canvas$/i, '').split('/').pop()!, folder: c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : '', tags: [], mtime: 0, ctime: 0, size: 0, canvas: true })),
+        ...(props.boards ?? []).map((b): Item => ({ path: b.path, name: b.path.replace(/\.(canvas|excalidraw)$/i, '').split('/').pop()!, folder: b.path.includes('/') ? b.path.slice(0, b.path.lastIndexOf('/')) : '', tags: [], mtime: 0, ctime: 0, size: 0, board: b.kind })),
       ]),
-    [props.notes, props.canvases],
+    [props.notes, props.boards],
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; isFolder: boolean } | null>(null);
@@ -121,16 +121,16 @@ export function FileTree(props: Props) {
           );
         })}
         {notes.map((n) =>
-          n.canvas ? (
+          n.board ? (
             <div
               key={n.path}
               className="tree-item note canvas"
               style={{ paddingLeft: 22 + depth * 14 }}
-              onClick={() => props.onOpenCanvas?.(n.path)}
+              onClick={() => props.onOpenBoard?.(n.path, n.board!)}
               title={n.path}
             >
               <span className="tree-name">
-                <span className="canvas-mark" aria-hidden="true">◫ </span>
+                <span className="canvas-mark" aria-hidden="true">{n.board === 'canvas' ? '◫ ' : '✎ '}</span>
                 {n.name}
               </span>
             </div>

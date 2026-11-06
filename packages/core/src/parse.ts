@@ -123,7 +123,7 @@ export function isEncryptedContent(content: string): boolean {
 
 /** A reference to a non-Markdown file (image, PDF, audio…) rather than a note. */
 export function isAttachmentRef(target: string): boolean {
-  return /\.[a-z0-9]{2,5}$/i.test(target) && !/\.md$/i.test(target);
+  return (/\.[a-z0-9]{2,5}$/i.test(target) || /\.(canvas|excalidraw)$/i.test(target)) && !/\.md$/i.test(target);
 }
 
 export function parseNote(content: string): ParsedNote {

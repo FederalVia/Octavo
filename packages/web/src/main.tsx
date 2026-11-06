@@ -8,6 +8,9 @@ import { applyAppearance } from './appearance';
 
 applyAppearance();
 
+// Drawings load Excalidraw's fonts from the copy shipped with the app (see vite.config.ts).
+(window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = new URL('excalidraw-assets/', location.href.split('#')[0]).href;
+
 // Phone links carry the access key (?token=…): remember it.
 const urlToken = new URLSearchParams(location.search).get('token');
 if (urlToken) setToken(urlToken);

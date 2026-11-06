@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { api, ApiError, OfflineError, onOffline, setToken, subscribe, type Backlink, type Bookmark, type GraphData, type NoteDetail, type NoteSummary, type VaultEvent } from './api';
 import { Editor, type EditorHandle } from './components/Editor';
 import { Preview } from './components/Preview';
@@ -15,6 +15,7 @@ import { PublishDialog } from './components/PublishDialog';
 import { AudioRecorder } from './components/AudioRecorder';
 import { WebViewer } from './components/WebViewer';
 import { CanvasView } from './components/CanvasView';
+const DrawingView = lazy(() => import('./components/DrawingView'));
 import { comboFromEvent, formatCombo, type Hotkeys } from './hotkeys';
 import { applySnippets } from './appearance';
 import { Presentation } from './components/Presentation';
@@ -219,10 +220,13 @@ export function App() {
     return names;
   }, [notes]);
   const namesKey = useMemo(() => notes.map((n) => n.path).join('|'), [notes]);
+  // Canvases and drawings, by lower-case path and file name (filled in once they're listed).
+  const boardNames = useRef<Set<string>>(new Set());
   const exists = useCallback(
     (target: string) => {
       const t = target.toLowerCase().replace(/\.md$/, '');
       if (nameIndex.has(t)) return true;
+      if (/\.(canvas|excalidraw)$/.test(t)) return boardNames.current.has(t) || boardNames.current.has(t.split('/').pop()!);
       // Path-suffix match ("Folder/Note").
       if (t.includes('/')) for (const n of nameIndex) if (n.endsWith('/' + t)) return true;
       return false;
@@ -527,8 +531,25 @@ export function App() {
   const [canvasPath, setCanvasPath] = useState<string | null>(() => load<string | null>('octavo.canvas', null));
   useEffect(() => store('octavo.canvas', canvasPath), [canvasPath]);
   const [canvases, setCanvases] = useState<string[]>([]);
+  const [drawings, setDrawings] = useState<string[]>([]);
+  const [drawingPath, setDrawingPath] = useState<string | null>(null);
+  const [drawingPick, setDrawingPick] = useState(false);
+  useEffect(() => {
+    boardNames.current = new Set([...canvases, ...drawings].flatMap((p) => [p.toLowerCase(), p.split('/').pop()!.toLowerCase()]));
+  }, [canvases, drawings]);
   const [canvasPick, setCanvasPick] = useState<null | 'open' | ((p: string | null) => void)>(null);
-  const refreshCanvases = useCallback(() => api.canvases().then((r) => setCanvases(r.canvases)).catch(() => {}), []);
+  const refreshCanvases = useCallback(
+    () =>
+      Promise.all([
+        api.canvases().then((r) => setCanvases(r.canvases)),
+        api.drawings().then((r) => setDrawings(r.drawings)),
+      ])
+        .then(() => {
+          /* names updated below */
+        })
+        .catch(() => {}),
+    [],
+  );
   useEffect(() => {
     void refreshCanvases();
     const on = () => void refreshCanvases();
@@ -790,6 +811,12 @@ export function App() {
         return;
       }
       try {
+        if (/\.excalidraw$/i.test(target)) {
+          const want = target.toLowerCase();
+          const hit = drawings.find((c) => c.toLowerCase() === want || c.toLowerCase().endsWith('/' + want.split('/').pop()));
+          setDrawingPath(hit ?? target);
+          return;
+        }
         if (/\.canvas$/i.test(target)) {
           const want = target.toLowerCase();
           const hit = canvases.find((c) => c.toLowerCase() === want || c.toLowerCase().endsWith('/' + want.split('/').pop()));
@@ -814,7 +841,7 @@ export function App() {
         handleError(err);
       }
     },
-    [navigate, createNote, handleError, confirm, refreshNotes, canvases],
+    [navigate, createNote, handleError, confirm, refreshNotes, canvases, drawings],
   );
 
   const renameNote = useCallback(
@@ -1359,6 +1386,28 @@ export function App() {
         }
       },
     },
+    {
+      id: 'drawing-new',
+      label: route.view === 'note' && detail && !detail.encrypted ? 'New drawing (and embed it in this note)…' : 'New drawing…',
+      keywords: 'draw sketch excalidraw diagram whiteboard',
+      run: async () => {
+        const name = await prompt('New drawing', route.view === 'note' && detail ? `${detail.name} sketch` : '', { placeholder: 'Drawing name', confirmLabel: 'Create' });
+        if (!name) return;
+        try {
+          const r = await api.saveDrawing(name, null, undefined, true);
+          await refreshCanvases();
+          if (route.view === 'note' && detail && !detail.encrypted) {
+            const embed = `![[${r.path.split('/').pop()}]]`;
+            if (mode === 'edit' && editor.current) editor.current.insert(`${embed}\n`);
+            else onChange(`${draftRef.current.replace(/\s*$/, '')}\n\n${embed}\n`);
+          }
+          setDrawingPath(r.path);
+        } catch (err) {
+          handleError(err);
+        }
+      },
+    },
+    ...(drawings.length ? [{ id: 'drawing-open', label: 'Open drawing…', keywords: 'draw sketch excalidraw', run: () => setDrawingPick(true) }] : []),
     ...(canvases.length ? [{ id: 'canvas-open', label: 'Open canvas…', keywords: 'canvas board whiteboard', run: () => setCanvasPick('open') }] : []),
     { id: 'publish-site', label: 'Publish as a website…', keywords: 'publish site static html export web share host pages', run: () => setPublishOpen(true) },
     ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
@@ -1566,8 +1615,8 @@ export function App() {
           </div>
           {leftTab === 'files' && (
             <FileTree
-              canvases={canvases}
-              onOpenCanvas={(p) => setCanvasPath(p)}
+              boards={[...canvases.map((p) => ({ path: p, kind: 'canvas' as const })), ...drawings.map((p) => ({ path: p, kind: 'drawing' as const }))]}
+              onOpenBoard={(p, kind) => (kind === 'canvas' ? setCanvasPath(p) : setDrawingPath(p))}
               notes={notes}
               currentPath={currentPath}
               onOpen={(p, o) => navigate(p, { newTab: o?.newTab })}
@@ -2038,6 +2087,19 @@ export function App() {
           onOpenUrl={(u) => setWebUrl(u)}
           pickNote={() => new Promise((resolve) => setCanvasPick(() => resolve))}
           prompt={prompt}
+        />
+      )}
+      {drawingPath && (
+        <Suspense fallback={<div className="drawing-view"><div className="dv-error muted">Loading the drawing tools…</div></div>}>
+          <DrawingView key={drawingPath} path={drawingPath} dark={document.documentElement.dataset.theme !== 'light'} onClose={() => setDrawingPath(null)} />
+        </Suspense>
+      )}
+      {drawingPick && (
+        <QuickSwitcher
+          notes={drawings.map((c) => ({ path: c, name: c.replace(/\.excalidraw$/i, '').split('/').pop()!, folder: c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : '', tags: [], mtime: 0, ctime: 0, size: 0 }))}
+          placeholder="Open drawing…"
+          onOpen={(p) => setDrawingPath(p)}
+          onClose={() => setDrawingPick(false)}
         />
       )}
       {canvasPick && (
