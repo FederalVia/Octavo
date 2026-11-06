@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { startServer, seedIfEmpty } from '@ultron/server';
+import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from '@ultron/server';
 
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 4321;
@@ -32,22 +32,34 @@ function saveConfig(cfg) {
 
 // ------------------------------------------------------------------ server
 
+const phoneEnabled = () => !!loadConfig().phoneAccess;
+const phoneToken = () => loadOrCreateToken(path.join(app.getPath('userData'), 'phone-token'));
+
+/** URL the desktop window loads (carries the access key when phone access is on). */
+function windowUrl() {
+  if (!server) return '';
+  return phoneEnabled() ? `${server.url}/?token=${encodeURIComponent(phoneToken())}` : server.url;
+}
+
 async function openVault(vaultPath) {
   if (server) {
     await server.close();
     server = null;
   }
+  const phone = phoneEnabled();
   server = await startServer({
     vaultPath,
     port: DEFAULT_PORT,
-    host: '127.0.0.1',
+    // Phone access: listen on the Wi-Fi network, protected by an access key.
+    host: phone ? '0.0.0.0' : '127.0.0.1',
+    token: phone ? phoneToken() : undefined,
     fallbackToRandomPort: true,
   });
   await seedIfEmpty(server.vault);
   saveConfig({ ...loadConfig(), vaultPath });
   if (win) {
     win.setTitle(`${path.basename(vaultPath)} · Ultron Mind`);
-    await win.loadURL(server.url);
+    await win.loadURL(windowUrl());
   }
   buildMenu();
 }
@@ -106,6 +118,61 @@ async function showConnectClaude() {
   if (response === 1) clipboard.writeText(desktopJson);
 }
 
+// ------------------------------------------------------------------ phone access
+
+async function showPhoneQr() {
+  if (!server) return;
+  const addrs = lanAddresses();
+  if (!addrs.length) {
+    await dialog.showMessageBox(win ?? undefined, {
+      type: 'warning',
+      message: 'No Wi-Fi network found',
+      detail: 'Connect this computer to the same Wi-Fi as your phone, then try again.',
+    });
+    return;
+  }
+  const url = phoneUrl(addrs[0], server.port, phoneToken());
+  const qr = await qrDataUrl(url);
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const html = `<!doctype html><meta charset="utf-8"><title>Open on your phone</title>
+<style>body{margin:0;background:#141317;color:#e9e5dc;font:14px -apple-system,system-ui,sans-serif;text-align:center;padding:24px}
+img{border-radius:12px;width:280px;height:280px}code{display:block;word-break:break-all;background:#1f1e24;padding:8px;border-radius:6px;margin:12px 0;font-size:12px}
+p{color:#a8a397;line-height:1.5;margin:8px 0}b{color:#e9e5dc}</style>
+<h2>Scan with your phone</h2><img src="${qr}" alt="QR code"><code>${esc(url)}</code>
+<p>Your phone must be on the <b>same Wi-Fi</b>. Then use <b>Share → Add to Home Screen</b> (iPhone) or <b>⋮ → Install app</b> (Android) to keep it as an app.</p>
+<p>Treat this code like a password: anyone who scans it can read and edit your notes.</p>`;
+  const qrWin = new BrowserWindow({
+    width: 420,
+    height: 640,
+    parent: win ?? undefined,
+    title: 'Open on your phone',
+    backgroundColor: '#141317',
+    autoHideMenuBar: true,
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false },
+  });
+  await qrWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+async function togglePhoneAccess() {
+  const enable = !phoneEnabled();
+  if (enable) {
+    const { response } = await dialog.showMessageBox(win ?? undefined, {
+      type: 'question',
+      message: 'Open Ultron to your phone?',
+      detail:
+        'Ultron will be reachable from devices on this Wi-Fi network, protected by a secret access key in the QR code. Only turn this on for networks you trust, such as your home Wi-Fi.',
+      buttons: ['Turn On', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+  }
+  saveConfig({ ...loadConfig(), phoneAccess: enable });
+  if (server) await openVault(server.vault.root);
+  buildMenu();
+  if (enable) await showPhoneQr();
+}
+
 // ------------------------------------------------------------------ window & menu
 
 function sendShortcut(key, shift = false) {
@@ -136,6 +203,9 @@ function buildMenu() {
         },
         { type: 'separator' },
         { label: 'Connect Claude…', click: showConnectClaude },
+        { type: 'separator' },
+        { label: 'Use on Your Phone', type: 'checkbox', checked: phoneEnabled(), click: togglePhoneAccess },
+        { label: 'Show Phone QR Code…', enabled: phoneEnabled() && !!server, click: showPhoneQr },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -227,7 +297,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('activate', async () => {
     if (!win) {
       createWindow();
-      if (server) await win.loadURL(server.url);
+      if (server) await win.loadURL(windowUrl());
     }
   });
 

@@ -8,6 +8,7 @@ import { startServer } from './index.js';
 import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
 import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
+import { lanAddresses, loadOrCreateToken, phoneUrl, qrTerminal } from './phone.js';
 
 const HELP = `Ultron Mind: a Markdown knowledge base that doubles as Claude's memory.
 
@@ -20,6 +21,7 @@ Options:
   --port <n>        HTTP port for "serve" (env PORT, default 4321)
   --host <addr>     Bind address for "serve" (env ULTRON_HOST, default 127.0.0.1)
   --token <secret>  Require this bearer token for /api and /mcp (env ULTRON_TOKEN)
+  --phone           Open to your Wi-Fi with an access key and show a QR code to scan
   --read-only       Expose only read tools over MCP
   --daily <folder>  Folder for daily journal notes (default Journal)
   --no-seed         Don't create starter notes in an empty vault
@@ -41,6 +43,7 @@ async function main() {
       host: { type: 'string' },
       token: { type: 'string' },
       'read-only': { type: 'boolean', default: false },
+      phone: { type: 'boolean', default: false },
       daily: { type: 'string' },
       'no-seed': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -90,9 +93,12 @@ async function main() {
     return;
   }
 
-  const host = values.host ?? process.env.ULTRON_HOST ?? '127.0.0.1';
+  const phone = values.phone;
+  const host = values.host ?? process.env.ULTRON_HOST ?? (phone ? '0.0.0.0' : '127.0.0.1');
   const port = Number(values.port ?? process.env.PORT ?? 4321);
-  if (!token && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
+  // Phone mode always uses an access key: a saved one (so the phone's bookmark keeps working) unless --token is given.
+  const serveToken = token ?? (phone ? loadOrCreateToken() : undefined);
+  if (!serveToken && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
     console.warn(
       `[ultron] WARNING: listening on ${host} without --token. Anyone who can reach this port can read and edit your vault.`,
     );
@@ -101,14 +107,32 @@ async function main() {
     vaultPath,
     port,
     host,
-    token,
+    token: serveToken,
     dailyFolder: values.daily,
     mcpReadOnly: values['read-only'],
   });
   if (seed) await seedIfEmpty(running.vault);
   console.log(`[ultron] Vault:  ${vaultPath} (${running.vault.list().length} notes)`);
   console.log(`[ultron] App:    ${running.url}`);
-  console.log(`[ultron] MCP:    ${running.url}/mcp${token ? ' (bearer token required)' : ''}`);
+  console.log(`[ultron] MCP:    ${running.url}/mcp${serveToken ? ' (bearer token required)' : ''}`);
+  if (phone && serveToken) {
+    const addrs = lanAddresses();
+    if (!addrs.length) {
+      console.log('[ultron] Phone:  no Wi-Fi/LAN address found. Is this computer connected to a network?');
+    } else {
+      const url = phoneUrl(addrs[0], running.port, serveToken);
+      console.log('');
+      console.log('  Scan with your phone (it must be on the same Wi-Fi):');
+      console.log('');
+      console.log(await qrTerminal(url));
+      console.log(`  ${url}`);
+      for (const other of addrs.slice(1, 3)) console.log(`  or ${phoneUrl(other, running.port, serveToken)}`);
+      console.log('');
+      console.log('  Treat this link like a password. Anyone with it can read and edit your notes.');
+      console.log('  Away from home? See docs/INSTALL.md → "Use it on your phone".');
+      console.log('');
+    }
+  }
   const shutdown = async () => {
     await running.close();
     process.exit(0);

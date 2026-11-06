@@ -105,3 +105,6 @@ A Vite + React single-page app, served by the server (or by Vite in development,
   - The core marks such notes `encrypted` and indexes nothing from them. Plain-text operations (`append`, `edit`, `setTask`) refuse them with `EncryptedNoteError` (HTTP 423), and MCP read/write/delete return a "locked" message instead.
   - The first encrypted write purges the note's plain-text history.
   - Keys live only in the tab's memory and are cleared on reload, on "Lock", or after 15 minutes idle.
+  - Web Crypto is used when available. On insecure origins (a phone on plain-http Wi-Fi) the same algorithms run via `@noble/hashes` and `@noble/ciphers`, producing identical envelopes.
+  - Locking is opt-in per vault (`.ultron/settings.json` → `locking`).
+- **Phone access** (`ultron serve --phone`, or the desktop app's **Use on Your Phone**): listens on `0.0.0.0` with a saved random access key, stored outside the vault, and prints a QR code linking to `http://<lan-ip>:<port>/?token=…`. The web app stores the key and removes it from the URL.

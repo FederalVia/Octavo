@@ -80,7 +80,7 @@ Restart Claude Desktop. The tools appear under the tools (🔨) menu.
 
 For Claude running somewhere else (another machine, or a cloud session), run Ultron Mind as a server it can reach:
 
-1. Self-host it with a token and HTTPS. See [Docker](INSTALL.md#5-self-hosting-with-docker) and [HTTPS](INSTALL.md#6-accessing-it-from-other-devices-https).
+1. Self-host it with a token and HTTPS. See [Docker](INSTALL.md#5-self-hosting-with-docker) and [HTTPS](INSTALL.md#6-use-it-on-your-phone-and-other-devices).
 2. Point the client at `https://your-host/mcp` and send `Authorization: Bearer <token>`.
 3. If a client can't send custom headers, it can put the token in the URL instead: `https://your-host/mcp?token=<token>`. Only do this over HTTPS, because URLs can end up in logs.
 

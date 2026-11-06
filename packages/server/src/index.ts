@@ -7,6 +7,7 @@ import { createApp } from './app.js';
 export { createApp } from './app.js';
 export { createMcpServer, SERVER_INSTRUCTIONS } from './mcp.js';
 export { seedIfEmpty } from './seed.js';
+export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js';
 
 export interface StartOptions {
   vaultPath: string;
