@@ -39,6 +39,8 @@ interface ANode {
 interface ALink {
   a: ANode;
   b: ANode;
+  /** Touches a note linked to a large share of the vault (an index or home): drawn faintly. */
+  mega?: boolean;
 }
 
 interface Layout {
@@ -53,6 +55,8 @@ interface Layout {
   dust: [number, number, number][];
   /** Links in a stable random order: drawing the first N gives an even sample when there are too many. */
   sampled: ALink[];
+  /** Degree of about the 8th busiest note: in crowded vaults only notes at least this busy keep a halo. */
+  topHubCut: number;
 }
 
 /** Deterministic pseudo-random numbers from a string, so layouts are stable across reloads. */
@@ -78,13 +82,46 @@ function buildLayout(data: GraphData): Layout {
 
   const counts = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
   for (const n of data.nodes) if (!n.unresolved) counts[regionOf.get(n.id) ?? 'parietal']++;
-  const radiusFor = (count: number) => 34 + Math.cbrt(Math.max(1, count)) * 26;
-  const maxR = Math.max(...REGIONS.map((r) => radiusFor(counts[r.key])));
-  const R = Math.max(240, maxR * 1.55);
+  const total = Math.max(1, Object.values(counts).reduce((a, b) => a + b, 0));
+  // The brain grows slowly with the vault; notes fill its whole volume (see territory below).
+  const R = Math.max(240, 150 + Math.cbrt(total) * 26);
+  // Territories: each region owns the part of the brain nearest its anatomical centre, weighted by how
+  // many notes it holds (a power diagram), so a region with 800 notes spreads over far more of the
+  // brain than one with 50, and regions border each other instead of piling up in the middle.
+  const present = REGIONS.filter((r) => counts[r.key] > 0);
+  const weight = Object.fromEntries(
+    REGIONS.map((r) => [r.key, counts[r.key] ? Math.cbrt(counts[r.key] / total) * R * 0.9 : -Infinity]),
+  ) as Record<RegionKey, number>;
+  const owner = (x: number, y: number, z: number): RegionKey => {
+    let best: RegionKey = present[0]?.key ?? 'parietal';
+    let bestScore = -Infinity;
+    for (const r of present) {
+      const dx = x - r.center[0] * R * 0.75;
+      const dy = y - r.center[1] * R * 0.75;
+      const dz = z - r.center[2] * R * 0.75;
+      const score = weight[r.key] * weight[r.key] - (dx * dx + dy * dy + dz * dz);
+      if (score > bestScore) (bestScore = score), (best = r.key);
+    }
+    return best;
+  };
+  /** A random point inside the brain-shaped ellipsoid (same shape as the dust silhouette). */
+  const inBrain = (rnd: () => number): [number, number, number] => {
+    for (let i = 0; i < 30; i++) {
+      const x = (rnd() * 2 - 1) * R * 0.92;
+      const y = (rnd() * 2 - 1) * R * 0.88;
+      const z = (rnd() * 2 - 1) * R * 1.22;
+      const e = (x / (R * 0.92)) ** 2 + (y / (R * 0.88)) ** 2 + (z / (R * 1.22)) ** 2;
+      if (e <= 1 && !(y < -R * 0.6 && Math.abs(x) > R * 0.45)) return [x, y, z];
+    }
+    return [0, 0, 0];
+  };
 
   // Hubs: the most connected notes get a lens glint.
   const degrees = data.nodes.filter((n) => !n.unresolved).map((n) => n.degree).sort((a, b) => b - a);
   const hubCut = Math.max(5, degrees[Math.floor(degrees.length * 0.04)] ?? 5);
+
+  // Index-like notes linked to a big share of the vault: their hundreds of lines would drown everything else.
+  const megaCut = Math.max(30, total * 0.05);
 
   const nodes: ANode[] = [];
   const byId = new Map<string, ANode>();
@@ -93,12 +130,16 @@ function buildLayout(data: GraphData): Layout {
     const region = regionOf.get(n.id) ?? 'parietal';
     const def = REGION_BY_KEY[region];
     const rnd = seeded(n.id);
-    const rr = radiusFor(counts[region]);
-    // Uniform point in a sphere, pulled toward the centre for well-connected notes.
-    const u = rnd() * 2 - 1;
-    const th = rnd() * Math.PI * 2;
-    const s = Math.sqrt(1 - u * u);
-    const dist = Math.cbrt(rnd()) * rr * (1 / (1 + n.degree * 0.025));
+    // A random spot in this region's territory (rejection sampling; falls back near its centre).
+    let pos: [number, number, number] | null = null;
+    for (let i = 0; i < 80 && !pos; i++) {
+      const p = inBrain(rnd);
+      if (owner(p[0], p[1], p[2]) === region) pos = p;
+    }
+    if (!pos) {
+      const j = () => (rnd() - 0.5) * R * 0.25;
+      pos = [def.center[0] * R * 0.75 + j(), def.center[1] * R * 0.75 + j(), def.center[2] * R * 0.75 + j()];
+    }
     const node: ANode = {
       id: n.id,
       name: n.name,
@@ -106,9 +147,9 @@ function buildLayout(data: GraphData): Layout {
       degree: n.degree,
       unresolved: false,
       hub: n.degree >= hubCut,
-      x: def.center[0] * R + s * Math.cos(th) * dist,
-      y: def.center[1] * R + u * dist * 0.85,
-      z: def.center[2] * R + s * Math.sin(th) * dist,
+      x: pos[0],
+      y: pos[1],
+      z: pos[2],
       phase: rnd() * Math.PI * 2,
       firedAt: -1e9,
       sx: 0,
@@ -150,7 +191,7 @@ function buildLayout(data: GraphData): Layout {
     const a = byId.get(l.source);
     const b = byId.get(l.target);
     if (!a || !b) continue;
-    const link = { a, b };
+    const link: ALink = { a, b, mega: a.degree >= megaCut || b.degree >= megaCut };
     links.push(link);
     for (const [x, y] of [
       [a, b],
@@ -182,7 +223,8 @@ function buildLayout(data: GraphData): Layout {
     const j = Math.floor(shuffle() * (i + 1));
     [sampled[i], sampled[j]] = [sampled[j], sampled[i]];
   }
-  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled };
+  const topHubCut = degrees[Math.min(degrees.length - 1, 7)] ?? Infinity;
+  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled, topHubCut };
 }
 
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
@@ -446,7 +488,7 @@ export function AtlasView(props: Props) {
       const autoRotate = !coarse && n <= 800;
       const wobble = quality === 2 && n <= 600;
       const R = L?.R ?? 300;
-      s.baseZoom = (Math.min(W * (1 - propsRef.current.rightInset), H) * 0.4) / (R * 1.25);
+      s.baseZoom = (Math.min(W * (1 - propsRef.current.rightInset), H) * 0.5) / (R * 1.25);
 
       // Camera easing and idle auto-rotation.
       if (s.camGoal) {
@@ -518,7 +560,8 @@ export function AtlasView(props: Props) {
       const k = s.dpr;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalCompositeOperation = quality === 2 ? 'lighter' : 'source-over';
+      // Additive glow only while lines are few enough not to add up to white.
+      ctx.globalCompositeOperation = quality === 2 && L.links.length <= 3000 ? 'lighter' : 'source-over';
       ctx.lineWidth = 1;
       const baseAlpha = (focusNode || filterOn ? 0.025 : 0.07) * (1.15 / Math.max(1, k * 0.6)) * (quality === 2 ? 1 : 0.9 * boostAlpha);
       const lineAlpha = Math.min(0.5, baseAlpha * Math.max(1, k * 0.6));
@@ -535,12 +578,24 @@ export function AtlasView(props: Props) {
         ctx.stroke();
       } else {
         // Lines take a tint of the region they start in: six batches, one per region colour.
+        // Lines to index-like hubs go in a much fainter pass (all of them show when the hub is hovered or open).
         for (const reg of REGIONS) {
           ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.55, lineAlpha * 1.35)})`;
           ctx.beginPath();
           for (let li = 0; li < drawn; li++) {
             const l = linkList[li];
-            if (l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
+            if (l.mega || l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
+            ctx.moveTo(l.a.sx * k, l.a.sy * k);
+            ctx.lineTo(l.b.sx * k, l.b.sy * k);
+          }
+          ctx.stroke();
+        }
+        if (!busy) {
+          ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.12, lineAlpha * 0.22)})`;
+          ctx.beginPath();
+          for (let li = 0; li < drawn; li++) {
+            const l = linkList[li];
+            if (!l.mega || !l.a.visible || !l.b.visible) continue;
             ctx.moveTo(l.a.sx * k, l.a.sy * k);
             ctx.lineTo(l.b.sx * k, l.b.sy * k);
           }
@@ -618,7 +673,7 @@ export function AtlasView(props: Props) {
       ) as Record<RegionKey, number>;
       // Small vaults get bigger, brighter points so the colours read; big ones stay fine-grained.
       const count = L.nodes.length;
-      const sizeBoost = count < 150 ? 1.6 : count < 600 ? 1.25 : count < 1500 ? 0.85 : 0.62;
+      const sizeBoost = (count < 150 ? 1.6 : count < 600 ? 1.25 : count < 1500 ? 0.85 : 0.62) * (W < 600 && count > 300 ? 0.75 : 1);
       // In crowded vaults, halos everywhere add up to a white blob: keep them for notes that matter.
       const crowded = count > 800;
       const margin = 40;
@@ -638,11 +693,13 @@ export function AtlasView(props: Props) {
         const r = nodeSize(n) * sizeBoost * Math.max(0.55, n.scale / s.baseZoom) * (isFocus ? 1.6 : 1) * (1 + boost);
         const density = densityDim[n.region];
         // Halos: everything at full quality; at lower quality only notes that matter right now.
-        const important = n.hub || isFocus || boost > 0 || (focusNode !== null && near?.has(n.id));
+        // In crowded vaults only the very busiest hubs keep a halo; dozens of halos together turn white.
+        const bigHub = n.hub && (!crowded || n.degree >= L.topHubCut);
+        const important = bigHub || isFocus || boost > 0 || (focusNode !== null && near?.has(n.id));
         if ((quality === 2 && !crowded) || (important && (quality >= 1 || isFocus || boost > 0))) {
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = Math.min(1, alpha * (n.hub || isFocus || boost > 0 ? 0.9 : density));
-          const glow = r * (n.hub || isFocus ? 6 : 2.6) * (1 + boost * 1.5);
+          const glow = r * (isFocus ? 6 : bigHub ? (crowded ? 3.5 : 6) : 2.6) * (1 + boost * 1.5);
           ctx.drawImage(softDot(reg.rgb), n.sx - glow, n.sy - glow, glow * 2, glow * 2);
         }
         ctx.globalCompositeOperation = 'source-over';
