@@ -1,6 +1,6 @@
 # Ultron Mind
 
-**A knowledge base you see as a brain, and that Claude uses as its long-term memory.**
+**A knowledge base you see as a brain, and that Claude uses as its long-term memory. Completely free: no accounts, no subscriptions, no paid tiers.**
 
 Ultron Mind is an Obsidian-like note app built on plain Markdown files. Your notes appear as points in a 3D brain you can rotate, grouped into anatomical regions: projects in the frontal lobe, people in the temporal lobe, daily notes in the cerebellum, and so on. Click any point to read or edit that note.
 

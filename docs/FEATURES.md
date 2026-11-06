@@ -2,6 +2,8 @@
 
 Status of every feature on the Ultron feature list.
 
+**Everything in Ultron is free.** There are no paid tiers, subscriptions or accounts, and features that other apps sell, like sync and publishing, will be free here too.
+
 ✅ done · 🟡 partly done · 🚧 planned · ❌ not planned (needs a separate product or service)
 
 How-tos for the finished features are in the [user guide](USER_GUIDE.md).
@@ -13,6 +15,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Local-first notes as plain Markdown files | ✅ | Your vault is an ordinary folder of `.md` files |
 | Works fully offline | 🟡 | The desktop app and a locally run server need no internet. A hosted server needs a connection, and there's no offline cache yet |
 | No account needed | ✅ | |
+| Free, no paid tiers | ✅ | Every feature, including future sync and publishing |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
 | Mac, Windows, Linux | ✅ | Desktop app (Electron) or any browser |
 | iOS and Android | 🟡 | Installable home-screen web app with a mobile layout, connecting to your self-hosted server. No native apps |
@@ -110,14 +113,14 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | AI access | ✅ | MCP server with 15 tools, so Claude can read, write and organise the vault |
 | Headless client | 🟡 | `ultron serve` / Docker runs the vault headless with a REST API |
 
-## Sync and publishing
+## Sync and publishing (free)
 
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Sync across devices | 🟡 | Self-host one server and open it from every device, or sync the folder with git/Syncthing |
-| End-to-end encrypted sync service, shared vaults, selective sync | ❌ | Needs a hosted service |
+| End-to-end encrypted sync, shared vaults, selective sync | 🚧 | Will be free and self-hostable, with no paid service. Encryption design in progress |
 | Version history | ✅ | Local, last 50 versions per note |
-| Publish notes as a website | 🚧 | |
+| Publish notes as a website | 🚧 | Will be free: export a static site you host anywhere |
 
 ## Customisation
 
