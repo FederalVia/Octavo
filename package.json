@@ -28,5 +28,15 @@
   "devDependencies": {
     "electron-builder": "^26.18.0"
   },
-  "license": "AGPL-3.0-or-later"
+  "license": "AGPL-3.0-or-later",
+  "overrides": {
+    "lodash-es": "^4.18.1",
+    "minimatch@>=7 <11.0.1": "^11.0.5",
+    "@excalidraw/mermaid-to-excalidraw": {
+      "mermaid": {
+        "katex": "~0.18.10"
+      }
+    },
+    "nanoid": "^3.3.20"
+  }
 }
