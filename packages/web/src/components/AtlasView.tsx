@@ -393,10 +393,9 @@ export function AtlasView(props: Props) {
     const coarse = matchMedia('(pointer: coarse)').matches;
     /** 2 = full, 1 = reduced, 0 = minimal. Lowered automatically when frames get slow. */
     let quality = coarse ? 1 : 2;
-    let maxQuality = quality;
+    let maxQuality = -1;
     let frameMs = 0;
     let slowFrames = 0;
-    let fastFrames = 0;
     let bg: CanvasGradient | null = null;
     let bgKey = '';
 
@@ -488,9 +487,10 @@ export function AtlasView(props: Props) {
       if (!W || !H) return;
       // Big vaults start at reduced quality; it only goes up if frames stay fast.
       const n = L?.nodes.length ?? 0;
-      maxQuality = coarse ? (n > 400 ? 1 : 2) : n > 1500 ? 1 : 2;
+      const best = coarse ? (n > 400 ? 1 : 2) : n > 1500 ? 1 : 2;
+      if (best !== maxQuality) quality = best; // a different size class (or the first frame): start at its best
+      maxQuality = best;
       if (quality > maxQuality) quality = maxQuality;
-      const busy = !!s.drag || !!s.camGoal;
       const autoRotate = !coarse && n <= 800;
       const wobble = quality === 2 && n <= 600;
       const R = L?.R ?? 300;
@@ -557,19 +557,19 @@ export function AtlasView(props: Props) {
 
       // Connections: one batched path, additive so bundles glow where they overlap.
       // Connections are drawn exactly one device pixel wide in device coordinates: browsers have a fast
-      // path for that (about 15× cheaper than thinner or scaled lines). Additive blending (the glow where
-      // lines overlap) only at full quality; fewer lines at lower quality and while dragging.
-      const linkCap = quality === 2 ? Infinity : quality === 1 ? (busy ? 4000 : 12000) : busy ? 1500 : 5000;
+      // path for that (about 15× cheaper than thinner or scaled lines). The same lines are drawn whether or
+      // not the brain is being dragged, so nothing brightens when the drag ends.
+      const linkCap = quality === 2 ? 20000 : quality === 1 ? 8000 : 3000;
       const linkList = L.links.length > linkCap ? L.sampled : L.links;
       const drawn = Math.min(linkList.length, linkCap);
       const boostAlpha = Math.min(2.5, Math.sqrt(L.links.length / Math.max(1, drawn)));
       const k = s.dpr;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      // Additive glow only while lines are few enough not to add up to white.
-      ctx.globalCompositeOperation = quality === 2 && L.links.length <= 3000 ? 'lighter' : 'source-over';
+      // Plain (not additive) lines: overlapping bundles don't flare up into white.
+      ctx.globalCompositeOperation = 'source-over';
       ctx.lineWidth = 1;
-      const baseAlpha = (focusNode || filterOn ? 0.025 : 0.07) * (1.15 / Math.max(1, k * 0.6)) * (quality === 2 ? 1 : 0.9 * boostAlpha);
+      const baseAlpha = (focusNode || filterOn ? 0.025 : 0.07) * (1.15 / Math.max(1, k * 0.6)) * (drawn < L.links.length ? 0.9 * boostAlpha : 1);
       const lineAlpha = Math.min(0.5, baseAlpha * Math.max(1, k * 0.6));
       if (quality === 0) {
         // Minimal quality: one neutral batch.
@@ -626,7 +626,7 @@ export function AtlasView(props: Props) {
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.lineWidth = 1;
-        if (!busy) {
+        {
           ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.12, lineAlpha * 0.22)})`;
           ctx.beginPath();
           for (let li = 0; li < drawn; li++) {
@@ -842,12 +842,8 @@ export function AtlasView(props: Props) {
           frameMs = 0;
         }
       } else slowFrames = 0;
-      if (frameMs < 8 && quality < maxQuality && !s.drag) {
-        if (++fastFrames > 90) {
-          quality++;
-          fastFrames = 0;
-        }
-      } else fastFrames = 0;
+      // Quality never climbs back up by itself: that made the whole brain brighten a moment after a drag.
+      // It's reset to the best level when the vault changes size class (see draw).
       // Keep animating only while something moves.
       const L = s.layout;
       const n = L?.nodes.length ?? 0;
