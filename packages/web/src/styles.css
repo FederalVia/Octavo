@@ -2015,7 +2015,7 @@ form.setting-row { cursor: default; }
 .markdown .heading-bookmark { margin-left: 8px; border: 0; background: none; color: var(--text-faint); font-size: 0.6em; vertical-align: middle; cursor: pointer; opacity: 0; transition: opacity 0.15s; padding: 2px 4px; }
 .markdown :is(h1, h2, h3, h4, h5, h6):hover > .heading-bookmark, .markdown .heading-bookmark.on, .markdown .heading-bookmark:focus-visible { opacity: 1; }
 .markdown .heading-bookmark.on { color: var(--accent); }
-@media (hover: none) { .markdown .heading-bookmark { opacity: 0.5; } }
+@media (hover: none) { .markdown .heading-bookmark { opacity: 0.25; } }
 .mermaid-block g.note-link { cursor: pointer; }
 .mermaid-block g.note-link :is(rect, polygon, circle, path, ellipse) { stroke: var(--accent) !important; }
 .mermaid-block g.note-link:hover { filter: brightness(1.25); }
@@ -2182,4 +2182,15 @@ form.setting-row { cursor: default; }
   *, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
   :root { --glass: rgba(20, 19, 24, 0.97); --bg-sidebar: rgba(22, 21, 26, 0.98); }
   :root[data-theme='light'] { --glass: rgba(251, 250, 247, 0.98); --bg-sidebar: rgba(250, 248, 244, 0.99); }
+}
+
+/* Linked notes: a one-line bar that opens into the full list */
+.connections { padding-top: 0; }
+.connections.collapsed { padding-bottom: 0; }
+.conn-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: calc(100% + 32px); margin: 0 -16px; padding: 9px 16px; background: none; border: 0; color: var(--text-muted); font: inherit; font-size: 12px; letter-spacing: 0.04em; cursor: pointer; text-align: left; }
+.conn-toggle:hover { color: var(--text); background: var(--bg-hover); }
+.conn-chevron { font-size: 13px; }
+@media (max-width: 800px) {
+  .connections.open { max-height: 45%; }
+  .conn-toggle { padding: 12px 16px; font-size: 13px; }
 }
