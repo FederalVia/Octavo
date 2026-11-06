@@ -519,10 +519,10 @@ export function AtlasView(props: Props) {
           isFocus ||
           near?.has(n.id) ||
           (filterOn && matches(n)) ||
-          (s.labels && !focusNode && !filterOn && (n.hub || (zoomed && fogOf(n) > 0.45 && !n.unresolved)));
+          (s.labels && !focusNode && !filterOn && (n.hub || L.nodes.length <= 60 || (zoomed && fogOf(n) > 0.45 && !n.unresolved)));
         if (!show) continue;
         const plainHub = !isFocus && !near?.has(n.id) && !(filterOn && matches(n));
-        if (plainHub && n.hub && !zoomed && hubLabels >= 14) continue;
+        if (plainHub && n.hub && !zoomed && L.nodes.length > 60 && hubLabels >= 14) continue;
         const reg = REGION_BY_KEY[n.region];
         const fog = fogOf(n);
         const text = n.name.length > 34 ? n.name.slice(0, 33) + '…' : n.name;

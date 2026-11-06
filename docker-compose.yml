@@ -1,0 +1,21 @@
+# Self-host Ultron Mind:
+#   export ULTRON_TOKEN=$(openssl rand -hex 32)
+#   docker compose up -d
+services:
+  ultron-mind:
+    build: .
+    image: ultron-mind
+    restart: unless-stopped
+    ports:
+      - "4321:4321"
+    environment:
+      # Required: the server is reachable from other machines.
+      ULTRON_TOKEN: ${ULTRON_TOKEN:?Set ULTRON_TOKEN to a long random secret}
+    volumes:
+      # Your notes are stored as plain Markdown files in this volume.
+      # To use a folder on the host instead, replace with e.g. `./vault:/vault`
+      # and make sure that folder is writable by UID 1000.
+      - ultron-vault:/vault
+
+volumes:
+  ultron-vault:

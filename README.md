@@ -1,129 +1,110 @@
 # Ultron Mind
 
-An Obsidian-like knowledge base that also works as **Claude's long-term memory**.
+**A knowledge base you see as a brain, and that Claude uses as its long-term memory.**
 
-Notes are plain Markdown files in a folder (a *vault*), linked with `[[wikilinks]]` and `#tags`. You use the web or desktop app; Claude uses the same vault through an MCP server: it searches it at the start of a conversation, saves decisions and facts as notes, and keeps a journal. Changes from either side show up live.
+Ultron Mind is an Obsidian-like note app built on plain Markdown files. Your notes appear as points in a 3D brain you can rotate, grouped into anatomical regions: projects in the frontal lobe, people in the temporal lobe, daily notes in the cerebellum, and so on. Click any point to read or edit that note.
+
+It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can search, read and write the same notes. Claude remembers things between conversations, and you can watch it think: the notes it touches light up live.
+
+![Atlas view: notes arranged as a 3D brain](docs/images/atlas.png)
+
+<table>
+  <tr>
+    <td><img src="docs/images/note-panel.png" alt="Clicking a point opens its note" /></td>
+    <td><img src="docs/images/network.png" alt="Flat network view" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Click a point to open its note</sub></td>
+    <td align="center"><sub>Network view</sub></td>
+  </tr>
+</table>
 
 ## Features
 
-- **Two brain views** (switch with the toolbar button):
-  - **Atlas** (default): a 3D brain you can rotate (drag to rotate, Shift+drag to pan, scroll or pinch to zoom). Notes are grouped into anatomical regions, the busiest notes get a lens glint, and connections between regions form glowing bundles. It has a region legend with counts, Labels/All/None and per-region toggles, search, an orientation marker, and a slow auto-rotate when idle.
-  - **Network**: a flat force-directed graph in the classic dark style, with grey links and dots coloured by region.
-  - In either view, click a point to fly to it and open its note in a slide-in panel.
-- **Brain regions**: notes are placed by folder name, tag, or a frontmatter `region:` value:
-
-  | Region | Holds | Matched by folders/tags like |
-  | --- | --- | --- |
-  | Frontal | Projects, decisions | `Projects`, `Decisions`, `Goals`, `Tasks`, `Areas` |
-  | Parietal | Concepts, tools (default) | `Concepts`, `Tools`, `Ideas`, `Notes`, `Wiki` |
-  | Temporal | People, orgs | `People`, `Contacts`, `Orgs`, `Companies`, `Teams` |
-  | Occipital | Sources, reading | `Sources`, `Repos`, `Reading`, `Books`, `Articles`, `Resources` |
-  | Cerebellum | Daily notes, logs | `Journal`, `Daily`, `Logs`, `Meetings`, `Incidents`, date-named notes |
-  | Brain stem | Index, routing | root `Home`/`Index`/`README`, `Inbox`, `MOCs` |
-
-  Numbered folders like `00 - Current Projects` work too.
-- **Watch Claude think**: when Claude (or anything else) writes to a note, that point fires and sends signals along its connections.
-- **Editor**: Markdown with syntax highlighting, `[[` link and `#` tag autocomplete, and Ctrl/Cmd-click to follow links. Toggle between reading and editing.
-- **Links**: wikilinks (`[[Note]]`, `[[Note#Heading]]`, `[[Note|label]]`), relative `[text](note.md)` links, frontmatter `aliases`, and links to notes that don't exist yet. These show as faint hollow points, and clicking one creates the note.
-- **Connections** for each note (linked from, links to, tags) appear under the note.
-- **Drawer** (☰) with a file tree (drag to move, right-click to rename or delete), full-text search (`"phrases"`, `tag:x`, `path:folder`) and tags.
-- **Quick switcher** (Ctrl/Cmd+O) to open or create notes, and **daily journal** notes (Ctrl/Cmd+D).
-- **Safe file handling**: atomic writes, conflict detection when a note changes under you (e.g. Claude edits it while you type), rename and move that rewrite every link to the note, and deletes that go to `.trash/`.
-- **Live sync**: the server watches the folder, so edits from Claude, other windows or another editor (including Obsidian itself) appear immediately.
-- Works in the **browser** (self-hosted, phone-friendly) and as a **desktop app** (Electron).
-
-## Layout
-
-```
-packages/
-  core/     vault engine: parsing, link index, backlinks, search, rename, file watching
-  server/   REST API + web UI hosting + MCP server (HTTP and stdio) + CLI
-  web/      React + CodeMirror front end
-  desktop/  Electron wrapper (runs the server in-process)
-```
+- **Brain views**
+  - **Atlas**: a 3D brain with notes grouped into six regions, a legend with counts, per-region toggles, and slow auto-rotation.
+  - **Network**: a flat force-directed graph, coloured by region.
+- **Markdown notes**: plain `.md` files in a folder you choose. They work with git, Obsidian and any text editor.
+- **Linking**: `[[wikilinks]]`, `#tags`, backlinks, aliases, links to notes that don't exist yet, and automatic link updates when you rename a note.
+- **Editor**: syntax highlighting, autocomplete for links and tags, and a rendered reading view.
+- **Find anything**: quick switcher (Ctrl/Cmd+O), full-text search, a tag browser and a file tree.
+- **Daily journal**: one note per day (Ctrl/Cmd+D).
+- **Claude memory over MCP**: 13 tools (search, read, write, append, edit, link graph, journal…) over stdio or HTTP.
+- **Live sync**: changes from Claude, other windows or other editors appear instantly. You get a conflict warning instead of losing your edits.
+- **Runs anywhere**: in the browser (including phones), as a desktop app (Electron), or self-hosted with Docker.
 
 ## Quick start
 
-Requires Node.js 20+.
+You need [Node.js](https://nodejs.org) 20 or newer and git.
 
 ```bash
+git clone https://github.com/FederalVia/ultron-mind.git
+cd ultron-mind
 npm install
 npm run build
-npm start -- --vault ~/UltronMind     # http://127.0.0.1:4321
+npm run demo          # opens the example vault at http://127.0.0.1:4321
 ```
 
-An empty vault gets a couple of starter notes. Use `--no-seed` to skip them.
+Open **http://127.0.0.1:4321** in your browser and click around the brain.
 
-**Desktop app:**
+To use your own notes:
 
 ```bash
-npm run desktop                        # builds, then opens the Electron app
+npm start -- --vault ~/UltronMind    # any folder; it's created if missing
 ```
 
-The desktop app remembers the last vault. Use **File → Open Vault Folder…** to switch, and **File → Connect Claude…** to copy ready-made MCP configs.
+Prefer an app window? Run `npm run desktop`. For a server, use Docker (`docker compose up -d`).
 
-**Development** (hot reload):
+**Full instructions for every platform: [docs/INSTALL.md](docs/INSTALL.md)**
+
+## Give Claude its memory
+
+With the app built, add the vault to Claude Code:
 
 ```bash
-npm run dev:server    # API on :4321, using ./vault
-npm run dev:web       # Vite on :5173, proxying /api and /mcp to :4321
+claude mcp add ultron-mind --scope user -- node "$(pwd)/packages/server/dist/cli.js" mcp --vault ~/UltronMind
 ```
 
-## Connecting Claude
+For Claude Desktop, remote servers and the full tool list, see **[docs/CONNECT_CLAUDE.md](docs/CONNECT_CLAUDE.md)**.
 
-The MCP server exposes these tools: `get_vault_overview`, `search_notes`, `read_note`, `list_notes`, `get_backlinks`, `get_related`, `list_tags`, `write_note`, `append_to_note`, `edit_note`, `rename_note`, `delete_note` and `log_to_journal`. It also sends instructions telling Claude to use the vault as its memory. Add `--read-only` to expose only the read tools.
+## How notes map to brain regions
 
-**Claude Code** (stdio, no server needed):
+Notes are placed by folder name, tag, or a `region:` value in the frontmatter:
 
-```bash
-claude mcp add ultron-mind -- node /path/to/ultron-mind/packages/server/dist/cli.js mcp --vault ~/UltronMind
-```
+| Region | Holds | Folders / tags like |
+| --- | --- | --- |
+| Frontal | Projects, decisions | `Projects`, `Decisions`, `Goals`, `Tasks`, `Areas` |
+| Parietal | Concepts, tools (default) | `Concepts`, `Tools`, `Ideas`, `Notes`, `Wiki` |
+| Temporal | People, organisations | `People`, `Contacts`, `Orgs`, `Companies`, `Teams` |
+| Occipital | Sources, reading | `Sources`, `Repos`, `Reading`, `Books`, `Articles`, `Resources` |
+| Cerebellum | Daily notes, logs | `Journal`, `Daily`, `Logs`, `Meetings`, `Incidents`, date-named notes |
+| Brain stem | Index, routing | top-level `Home` / `Index` / `README`, `Inbox`, `MOCs` |
 
-…or over HTTP while `npm start` or the desktop app is running:
+Numbered folders such as `00 - Current Projects` work too. More in the [user guide](docs/USER_GUIDE.md#brain-regions).
 
-```bash
-claude mcp add --transport http ultron-mind http://127.0.0.1:4321/mcp
-```
+## Documentation
 
-**Claude Desktop**: add this to `claude_desktop_config.json`:
+| Guide | What's in it |
+| --- | --- |
+| [Installation](docs/INSTALL.md) | Requirements, installing on macOS/Windows/Linux, desktop app, Docker, running as a service, HTTPS, updating, troubleshooting |
+| [User guide](docs/USER_GUIDE.md) | The interface, views, editing, links, search, shortcuts, journal, using it alongside Obsidian |
+| [Connecting Claude](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, remote access, tool reference, tips |
+| [Architecture](docs/ARCHITECTURE.md) | How it's built, REST API, live events, file handling, security |
+| [Contributing](CONTRIBUTING.md) | Development setup, tests, project layout |
 
-```json
-{
-  "mcpServers": {
-    "ultron-mind": {
-      "command": "node",
-      "args": ["/path/to/ultron-mind/packages/server/dist/cli.js", "mcp", "--vault", "/Users/you/UltronMind"]
-    }
-  }
-}
-```
-
-**Remote / cloud Claude sessions**: run the server somewhere reachable with a token:
-
-```bash
-ULTRON_TOKEN=$(openssl rand -hex 32) npm start -- --host 0.0.0.0 --vault /data/vault
-```
-
-Clients then send `Authorization: Bearer <token>` (or `?token=<token>`) to `/mcp` and `/api`. Put it behind HTTPS (e.g. a reverse proxy) before exposing it to the internet.
-
-## CLI
+## Project layout
 
 ```
-ultron serve [--vault DIR] [--port 4321] [--host 127.0.0.1] [--token SECRET] [--read-only] [--daily Journal] [--no-seed]
-ultron mcp   [--vault DIR] [--read-only] [--daily Journal] [--no-seed]
+packages/
+  core/      Vault engine: parsing, link index, backlinks, search, rename, file watching
+  server/    REST API, web hosting, MCP server (HTTP + stdio), `ultron` CLI
+  web/       React + CodeMirror front end (atlas, network, editor)
+  desktop/   Electron wrapper
+examples/
+  demo-vault/  Sample notes for trying the app
+docs/          Guides and screenshots
 ```
 
-Environment variables: `ULTRON_VAULT`, `PORT`, `ULTRON_HOST`, `ULTRON_TOKEN`.
+## Status
 
-## Security notes
-
-- Without a token, the server only accepts requests whose `Host` is `localhost`/`127.0.0.1` (this protects against DNS-rebinding attacks), and it binds to loopback by default. It warns if you bind to another address without a token.
-- Note paths are confined to the vault. `..`, absolute paths and hidden folders are rejected.
-- Don't store secrets in the vault: Claude is told not to.
-
-## Tests
-
-```bash
-npm test          # core + server (includes an MCP client round-trip)
-npm run typecheck
-```
+Ultron Mind is at an early stage (v0.1). It works and has tests, but expect rough edges. Not supported yet: attachments and images inside notes, and packaged desktop installers (`.dmg`/`.exe`). For now the desktop app runs from source.
