@@ -195,6 +195,10 @@ describe('HTTP server', () => {
       assert.match(r.text, /Temporal region/);
       r = await call('get_vault_overview', {});
       assert.match(r.text, /Brain regions: /);
+      assert.match(r.text, /\(Octavo \d+\.\d+\.\d+\)/);
+      assert.equal(client.getServerVersion()?.version, JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8')).version);
+      const todo = await call('list_tasks', {});
+      assert.doesNotMatch(todo.text, /\[\?\]/);
       assert.match(r.text, /Home note \(Home.md\)/);
       r = await call('read_note', { path: 'Does not exist' });
       assert.equal(r.isError, true);

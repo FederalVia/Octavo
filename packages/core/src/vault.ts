@@ -567,44 +567,83 @@ export class Vault extends EventEmitter {
     return { nodes: [...nodes.values()], links: [...links.values()] };
   }
 
+  /**
+   * Notes related to this one, best first. Direct links (either way) always come first; shared tags count by
+   * how rare the tag is; two-step paths count less when they pass through a hub, home or journal note, and
+   * busy hubs are damped as results so they don't win just by being connected to everything.
+   */
   related(nameOrPath: string, limit = 10): RelatedNote[] {
     const note = this.requireNote(nameOrPath);
-    const scores = new Map<string, { score: number; reasons: Set<string> }>();
-    const bump = (p: string, s: number, reason: string) => {
-      if (p === note.path) return;
-      let e = scores.get(p);
-      if (!e) scores.set(p, (e = { score: 0, reasons: new Set() }));
-      e.score += s;
-      e.reasons.add(reason);
-    };
-    const direct = new Set<string>();
-    for (const l of note.links) {
-      const p = this.resolveLink(l, note.path);
-      if (p) {
-        bump(p, 3, 'linked from this note');
-        direct.add(p);
-      }
-    }
-    for (const b of this.backlinks(note.path)) {
-      bump(b.path, 3, 'links to this note');
-      direct.add(b.path);
-    }
+    // One pass: every note's resolved outgoing links, and each note's degree.
+    const out = new Map<string, Set<string>>();
+    const incoming = new Map<string, Set<string>>();
     for (const n of this.notes.values()) {
-      const shared = n.tags.filter((t) => note.tags.includes(t));
-      if (shared.length) bump(n.path, shared.length, `shared tags: ${shared.map((t) => '#' + t).join(' ')}`);
-    }
-    for (const d of direct) {
-      const dn = this.notes.get(d);
-      if (!dn) continue;
-      for (const l of dn.links) {
-        const p = this.resolveLink(l, dn.path);
-        if (p && !direct.has(p)) bump(p, 1, `2 hops via ${dn.name}`);
+      const set = new Set<string>();
+      for (const l of n.links) {
+        const p = this.resolveLink(l, n.path);
+        if (p && p !== n.path) set.add(p);
+      }
+      out.set(n.path, set);
+      for (const t of set) {
+        if (!incoming.has(t)) incoming.set(t, new Set());
+        incoming.get(t)!.add(n.path);
       }
     }
-    return [...scores.entries()]
-      .map(([p, e]) => ({ path: p, name: noteName(p), score: e.score, reasons: [...e.reasons] }))
-      .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-      .slice(0, limit);
+    const degree = (p: string) => (out.get(p)?.size ?? 0) + (incoming.get(p)?.size ?? 0);
+    const degrees = [...this.notes.keys()].map(degree).sort((x, y) => x - y);
+    const hubCut = Math.max(12, degrees[Math.floor(degrees.length * 0.92)] ?? 0);
+    const daily = this.dailyFolder ? this.dailyFolder + '/' : '';
+    const isJournal = (p: string) => (daily !== '' && p.startsWith(daily)) || /^\d{4}-(\d{2}-\d{2}|W\d{2}|\d{2})$/.test(noteName(p));
+    const isHome = (p: string) => !p.includes('/') && HOME_CANDIDATES.includes(path.posix.basename(p).toLowerCase());
+    const isHub = (p: string) => degree(p) >= hubCut || isHome(p);
+
+    const scores = new Map<string, { score: number; hop: number; tag: number; reasons: string[]; vias: [number, string][] }>();
+    const entry = (p: string) => {
+      let e = scores.get(p);
+      if (!e) scores.set(p, (e = { score: 0, hop: 0, tag: 0, reasons: [], vias: [] }));
+      return e;
+    };
+    const mine = out.get(note.path) ?? new Set<string>();
+    const theirs = incoming.get(note.path) ?? new Set<string>();
+    const direct = new Set([...mine, ...theirs]);
+    for (const p of direct) {
+      const e = entry(p);
+      e.score += 4;
+      if (mine.has(p)) e.reasons.push('linked from this note');
+      if (theirs.has(p)) e.reasons.push('links to this note');
+      if (mine.has(p) && theirs.has(p)) e.score += 1;
+    }
+    // Shared tags, weighted by rarity (a tag on half the vault says little).
+    if (note.tags.length) {
+      const tagCount = new Map<string, number>();
+      for (const n of this.notes.values()) for (const t of n.tags) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
+      for (const n of this.notes.values()) {
+        if (n.path === note.path) continue;
+        const shared = n.tags.filter((t) => note.tags.includes(t));
+        if (!shared.length) continue;
+        const e = entry(n.path);
+        e.tag = Math.min(2, shared.reduce((sum, t) => sum + 1 / Math.log2(1 + (tagCount.get(t) ?? 1)), 0));
+        e.reasons.push(`shared tags: ${shared.map((t) => '#' + t).join(' ')}`);
+      }
+    }
+    // Two steps away, through each direct neighbour. Hubs and journal notes connect everything, so they barely count.
+    for (const d of direct) {
+      const w = isHub(d) || isJournal(d) ? 0.15 : 1 / Math.log2(2 + degree(d));
+      for (const p of new Set([...(out.get(d) ?? []), ...(incoming.get(d) ?? [])])) {
+        if (p === note.path || direct.has(p)) continue;
+        const e = entry(p);
+        e.hop += w;
+        e.vias.push([w, noteName(d)]);
+      }
+    }
+    const results = [...scores.entries()].map(([p, e]) => {
+      let score = e.score + e.tag + Math.min(2.5, e.hop);
+      if (!direct.has(p) && isHub(p)) score *= 0.5;
+      const vias = e.vias.sort((x, y) => y[0] - x[0]).slice(0, 3).map(([, n]) => n);
+      const reasons = [...e.reasons, ...(vias.length ? [`2 hops via ${vias.join(', ')}${e.vias.length > 3 ? ` and ${e.vias.length - 3} more` : ''}`] : [])];
+      return { path: p, name: noteName(p), score: Math.round(score * 10) / 10, reasons };
+    });
+    return results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit);
   }
 
   overview(): VaultOverview {

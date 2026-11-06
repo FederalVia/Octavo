@@ -15,6 +15,7 @@ import {
   type VaultEvent,
 } from '@octavo/core';
 import { createMcpServer } from './mcp.js';
+import { VERSION } from './version.js';
 
 export interface AppOptions {
   vault: Vault;
@@ -124,7 +125,7 @@ export function createApp(opts: AppOptions): express.Express {
   api.use(auth);
 
   api.get('/vault', (_req, res) => {
-    res.json({ name: vault.name, noteCount: vault.list().length, dailyFolder: vault.dailyFolder });
+    res.json({ name: vault.name, noteCount: vault.list().length, dailyFolder: vault.dailyFolder, version: VERSION });
   });
 
   api.get('/notes', (req, res) => {

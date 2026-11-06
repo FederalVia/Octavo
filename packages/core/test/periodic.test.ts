@@ -120,3 +120,29 @@ test('brain regions: reasons, pinning and random notes', async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('related: direct links first; hubs and journal notes do not dominate', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-related-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    // A hub linked from everything, and a journal note that mentions everything written that day.
+    const topics = Array.from({ length: 14 }, (_, i) => `Topic ${i}`);
+    for (const t of topics) await vault.write(`Concepts/${t}.md`, `# ${t}\nSee [[Home]].`);
+    await vault.write('Home.md', `# Home\n${topics.map((t) => `[[${t}]]`).join(' ')}\n[[Fermi paradox]]`);
+    await vault.write('Journal/2026-11-06.md', `# Today\n${topics.map((t) => `[[${t}]]`).join(' ')} [[Fermi paradox]]`);
+    await vault.write('Concepts/Fermi paradox.md', '# Fermi\nRelated: [[Drake equation]] and [[Great filter]].');
+    await vault.write('Concepts/Drake equation.md', '# Drake\nSee [[Great filter]].');
+    await vault.write('Concepts/Great filter.md', '# Filter');
+    const rel = vault.related('Fermi paradox');
+    const names = rel.map((r) => r.name);
+    // The two notes it links to directly outrank Home and the journal day.
+    assert.ok(names.indexOf('Drake equation') < names.indexOf('Home'), names.join(', '));
+    assert.ok(names.indexOf('Great filter') < names.indexOf('Home'), names.join(', '));
+    // Topics reached only through Home or the journal barely register.
+    const topic = rel.find((r) => r.name.startsWith('Topic'));
+    assert.ok(!topic || topic.score < 1, `topic score ${topic?.score}`);
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

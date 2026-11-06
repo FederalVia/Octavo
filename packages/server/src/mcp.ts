@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { VERSION } from './version.js';
 import { formatDate, REGION_INFO, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
 
 export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
@@ -46,7 +47,7 @@ function safe<A>(fn: Handler<A>) {
 
 export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {}): McpServer {
   const server = new McpServer(
-    { name: 'octavo', version: '0.1.0' },
+    { name: 'octavo', version: VERSION },
     { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } },
   );
 
@@ -86,7 +87,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     safe(async () => {
       const o = vault.overview();
       const parts = [
-        `Vault "${o.name}": ${o.noteCount} notes.`,
+        `Vault "${o.name}": ${o.noteCount} notes. (Octavo ${VERSION})`,
         `Folders: ${o.folders.map((f) => `${f.folder} (${f.count})`).join(', ') || 'none'}`,
         `Top tags: ${o.topTags.map((t) => `#${t.tag} (${t.count})`).join(', ') || 'none'}`,
         `Brain regions: ${regionCounts()}`,
@@ -243,9 +244,14 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       title: 'List tasks',
       description:
         'List Markdown tasks (`- [ ] ...`) across the vault, with the note path and line number of each. Open tasks only unless include_done is true. ' +
-        'Due dates are written in the task text as "📅 YYYY-MM-DD"; use `due` to get only overdue, today\'s or upcoming tasks (sorted by date). When adding a task with a deadline, include "📅 YYYY-MM-DD".',
+        'Due dates are written in the task text as "📅 YYYY-MM-DD"; use `due` to get only overdue, today\'s or upcoming tasks (sorted by date). When adding a task with a deadline, include "📅 YYYY-MM-DD". ' +
+        'By default only real to-dos are listed (`[ ]`, `[/]` in progress, `[!]` important); `status` "questions" lists `[?]` open questions, "all_open" anything not done or cancelled, "done" finished ones.',
       inputSchema: {
-        include_done: z.boolean().optional(),
+        include_done: z.boolean().optional().describe('Deprecated: use status "all" instead'),
+        status: z
+          .enum(['todo', 'questions', 'all_open', 'done', 'all'])
+          .optional()
+          .describe('todo (default): [ ] [/] [!] · questions: [?] · all_open: anything not done or cancelled · done: [x] [-] · all'),
         path: z.string().optional().describe('Only tasks from this note'),
         due: z
           .enum(['overdue', 'today', 'next_7_days', 'any_date', 'no_date'])
@@ -254,11 +260,17 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       },
       annotations: { readOnlyHint: true },
     },
-    safe(async ({ include_done, path, due }) => {
+    safe(async ({ include_done, status, path, due }) => {
       const only = path ? vault.resolve(path) : null;
       const today = formatDate(new Date());
       const week = formatDate(new Date(Date.now() + 7 * 86400000));
-      let tasks = vault.tasks({ includeDone: include_done }).filter((t) => !path || t.path === only);
+      const mode = status ?? (include_done ? 'all' : 'todo');
+      const isDone = (c: string) => c === 'x' || c === 'X' || c === '-';
+      const keep = (c: string) =>
+        mode === 'all' ? true : mode === 'done' ? isDone(c) : mode === 'questions' ? c === '?' : mode === 'all_open' ? !isDone(c) : c === ' ' || c === '/' || c === '!';
+      let tasks = vault
+        .tasks({ includeDone: mode === 'all' || mode === 'done' })
+        .filter((t) => (!path || t.path === only) && keep(t.status));
       if (due) {
         tasks = tasks.filter((t) => {
           if (due === 'no_date') return !t.due;
