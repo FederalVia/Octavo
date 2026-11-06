@@ -243,8 +243,12 @@ export function createApp(opts: AppOptions): express.Express {
     res.json({ tags: vault.tags() });
   });
 
+  // The graph only changes when a note does (vault.graph() is cached until then): serialise it once per change.
+  let graphJson: { graph: object; json: string } | null = null;
   api.get('/graph', (_req, res) => {
-    res.json(vault.graph());
+    const graph = vault.graph();
+    if (graphJson?.graph !== graph) graphJson = { graph, json: JSON.stringify(graph) };
+    res.type('json').send(graphJson.json);
   });
 
   api.get('/related/*path', (req, res, next) => {
