@@ -105,6 +105,11 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** What the graph shows for a note: its links, tags, region and lock state. A change here needs a graph refresh. */
+function graphKey(n: { links: { target: string }[]; tags: string[]; encrypted?: boolean; frontmatter?: Record<string, unknown> }): string {
+  return JSON.stringify([n.links.map((l) => l.target), n.tags, !!n.encrypted, n.frontmatter?.region ?? null]);
+}
+
 export type Period = 'day' | 'week' | 'month';
 
 export interface TaskItem {
@@ -269,8 +274,10 @@ export class Vault extends EventEmitter {
     const existing = this.notes.get(rel);
     if (existing && existing.mtime === stat.mtimeMs && existing.size === stat.size) return false;
     const content = await fsp.readFile(this.abs(rel), 'utf8');
-    this.setIndexed(this.buildIndexed(rel, content, stat));
-    if (emit) this.emitEvent({ type: 'change', path: rel });
+    const next = this.buildIndexed(rel, content, stat);
+    const graphChanged = !existing || graphKey(existing) !== graphKey(next);
+    this.setIndexed(next);
+    if (emit) this.emitEvent({ type: 'change', path: rel, graphChanged });
     return true;
   }
 
@@ -659,8 +666,10 @@ export class Vault extends EventEmitter {
     }
     const newStat = await this.atomicWrite(rel, content);
     const note = this.buildIndexed(rel, content, newStat);
+    const before = this.notes.get(rel);
+    const graphChanged = !before || graphKey(before) !== graphKey(note);
     this.setIndexed(note);
-    this.emitEvent({ type: 'change', path: rel });
+    this.emitEvent({ type: 'change', path: rel, graphChanged });
     return summarize(note);
   }
 

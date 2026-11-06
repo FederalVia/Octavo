@@ -132,6 +132,8 @@ export function App() {
   const needsRefresh = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedPath = useRef<string | null>(null);
+  /** When this window last saved each note, so its own change events aren't treated as outside edits. */
+  const ownSaves = useRef(new Map<string, number>());
   /** Keys of locked notes unlocked in this tab (memory only; gone on reload). */
   const noteKeys = useRef(new Map<string, NoteKey>());
   /** Is the open note a locked (encrypted) note? */
@@ -253,6 +255,7 @@ export function App() {
           if (!key) throw new Error('This note is locked. Unlock it before saving.');
           payload = await lockContent(content, key);
         }
+        ownSaves.current.set(path, Date.now());
         const res = await api.save(path, payload, force ? undefined : baseMtime.current);
         baseMtime.current = res.mtime;
         if (draftRef.current === content) {
@@ -643,6 +646,8 @@ export function App() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const toFire = new Set<string>();
+    let needNotes = false;
+    let needGraph = false;
     const unsub = subscribe(
       (e: VaultEvent) => {
         // Claude read a note: light it up and add it to the trail; nothing changed, so no refresh.
@@ -650,7 +655,16 @@ export function App() {
           (brain.current?.visit ?? brain.current?.fire)?.(e.path);
           return;
         }
-        if (e.type === 'change') toFire.add(e.path);
+        if (e.type === 'change') {
+          // Our own autosave: nothing to light up, and the graph only needs refreshing if links/tags changed.
+          const saved = ownSaves.current.get(e.path);
+          const own = saved !== undefined && Date.now() - saved < 5000;
+          if (!own) toFire.add(e.path);
+          if (e.graphChanged !== false) needGraph = needNotes = true;
+          else if (!own) needNotes = true;
+        } else {
+          needGraph = needNotes = true;
+        }
         if (e.type === 'rename') {
           toFire.add(e.to);
           setTabs((ts) => ts.map((t) => (t === e.from ? e.to : t)));
@@ -663,16 +677,17 @@ export function App() {
         }
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
-          refreshNotes().catch(() => {});
+          if (needNotes) refreshNotes().catch(() => {});
           // Light up the thoughts that just changed once the graph includes them.
           const fire = [...toFire];
           toFire.clear();
-          refreshGraph()
-            .then(() => setTimeout(() => fire.forEach((p) => (brain.current?.visit ?? brain.current?.fire)?.(p)), 60))
-            .catch(() => {});
+          const lightUp = () => setTimeout(() => fire.forEach((p) => (brain.current?.visit ?? brain.current?.fire)?.(p)), 60);
+          if (needGraph) refreshGraph().then(lightUp).catch(() => {});
+          else if (fire.length) lightUp();
+          needNotes = needGraph = false;
           refreshCurrentRef.current();
           setRefreshKey((k) => k + 1);
-        }, 150);
+        }, 400);
       },
       (ok) => {
         setConnected(ok);
@@ -1381,6 +1396,7 @@ export function App() {
           onSelectUnresolved: (name: string) => createNote(name),
           onBackground: closePanel,
           onReady: (h: BrainHandle) => (brain.current = h),
+          paused: panelOpen && isNarrow,
         };
         return viewMode === 'atlas' ? <AtlasView key="atlas" {...viewProps} /> : <BrainView key="network" {...viewProps} />;
       })()}

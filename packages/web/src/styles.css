@@ -2175,3 +2175,11 @@ form.setting-row { cursor: default; }
 .presentation .preview h1 { font-size: 2.1em; }
 .presentation .preview h2 { font-size: 1.6em; }
 .presentation .slide-bar { position: absolute; right: 16px; bottom: 12px; display: flex; gap: 10px; align-items: center; color: var(--text-faint); font-size: 13px; font-family: var(--font-hud); }
+
+/* Phones and tablets: background blur re-renders the moving brain behind every panel on every frame,
+   which is the most expensive thing a phone GPU can be asked to do. Use solid panels instead. */
+@media (pointer: coarse) {
+  *, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+  :root { --glass: rgba(20, 19, 24, 0.97); --bg-sidebar: rgba(22, 21, 26, 0.98); }
+  :root[data-theme='light'] { --glass: rgba(251, 250, 247, 0.98); --bg-sidebar: rgba(250, 248, 244, 0.99); }
+}
