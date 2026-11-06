@@ -15,14 +15,10 @@ import type { GraphData, GraphNode } from '../api';
 import { REGIONS, classify, type RegionKey } from '../regions';
 
 /** Flat graph palette: grey for general knowledge, distinct colours for the other regions. */
-export const NETWORK_COLORS: Record<RegionKey, [number, number, number]> = {
-  parietal: [160, 164, 170],
-  frontal: [242, 196, 92],
-  temporal: [92, 207, 156],
-  occipital: [84, 156, 250],
-  cerebellum: [222, 96, 96],
-  stem: [235, 235, 240],
-};
+/** Same colours as the atlas, so a region looks the same in both views. */
+export const NETWORK_COLORS: Record<RegionKey, [number, number, number]> = Object.fromEntries(
+  REGIONS.map((r) => [r.key, r.rgb]),
+) as Record<RegionKey, [number, number, number]>;
 const POS_KEY = 'octavo.networkPositions';
 const rgba = (c: [number, number, number], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
@@ -712,7 +708,7 @@ export function BrainView(props: Props) {
             {REGIONS.filter((r) => regionCounts[r.key] > 0).map((r) => (
               <span key={r.key} className="legend-item" title={r.subtitle}>
                 <i style={{ background: rgba(NETWORK_COLORS[r.key], 1) }} />
-                {r.label}
+                {r.name}
               </span>
             ))}
           </div>
