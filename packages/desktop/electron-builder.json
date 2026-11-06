@@ -1,0 +1,60 @@
+{
+  "appId": "app.octavo.desktop",
+  "productName": "Octavo",
+  "copyright": "Octavo",
+  "directories": {
+    "app": "release/app",
+    "output": "release/dist",
+    "buildResources": "packages/desktop/build"
+  },
+  "files": [
+    "**/*"
+  ],
+  "asar": true,
+  "artifactName": "Octavo-${version}-${os}-${arch}.${ext}",
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "packages/desktop/build/icon.png"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "shortcutName": "Octavo",
+    "artifactName": "Octavo-Setup-${version}.${ext}"
+  },
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      }
+    ],
+    "category": "public.app-category.productivity",
+    "icon": "packages/desktop/build/icon.png",
+    "identity": "-"
+  },
+  "linux": {
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "category": "Office",
+    "icon": "packages/desktop/build/icon.png",
+    "synopsis": "Notes you see as a brain, shared with Claude"
+  }
+}

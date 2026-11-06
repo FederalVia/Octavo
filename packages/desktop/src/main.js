@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess } from '@octavo/server';
+import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 4321;
@@ -64,6 +64,7 @@ async function openVault(vaultPath, { autoRemote = true } = {}) {
     // Phone access: listen on the Wi-Fi network, protected by an access key.
     host: phone ? '0.0.0.0' : '127.0.0.1',
     token: needsKey() ? phoneToken() : undefined,
+    webDir: webDir(),
     fallbackToRandomPort: true,
   });
   await seedIfEmpty(server.vault);
@@ -154,6 +155,31 @@ async function startRemote(showWindow) {
   return remote.start();
 }
 
+/** One-click version of `octavo check-remote`: can this network accept direct connections? */
+async function checkNetwork() {
+  await showAccessWindow(pageHtml('Checking', `<div class="big">🔎</div><h2>Checking your network…</h2><p>Looking for your router. This takes up to 10 seconds.</p>`));
+  let result;
+  try {
+    result = await diagnose();
+  } catch (err) {
+    result = { ok: false, lines: [`✗ ${err instanceof Error ? err.message : err}`] };
+  }
+  const advice = {
+    'no-router': 'Turn on “UPnP” in your router’s settings (it’s usually on by default), then check again. Or forward ports by hand: see “Forwarding ports by hand” in the Octavo guide.',
+    cgnat: 'Your internet provider shares one public address between many homes (CGNAT), so direct connections from the internet are impossible on this connection. Ask your provider for a “public IPv4 address”.',
+    'double-nat': 'Your router is behind another router. Put your provider’s box in “bridge mode”, or enable UPnP on the outer router too.',
+    'port-https': 'Your router refused to open a port automatically. Check its UPnP settings.',
+  }[result.problem] ?? '';
+  await showAccessWindow(
+    pageHtml(
+      'Network check',
+      `<div class="big">${result.ok ? '✅' : '⚠️'}</div><h2>${result.ok ? 'Direct access should work' : 'Direct access won’t work yet'}</h2>
+<p style="text-align:left;display:inline-block">${result.lines.map(esc).join('<br>')}</p>
+${result.ok ? '<p>Turn it on with <b>File → Access from Anywhere</b>.</p>' : `<p class="err">${esc(advice)}</p>`}`,
+    ),
+  );
+}
+
 async function toggleRemoteAccess() {
   const enable = !remoteEnabled();
   if (enable) {
@@ -199,8 +225,16 @@ async function chooseVault() {
 
 // ------------------------------------------------------------------ Claude connection info
 
+// In a packaged release the server CLI and web UI are bundled next to main.mjs.
+const PACKAGED = app.isPackaged;
+
 function serverCliPath() {
+  if (PACKAGED) return path.join(app.getAppPath(), 'cli.mjs');
   return path.join(path.dirname(require.resolve('@octavo/server/package.json')), 'dist', 'cli.js');
+}
+
+function webDir() {
+  return PACKAGED ? path.join(app.getAppPath(), 'web') : undefined;
 }
 
 function claudeConfig() {
@@ -338,6 +372,7 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Use on Your Phone (Wi-Fi)', type: 'checkbox', checked: phoneEnabled(), click: togglePhoneAccess },
         { label: 'Access from Anywhere', type: 'checkbox', checked: remoteEnabled(), click: toggleRemoteAccess },
+        { label: 'Check Network for Access from Anywhere…', click: checkNetwork },
         { label: 'Show Phone QR Code…', enabled: needsKey() && !!server, click: showPhoneQr },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
