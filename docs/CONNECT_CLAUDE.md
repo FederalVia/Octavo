@@ -11,7 +11,7 @@ There are two ways to connect:
 
 Both can be used at the same time on the same vault. The web app shows changes from either one live.
 
-> Before you start, follow the [installation guide](INSTALL.md) as far as `npm run build`. The commands below use the absolute path to your clone. Replace `/path/to/ultron-mind` and the vault path with your own.
+> Before you start, follow the [installation guide](INSTALL.md) as far as `npm run build`. The commands below use the absolute path to your clone. Replace `/path/to/octavo` and the vault path with your own.
 
 ---
 
@@ -21,7 +21,7 @@ Both can be used at the same time on the same vault. The web app shows changes f
 
 ```bash
 claude mcp add octavo --scope user -- \
-  node /path/to/ultron-mind/packages/server/dist/cli.js mcp --vault ~/Octavo
+  node /path/to/octavo/packages/server/dist/cli.js mcp --vault ~/Octavo
 ```
 
 `--scope user` makes the memory available in every project. Leave it out to add it only to the current project.
@@ -58,7 +58,7 @@ Add an `octavo` entry under `mcpServers`:
     "octavo": {
       "command": "node",
       "args": [
-        "/path/to/ultron-mind/packages/server/dist/cli.js",
+        "/path/to/octavo/packages/server/dist/cli.js",
         "mcp",
         "--vault",
         "/Users/you/Octavo"
@@ -132,7 +132,7 @@ Note paths are relative to the vault (`Projects/Octavo.md`). The `.md` extension
 Start the server with `--read-only` (for either `serve` or `mcp`) to expose only the read tools. This is useful when you want Claude to consult your notes without changing them:
 
 ```bash
-claude mcp add octavo-ro -- node /path/to/ultron-mind/packages/server/dist/cli.js mcp --vault ~/Octavo --read-only
+claude mcp add octavo-ro -- node /path/to/octavo/packages/server/dist/cli.js mcp --vault ~/Octavo --read-only
 ```
 
 ---

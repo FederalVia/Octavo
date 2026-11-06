@@ -66,8 +66,8 @@ Alternatively, use [nvm](https://github.com/nvm-sh/nvm) on any platform: `nvm in
 ## 2. Install and run the web app
 
 ```bash
-git clone https://github.com/FederalVia/ultron-mind.git
-cd ultron-mind
+git clone https://github.com/FederalVia/octavo.git
+cd octavo
 npm install
 npm run build
 ```
@@ -130,7 +130,7 @@ Create `~/.config/systemd/user/octavo.service`:
 Description=Octavo
 
 [Service]
-WorkingDirectory=%h/ultron-mind
+WorkingDirectory=%h/octavo
 ExecStart=/usr/bin/node packages/server/dist/cli.js serve --vault %h/Octavo
 Restart=on-failure
 
@@ -235,7 +235,7 @@ From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <
 These work directly on the vault folder, so no server needs to be running:
 
 ```bash
-alias octavo="node /path/to/ultron-mind/packages/server/dist/cli.js"   # optional shortcut
+alias octavo="node /path/to/octavo/packages/server/dist/cli.js"   # optional shortcut
 
 octavo new "Projects/Website" --content "# Website"   # or pipe content: echo text | octavo new Inbox/Idea
 octavo read "Website"
@@ -274,7 +274,7 @@ Open your server's address in Safari (iOS) or Chrome (Android), then choose **Sh
 ## 8. Updating
 
 ```bash
-cd ultron-mind
+cd octavo
 git pull
 npm install
 npm run build
@@ -289,7 +289,7 @@ Updates never change your notes.
 ## 9. Uninstalling
 
 1. Stop the server or app (and remove any systemd/pm2 service you created).
-2. Delete the `ultron-mind` folder.
+2. Delete the `octavo` folder.
 3. Your notes stay in your vault folder (e.g. `~/Octavo`). Delete it only if you no longer want them.
 4. The desktop app keeps a tiny settings file in an `Octavo` folder inside your OS's app-data folder (`~/Library/Application Support` on macOS, `%APPDATA%` on Windows, `~/.config` on Linux).
 5. Remove Claude's connection: `claude mcp remove octavo`, or delete the entry from `claude_desktop_config.json`.

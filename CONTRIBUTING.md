@@ -5,8 +5,8 @@ Thanks for helping out! See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how
 ## Setup
 
 ```bash
-git clone https://github.com/FederalVia/ultron-mind.git
-cd ultron-mind
+git clone https://github.com/FederalVia/octavo.git
+cd octavo
 npm install
 npm run build
 ```

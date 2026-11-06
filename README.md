@@ -44,8 +44,8 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what'
 You need [Node.js](https://nodejs.org) 20 or newer and git.
 
 ```bash
-git clone https://github.com/FederalVia/ultron-mind.git
-cd ultron-mind
+git clone https://github.com/FederalVia/octavo.git
+cd octavo
 npm install
 npm run build
 npm run demo          # opens the example vault at http://127.0.0.1:4321

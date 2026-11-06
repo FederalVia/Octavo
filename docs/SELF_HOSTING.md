@@ -27,8 +27,8 @@ docker compose version
 ## 2. Get Octavo
 
 ```bash
-git clone https://github.com/FederalVia/ultron-mind.git
-cd ultron-mind
+git clone https://github.com/FederalVia/octavo.git
+cd octavo
 ```
 
 No git? On GitHub, click **Code → Download ZIP**, unzip it, and open a terminal in that folder.
@@ -150,7 +150,7 @@ From another computer on your tailnet, use `https://octavo.tail1234.ts.net/mcp` 
 
 ## Everyday commands
 
-Run these in the `ultron-mind` folder. Add `-f docker-compose.tailscale.yml` (or `-f docker-compose.caddy.yml`) if you used that setup:
+Run these in the `octavo` folder. Add `-f docker-compose.tailscale.yml` (or `-f docker-compose.caddy.yml`) if you used that setup:
 
 | Do this | Command |
 | --- | --- |
@@ -170,7 +170,7 @@ Run these in the `ultron-mind` folder. Add `-f docker-compose.tailscale.yml` (or
 
 - **The phone can't connect:** check Tailscale is switched on on the phone, and that `docker compose -f docker-compose.tailscale.yml ps` shows both containers running.
 - **"Your connection is not private" / no HTTPS:** enable HTTPS certificates in the Tailscale DNS settings (step A1.2), then restart with `docker compose -f docker-compose.tailscale.yml restart tailscale`.
-- **The `octavo` machine doesn't appear in Tailscale:** the auth key may be wrong or expired. Make a new one, update `TS_AUTHKEY` in `.env`, then run `docker compose -f docker-compose.tailscale.yml down` followed by `docker volume rm ultron-mind_tailscale-state` and `up -d` again. Removing that volume makes it register from scratch.
+- **The `octavo` machine doesn't appear in Tailscale:** the auth key may be wrong or expired. Make a new one, update `TS_AUTHKEY` in `.env`, then run `docker compose -f docker-compose.tailscale.yml down` followed by `docker volume rm octavo_tailscale-state` and `up -d` again. Removing that volume makes it register from scratch.
 - **"Unauthorized" or a token prompt:** the access key doesn't match `OCTAVO_TOKEN` in `.env`. Make a fresh QR code.
 - **Port 4321 is already in use:** the Octavo desktop app or `npm start` is probably running on the same PC. Close it and use the browser instead, or change the port mapping in the compose file.
 - **Windows: notes don't update live when edited in another app:** live updates for files changed outside Octavo can lag on Docker Desktop for Windows. Notes are still read fresh when you open them.
