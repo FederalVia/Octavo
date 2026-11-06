@@ -2404,3 +2404,13 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .remote-problem .small { display: block; margin-top: 4px; }
 .remote-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .remote-note { margin: 4px 0 8px; }
+
+/* ---------------------------------------------------------------- network view: shares the atlas dock and tools */
+.brain .atlas-find input { width: 128px; }
+.brain .atlas-find input:focus, .brain .atlas-find.active input { width: 170px; }
+/* The desktop hint sits above the dock instead of beside it. */
+.brain-hint { bottom: calc(62px + env(safe-area-inset-bottom)); }
+@media (max-width: 560px) {
+  .brain .atlas-find input { width: 0; }
+  .brain .atlas-find:focus-within input, .brain .atlas-find.active input { width: 140px; }
+}

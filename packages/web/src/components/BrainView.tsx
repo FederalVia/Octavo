@@ -6,7 +6,6 @@ import {
   forceCollide,
   forceX,
   forceY,
-  forceRadial,
   type Simulation,
   type SimulationNodeDatum,
   type SimulationLinkDatum,
@@ -14,13 +13,17 @@ import {
 import type { GraphData, GraphNode } from '../api';
 import { REGIONS, classify, type RegionKey } from '../regions';
 
-/** Flat graph palette: grey for general knowledge, distinct colours for the other regions. */
 /** Same colours as the atlas, so a region looks the same in both views. */
 export const NETWORK_COLORS: Record<RegionKey, [number, number, number]> = Object.fromEntries(
   REGIONS.map((r) => [r.key, r.rgb]),
 ) as Record<RegionKey, [number, number, number]>;
-const POS_KEY = 'octavo.networkPositions';
+// v2: the layout changed (regions spread over the area), so positions saved by the old layout are ignored.
+const POS_KEY = 'octavo.networkPositions2';
+const OLD_POS_KEY = 'octavo.networkPositions';
+const UNRESOLVED_RGB: [number, number, number] = [110, 112, 118];
 const rgba = (c: [number, number, number], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+/** A lighter tint of a region colour for label text. */
+const labelColor = (c: [number, number, number]) => `rgb(${c.map((v) => Math.round(v + (255 - v) * 0.55)).join(',')})`;
 
 /** Imperative controls the app uses to make the brain react to events. */
 export interface BrainHandle {
@@ -34,17 +37,23 @@ export interface BrainHandle {
 
 interface Node extends GraphNode, SimulationNodeDatum {
   rgb: [number, number, number];
-  phase: number;
+  region: RegionKey;
   born: number;
-  /** Cached CSS colour. */
-  fill?: string;
   firedAt: number;
+  /** Linked to a big share of the vault (index notes): its links are drawn faint and barely pull. */
+  mega: boolean;
+  hub: boolean;
+  /** Where its region's territory is: a weak pull keeps regions spread over the area. */
+  ax: number;
+  ay: number;
+  /** Cached label text and its width at the label font. */
+  text?: string;
+  textW?: number;
 }
 interface Link extends SimulationLinkDatum<Node> {
   source: Node;
   target: Node;
-  /** Curve bend, so parallel-ish links don't overlap. */
-  bend: number;
+  mega: boolean;
 }
 interface Pulse {
   link: Link;
@@ -52,7 +61,6 @@ interface Pulse {
   t: number;
   speed: number;
   forward: boolean;
-  strong: boolean;
 }
 interface Ripple {
   node: Node;
@@ -79,31 +87,77 @@ function glowSprite(rgb: [number, number, number]): HTMLCanvasElement {
   let c = glowCache.get(key);
   if (c) return c;
   c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = 64;
   const g = c.getContext('2d')!;
-  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
   grad.addColorStop(0, `rgba(${key}, 0.8)`);
   grad.addColorStop(0.25, `rgba(${key}, 0.3)`);
   grad.addColorStop(0.6, `rgba(${key}, 0.06)`);
   grad.addColorStop(1, `rgba(${key}, 0)`);
   g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
+  g.fillRect(0, 0, 64, 64);
   glowCache.set(key, c);
   return c;
 }
 
-function linkId(l: { source: string | Node; target: string | Node }) {
-  const s = typeof l.source === 'string' ? l.source : l.source.id;
-  const t = typeof l.target === 'string' ? l.target : l.target.id;
-  return `${s}\u0000${t}`;
+/** Screen margins kept free of the graph: the toolbar at the top, the region dock at the bottom. */
+const MARGIN = { top: 64, bottom: 66, side: 14 };
+const isCoarse = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
+/** Seeded random numbers, so a note starts in the same spot every time. */
+function seeded(id: string) {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+}
+
+/** Regions around the ring, in brain order; hub notes sit in the middle. */
+const RING: RegionKey[] = ['frontal', 'parietal', 'occipital', 'cerebellum', 'temporal'];
+
+/**
+ * Lay the regions out as slices of an ellipse shaped like the free screen area, each slice sized by
+ * how many notes it holds, so the notes spread over the whole view instead of piling up in a ball.
+ */
+function territories(counts: Record<RegionKey, number>, R: number, aspect: number) {
+  const sx = Math.sqrt(aspect);
+  const sy = 1 / sx;
+  const ring = RING.filter((k) => counts[k] > 0);
+  const total = ring.reduce((a, k) => a + counts[k], 0) || 1;
+  const out = new Map<RegionKey, { a0: number; a1: number }>();
+  let a = -Math.PI / 2 - (Math.PI * counts[ring[0]]) / total;
+  for (const k of ring) {
+    const span = (Math.PI * 2 * counts[k]) / total;
+    out.set(k, { a0: a, a1: a + span });
+    a += span;
+  }
+  /** A spot in a region's territory: a random point in its slice (the core for hubs). */
+  return (region: RegionKey, rnd: () => number): [number, number] => {
+    const t = out.get(region);
+    if (region === 'stem' || !t) {
+      const r = R * 0.28 * Math.sqrt(rnd());
+      const th = rnd() * Math.PI * 2;
+      return [Math.cos(th) * r * sx, Math.sin(th) * r * sy];
+    }
+    const r = R * (0.3 + 0.7 * Math.sqrt(rnd()));
+    const th = t.a0 + (t.a1 - t.a0) * (0.08 + 0.84 * rnd());
+    return [Math.cos(th) * r * sx, Math.sin(th) * r * sy];
+  };
 }
 
 export function BrainView(props: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [filter, setFilter] = useState('');
+  const [hidden, setHidden] = useState<Set<RegionKey>>(() => new Set());
   const propsRef = useRef(props);
   propsRef.current = props;
+  const zoomRef = useRef((_f: number) => {});
+  const fitRef = useRef(() => {});
+  const resizeRef = useRef(() => {});
 
   const regionCounts = useMemo(() => {
     const c = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
@@ -113,6 +167,8 @@ export function BrainView(props: Props) {
 
   const s = useRef({
     nodes: [] as Node[],
+    /** Nodes by importance (degree), for picking which names to show. */
+    ranked: [] as Node[],
     links: [] as Link[],
     byId: new Map<string, Node>(),
     neighbors: new Map<string, Set<string>>(),
@@ -120,25 +176,39 @@ export function BrainView(props: Props) {
     pulses: [] as Pulse[],
     ripples: [] as Ripple[],
     sim: null as Simulation<Node, Link> | null,
+    /** True while the layout is still moving (ticked by the render loop, within a time budget). */
+    settling: false,
     cam: { x: 0, y: 0, k: 1 },
+    /** The zoom at which the whole graph fits; node and label sizes are tuned for it. */
+    kFit: 1,
     camTarget: null as { x: number; y: number; k: number } | null,
     hover: null as Node | null,
     drag: null as Node | null,
     pan: null as { x: number; y: number; cx: number; cy: number } | null,
     pointers: new Map<number, { x: number; y: number }>(),
-    pinch: null as { d: number; k: number } | null,
+    pinch: null as { d: number; k: number; mx: number; my: number; cx: number; cy: number } | null,
     moved: false,
+    /** The user has moved the camera: stop auto-fitting while the layout settles. */
+    userCam: false,
     filter: '',
+    hidden: new Set<RegionKey>(),
     width: 0,
+    height: 0,
     dpr: 1,
     lastSig: '',
     lastBorn: 0,
     lastFire: 0,
-    labelsKey: '' as string | undefined,
-    height: 0,
     fitted: false,
+    /** Ask the render loop to re-fit (e.g. the "show everything" button). */
+    refit: false,
+    aspect: 1,
+    big: false,
+    sizes: { leaf: 2, font: 12 },
+    linkAlpha: 0.2,
+    meanDegree: 4,
   });
   s.current.filter = filter.trim().toLowerCase();
+  s.current.hidden = hidden;
 
   // ------------------------------------------------------------ data -> simulation
   useEffect(() => {
@@ -146,30 +216,58 @@ export function BrainView(props: Props) {
     const data = props.data;
     if (!data) return;
     const now = performance.now();
-    const colorOf = (n: GraphNode): [number, number, number] => (n.unresolved ? [110, 112, 118] : NETWORK_COLORS[classify(n)]);
     const old = st.byId;
     const first = old.size === 0;
-    // One neighbour per note, for placing new notes (a map: scanning all links per note is quadratic).
+    const total = data.nodes.filter((n) => !n.unresolved).length;
+    const N = data.nodes.length;
+    st.big = N > 600;
+
+    // The free screen area's shape, so the layout fills a phone's tall screen as well as a wide monitor.
+    const r = wrapRef.current?.getBoundingClientRect();
+    const fw = Math.max(200, (r?.width ?? 800) * (1 - props.rightInset) - MARGIN.side * 2);
+    const fh = Math.max(200, (r?.height ?? 600) - MARGIN.top - MARGIN.bottom);
+    if (first || !st.aspect) st.aspect = Math.min(2, Math.max(0.5, fw / fh));
+
+    // Spacing between notes in world units; small vaults get more room so every name fits.
+    const spacing = 30 * Math.max(1, Math.pow(150 / Math.max(N, 1), 0.3));
+    const R = spacing * Math.sqrt(Math.max(N, 4) / Math.PI);
+    const counts = Object.fromEntries(REGIONS.map((x) => [x.key, 0])) as Record<RegionKey, number>;
+    const regionOf = new Map<string, RegionKey>();
+    for (const n of data.nodes) {
+      const k = classify(n);
+      regionOf.set(n.id, k);
+      if (!n.unresolved) counts[k]++;
+    }
+    const spot = territories(counts, R, st.aspect);
+
+    const degrees = data.nodes.filter((n) => !n.unresolved).map((n) => n.degree).sort((a, b) => b - a);
+    const hubCut = Math.max(4, degrees[Math.floor(degrees.length * 0.03)] ?? 4);
+    // Index-like notes linked to 5%+ of the vault: their hundreds of lines would drown everything else.
+    const megaCut = Math.max(30, total * 0.05);
+
     const firstNeighbor = new Map<string, string>();
     for (const l of data.links) {
       if (!firstNeighbor.has(l.source)) firstNeighbor.set(l.source, l.target);
       if (!firstNeighbor.has(l.target)) firstNeighbor.set(l.target, l.source);
     }
     const nodes: Node[] = data.nodes.map((n) => {
+      const region = regionOf.get(n.id)!;
+      const rgb = n.unresolved ? UNRESOLVED_RGB : NETWORK_COLORS[region];
+      const [ax, ay] = spot(region, seeded(n.id));
+      const extra = { rgb, region, ax, ay, mega: !n.unresolved && n.degree >= megaCut, hub: !n.unresolved && n.degree >= hubCut, text: undefined, textW: undefined };
       const prev = old.get(n.id);
-      if (prev) return Object.assign(prev, n, { rgb: colorOf(n), fill: undefined });
+      if (prev) return Object.assign(prev, n, extra);
       // New thoughts appear near a connected node if there is one.
       const anchorId = first ? undefined : firstNeighbor.get(n.id);
       const anchor = anchorId ? old.get(anchorId) : undefined;
       if (!first) st.lastBorn = now;
       return {
         ...n,
-        rgb: colorOf(n),
-        phase: Math.random() * Math.PI * 2,
+        ...extra,
         born: first ? now - 10000 : now,
         firedAt: -1e9,
-        x: anchor?.x != null ? anchor.x + (Math.random() - 0.5) * 30 : (Math.random() - 0.5) * 400,
-        y: anchor?.y != null ? anchor.y + (Math.random() - 0.5) * 30 : (Math.random() - 0.5) * 400,
+        x: anchor?.x != null ? anchor.x + (Math.random() - 0.5) * 30 : ax,
+        y: anchor?.y != null ? anchor.y + (Math.random() - 0.5) * 30 : ay,
       };
     });
     const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -177,10 +275,8 @@ export function BrainView(props: Props) {
     for (const l of data.links) {
       const a = byId.get(l.source);
       const b = byId.get(l.target);
-      if (!a || !b) continue;
-      let h = 0;
-      for (const ch of linkId(l)) h = (h * 33 + ch.charCodeAt(0)) >>> 0;
-      links.push({ source: a, target: b, bend: ((h % 1000) / 1000 - 0.5) * 0.08 });
+      if (!a || !b || a === b) continue;
+      links.push({ source: a, target: b, mega: a.mega || b.mega });
     }
     st.neighbors = new Map();
     st.adjacency = new Map();
@@ -196,18 +292,36 @@ export function BrainView(props: Props) {
       }
     }
     st.nodes = nodes;
+    // Ranked by links, taking turns between regions, so every region gets a few names rather than only the hub notes.
+    {
+      const per = new Map<string, Node[]>();
+      for (const n of [...nodes].sort((a, b) => b.degree - a.degree)) {
+        const key = n.unresolved ? 'u' : n.region;
+        if (!per.has(key)) per.set(key, []);
+        per.get(key)!.push(n);
+      }
+      const lists = [...per.entries()].filter(([k]) => k !== 'u').map(([, l]) => l);
+      st.ranked = [];
+      for (let i = 0; st.ranked.length < nodes.length - (per.get('u')?.length ?? 0); i++)
+        for (const l of lists) if (l[i]) st.ranked.push(l[i]);
+      st.ranked.push(...(per.get('u') ?? []));
+    }
     st.links = links;
     st.byId = byId;
     const live = new Set(links);
     st.pulses = st.pulses.filter((p) => live.has(p.link));
+    // Fainter lines the more of them there are; lines to index notes fainter still.
+    const plain = links.filter((l) => !l.mega).length;
+    st.linkAlpha = Math.min(0.32, Math.max(0.07, 1.1 / Math.sqrt(Math.max(plain, 1) / 6)));
+    st.meanDegree = Math.max(1, (2 * links.length) / Math.max(1, N)) + 1;
+    st.sizes = { leaf: N > 800 ? 1.8 : N > 250 ? 2.3 : N > 60 ? 3 : 3.8, font: 12 };
 
     st.sim?.stop();
-    const radius = Math.max(150, Math.sqrt(nodes.length) * 55);
-    const big = nodes.length > 1000;
-    // Start from the positions saved last time (big vaults otherwise take seconds to lay out).
+    // Start from the positions saved last time (big vaults otherwise take a while to lay out).
     let restored = 0;
     if (first) {
       try {
+        localStorage.removeItem(OLD_POS_KEY);
         const saved = JSON.parse(localStorage.getItem(POS_KEY) ?? '{}') as Record<string, [number, number]>;
         for (const n of nodes) {
           const p = saved[n.id];
@@ -221,43 +335,45 @@ export function BrainView(props: Props) {
         /* none saved */
       }
     }
-    st.sim = forceSimulation<Node, Link>(nodes)
+    const linkCount = new Map<Node, number>();
+    for (const l of links) {
+      linkCount.set(l.source, (linkCount.get(l.source) ?? 0) + 1);
+      linkCount.set(l.target, (linkCount.get(l.target) ?? 0) + 1);
+    }
+    const sim = forceSimulation<Node, Link>(nodes)
+      .stop()
       .force(
         'link',
         forceLink<Node, Link>(links)
-          .id((d) => d.id)
-          .distance((l) => 50 + Math.min(60, (l.source.degree + l.target.degree) * 3))
-          .strength(0.5),
+          .distance(spacing * 1.1)
+          // Lines to index notes barely pull, or every note would collapse onto them.
+          .strength((l) => (l.mega ? 0.004 : 0.5 / Math.min(linkCount.get(l.source)!, linkCount.get(l.target)!))),
       )
-      .force('charge', forceManyBody<Node>().strength((d) => -120 - d.degree * 12).distanceMax(600).theta(big ? 1.2 : 0.9))
-      .force('collide', forceCollide<Node>().radius((d) => 10 + Math.sqrt(d.degree) * 3))
-      // Pull everything into a rounded, brain-like blob; orphans drift to the edge.
-      .force('radial', forceRadial<Node>((d) => (d.degree === 0 ? radius * 1.1 : 0), 0, 0).strength((d) => (d.degree === 0 ? 0.08 : 0.015)))
-      .force('x', forceX<Node>(0).strength(0.03))
-      .force('y', forceY<Node>(0).strength(0.045))
-      .alpha(first ? 1 : 0.15)
-      .alphaDecay(big ? 0.05 : 0.02);
+      .force('charge', forceManyBody<Node>().strength(-spacing * 0.35).distanceMax(spacing * 4).theta(st.big ? 1.1 : 0.9))
+      .force('collide', forceCollide<Node>().radius((d) => spacing * (d.mega ? 0.9 : d.hub ? 0.55 : 0.38)).iterations(1))
+      // A weak pull towards each note's region territory: regions stay spread over the whole area.
+      .force('x', forceX<Node>((d) => d.ax).strength((d) => (d.unresolved ? 0.01 : d.mega ? 0.3 : 0.22)))
+      .force('y', forceY<Node>((d) => d.ay).strength((d) => (d.unresolved ? 0.01 : d.mega ? 0.3 : 0.22)))
+      .velocityDecay(0.5)
+      // Settle within a few seconds and then stop for good: no endless jiggle, no work while idle.
+      .alphaMin(0.01)
+      .alphaDecay(st.big ? 0.06 : 0.035);
+    st.sim = sim;
     if (first) {
-      // Settle the initial layout before the first frame so it doesn't explode on screen.
-      st.sim.stop();
       const mostlyRestored = restored > nodes.length * 0.8;
-      const ticks = mostlyRestored ? 15 : big ? 60 : 220;
-      if (mostlyRestored) st.sim.alpha(0.1);
-      for (let i = 0; i < ticks; i++) st.sim.tick();
-      st.sim.alpha(mostlyRestored ? 0.02 : 0.05).restart();
+      sim.alpha(mostlyRestored ? 0.06 : 1);
+      // Settle most of the layout before the first frame (within a time limit), so it doesn't move much on screen.
+      const t0 = performance.now();
+      const limit = mostlyRestored ? 30 : isCoarse() ? 250 : 400;
+      while (sim.alpha() > 0.12 && performance.now() - t0 < limit) sim.tick();
       st.fitted = false;
+      st.userCam = false;
+    } else {
+      sim.alpha(0.15);
     }
-    // Remember where everything ended up.
-    st.sim.on('end', () => {
-      if (nodes.length < 50) return;
-      try {
-        const out: Record<string, [number, number]> = {};
-        for (const n of nodes) if (n.x != null) out[n.id] = [Math.round(n.x), Math.round(n.y!)];
-        localStorage.setItem(POS_KEY, JSON.stringify(out));
-      } catch {
-        /* storage full or blocked */
-      }
-    });
+    st.settling = true;
+    // The drawing resolution depends on the vault size.
+    resizeRef.current();
   }, [props.data]);
 
   // ------------------------------------------------------------ render loop + interaction
@@ -267,40 +383,62 @@ export function BrainView(props: Props) {
     const ctx = canvas.getContext('2d')!;
     const st = s.current;
     let raf = 0;
+    let timer = 0;
     let last = performance.now();
+    const coarse = isCoarse();
 
     const resize = () => {
       const r = wrap.getBoundingClientRect();
       st.width = r.width;
       st.height = r.height;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Big vaults on phones draw at a lower resolution: three times the pixels costs three times the battery.
+      const cap = coarse && st.nodes.length > 400 ? 1.5 : 2;
+      const dpr = Math.min(window.devicePixelRatio || 1, cap);
       st.dpr = dpr;
       canvas.width = Math.round(r.width * dpr);
       canvas.height = Math.round(r.height * dpr);
       canvas.style.width = `${r.width}px`;
       canvas.style.height = `${r.height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      st.lastSig = '';
     };
+    resizeRef.current = resize;
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     resize();
 
-    const nodeRadius = (n: Node) => (n.unresolved ? 2 : 2.6 + Math.sqrt(n.degree) * 1.15);
-    const centerX = () => (st.width * (1 - propsRef.current.rightInset)) / 2;
-    const centerY = () => st.height / 2;
+    // The free area: between the toolbar and the dock, left of any open panel.
+    const freeW = () => st.width * (1 - propsRef.current.rightInset);
+    const centerX = () => freeW() / 2;
+    const centerY = () => (MARGIN.top + st.height - MARGIN.bottom) / 2;
+    /** How much bigger than at "fit" things are drawn: they grow slower than the zoom, so zooming in spreads them apart. */
+    const zoomGrow = () => Math.min(2, Math.max(0.7, Math.sqrt(st.cam.k / st.kFit)));
+    const nodePx = (n: Node) => {
+      const leaf = st.sizes.leaf * (st.width > 700 ? 1.15 : 1);
+      // Sized against the vault's typical note, so an average note is a small dot whatever the link density.
+      const r = n.unresolved ? leaf * 0.7 : leaf * Math.min(st.width < 600 ? 2.6 : 3.2, Math.max(0.75, Math.sqrt((n.degree + 1) / st.meanDegree)));
+      return r * zoomGrow();
+    };
 
-    const fit = () => {
-      if (!st.nodes.length) return;
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const fitCam = () => {
+      const xs: number[] = [];
+      const ys: number[] = [];
       for (const n of st.nodes) {
-        minX = Math.min(minX, n.x!);
-        maxX = Math.max(maxX, n.x!);
-        minY = Math.min(minY, n.y!);
-        maxY = Math.max(maxY, n.y!);
+        if (n.x == null || st.hidden.has(n.region)) continue;
+        xs.push(n.x);
+        ys.push(n.y!);
       }
-      const w = st.width * (1 - propsRef.current.rightInset);
-      const k = Math.min(2.2, Math.max(0.15, Math.min(w / (maxX - minX + 160), st.height / (maxY - minY + 160))));
-      st.cam = { k, x: -((minX + maxX) / 2) * k, y: -((minY + maxY) / 2) * k };
+      if (!xs.length) return null;
+      xs.sort((p, q) => p - q);
+      ys.sort((p, q) => p - q);
+      // In big vaults a few stray notes far out shouldn't shrink everything else: fit 99% of them.
+      const cut = xs.length > 200 ? Math.floor(xs.length * 0.005) : 0;
+      const minX = xs[cut], maxX = xs[xs.length - 1 - cut], minY = ys[cut], maxY = ys[ys.length - 1 - cut];
+      const w = freeW() - MARGIN.side * 2;
+      const h = st.height - MARGIN.top - MARGIN.bottom;
+      const pad = 24;
+      const k = Math.min(6, Math.max(0.02, Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1))));
+      return { k, x: -((minX + maxX) / 2) * k, y: -((minY + maxY) / 2) * k };
     };
 
     const toWorld = (cx: number, cy: number) => {
@@ -310,21 +448,26 @@ export function BrainView(props: Props) {
         y: (cy - r.top - centerY() - st.cam.y) / st.cam.k,
       };
     };
-    const hitTest = (cx: number, cy: number): Node | null => {
+    /** The note under a point, with a generous reach for fingers. */
+    const hitTest = (cx: number, cy: number, finger: boolean): Node | null => {
       const p = toWorld(cx, cy);
       let best: Node | null = null;
       let bestD = Infinity;
+      const slop = finger ? 14 : 5;
       for (const n of st.nodes) {
-        const d = Math.hypot(n.x! - p.x, n.y! - p.y);
-        const reach = nodeRadius(n) + 10 / st.cam.k;
-        if (d < reach && d < bestD) (best = n), (bestD = d);
+        if (n.x == null || st.hidden.has(n.region)) continue;
+        const d = Math.hypot(n.x - p.x, n.y! - p.y) * st.cam.k;
+        const reach = nodePx(n) + slop;
+        // Prefer the closest edge, so a big hub doesn't swallow taps on its small neighbours.
+        const score = d - nodePx(n);
+        if (d < reach && score < bestD) (best = n), (bestD = score);
       }
       return best;
     };
 
-    const spawnPulse = (link: Link, forward: boolean, strong: boolean) => {
-      if (st.pulses.length > 400) return;
-      st.pulses.push({ link, t: 0, speed: (strong ? 0.9 : 0.35) + Math.random() * 0.4, forward, strong });
+    const spawnPulse = (link: Link, forward: boolean) => {
+      if (st.pulses.length > 200) return;
+      st.pulses.push({ link, t: 0, speed: 0.9 + Math.random() * 0.4, forward });
     };
 
     const fire = (id: string) => {
@@ -333,22 +476,43 @@ export function BrainView(props: Props) {
       n.firedAt = performance.now();
       st.lastFire = n.firedAt;
       st.ripples.push({ node: n, start: n.firedAt });
-      for (const l of st.adjacency.get(id) ?? []) spawnPulse(l, l.source === n, true);
+      const ls = st.adjacency.get(id) ?? [];
+      // Index notes link to hundreds of notes: send signals along a sample, not all of them.
+      const step = Math.max(1, Math.ceil(ls.length / 40));
+      for (let i = 0; i < ls.length; i += step) spawnPulse(ls[i], ls[i].source === n);
     };
 
     const focusOn = (id: string) => {
       const n = st.byId.get(id);
       if (!n || n.x == null) return;
-      const k = Math.max(st.cam.k, 1.15);
+      const k = Math.max(st.cam.k, st.kFit * 2.2);
       st.camTarget = { k, x: -n.x * k, y: -n.y! * k };
+      st.userCam = true;
     };
 
     propsRef.current.onReady?.({ fire, focus: focusOn });
 
+    const placed: number[] = [];
+    const fits = (x: number, y: number, w: number, h: number) => {
+      for (let i = 0; i < placed.length; i += 4) {
+        if (x < placed[i] + placed[i + 2] && x + w > placed[i] && y < placed[i + 1] + placed[i + 3] && y + h > placed[i + 1]) return false;
+      }
+      placed.push(x, y, w, h);
+      return true;
+    };
+
+    const schedule = () => {
+      if (!raf && !timer) raf = requestAnimationFrame(frame);
+    };
+
     const frame = (now: number) => {
+      raf = 0;
       if (propsRef.current.paused) {
         // Hidden behind a full-screen panel: check back a few times a second instead of drawing.
-        raf = window.setTimeout(() => requestAnimationFrame(frame), 300) as unknown as number;
+        timer = window.setTimeout(() => {
+          timer = 0;
+          schedule();
+        }, 300);
         return;
       }
       raf = requestAnimationFrame(frame);
@@ -356,16 +520,42 @@ export function BrainView(props: Props) {
       last = now;
       const { width: W, height: H, cam } = st;
       if (!W || !H) return;
-      if (!st.fitted && st.nodes.length) {
-        fit();
-        st.fitted = true;
+
+      // Advance the layout within a time budget, and stop simulating once it has settled.
+      const sim = st.sim;
+      if (sim && st.settling) {
+        const t0 = performance.now();
+        const budget = coarse ? 6 : 9;
+        let n = 0;
+        do {
+          sim.tick();
+          n++;
+        } while (n < 4 && performance.now() - t0 < budget && sim.alpha() > sim.alphaMin());
+        if (sim.alpha() <= sim.alphaMin() && !st.drag) {
+          st.settling = false;
+          savePositions();
+        }
+      }
+      if (st.nodes.length && (!st.fitted || st.refit || (st.settling && !st.userCam))) {
+        const f = fitCam();
+        if (f) {
+          if (st.refit) st.camTarget = f;
+          else {
+            st.cam = f;
+            st.kFit = f.k;
+          }
+          if (!st.fitted || st.refit) st.kFit = f.k;
+          st.fitted = true;
+          st.refit = false;
+        }
       }
       if (st.camTarget) {
         const e = 1 - Math.pow(0.0015, dt);
         cam.x += (st.camTarget.x - cam.x) * e;
         cam.y += (st.camTarget.y - cam.y) * e;
         cam.k += (st.camTarget.k - cam.k) * e;
-        if (Math.abs(st.camTarget.x - cam.x) + Math.abs(st.camTarget.y - cam.y) < 0.5 && Math.abs(st.camTarget.k - cam.k) < 0.002) {
+        if (Math.abs(st.camTarget.x - cam.x) + Math.abs(st.camTarget.y - cam.y) < 0.5 && Math.abs(st.camTarget.k - cam.k) < 0.001) {
+          Object.assign(cam, st.camTarget);
           st.camTarget = null;
         }
       }
@@ -374,73 +564,84 @@ export function BrainView(props: Props) {
       const focus = st.hover ?? (selectedId ? st.byId.get(selectedId) ?? null : null);
       const focusSet = focus ? st.neighbors.get(focus.id) : undefined;
       const filterOn = !!st.filter;
+      const hiddenSet = st.hidden;
       const matches = (n: Node) => !filterOn || n.name.toLowerCase().includes(st.filter);
-      const t = now / 1000;
 
       // Skip the redraw when nothing on screen can have changed (saves battery and keeps big vaults smooth).
-      const settling = !!st.sim && st.sim.alpha() > st.sim.alphaMin();
-      const animating = settling || !!st.camTarget || st.pulses.length > 0 || st.ripples.length > 0 || !!focus || now - st.lastBorn < 1300 || now - st.lastFire < 1600;
-      const sig = `${cam.x.toFixed(1)},${cam.y.toFixed(1)},${cam.k.toFixed(4)},${st.hover?.id ?? ''},${selectedId ?? ''},${st.filter},${W},${H},${st.nodes.length},${st.labelsKey ?? ''}`;
+      const animating = st.settling || !!st.camTarget || st.pulses.length > 0 || st.ripples.length > 0 || now - st.lastBorn < 1300 || now - st.lastFire < 1600;
+      const sig = `${cam.x.toFixed(1)},${cam.y.toFixed(1)},${cam.k.toFixed(5)},${st.hover?.id ?? ''},${selectedId ?? ''},${st.filter},${[...hiddenSet].join()},${W},${H},${st.nodes.length},${propsRef.current.rightInset}`;
       if (!animating && sig === st.lastSig) return;
       st.lastSig = sig;
 
-      // Background: flat charcoal.
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#1e1e21';
       ctx.fillRect(0, 0, W, H);
 
-      ctx.save();
-      ctx.translate(centerX() + cam.x, centerY() + cam.y);
-      ctx.scale(cam.k, cam.k);
+      const ox = centerX() + cam.x;
+      const oy = centerY() + cam.y;
+      const k = cam.k;
+      const grow = zoomGrow();
+      const visible = (n: Node) => !hiddenSet.has(n.region);
+      const dim = !!focus || filterOn;
 
-      const pos = new Map<Node, { x: number; y: number }>();
-      for (const n of st.nodes) if (n.x != null) pos.set(n, { x: n.x, y: n.y! });
-
-      // Links: thin grey lines, batched, drawn exactly one device pixel wide in device coordinates
-      // (browsers have a fast path for that: many times cheaper than scaled sub-pixel lines).
+      // Links: one device pixel wide, drawn in device coordinates (a fast path in every browser),
+      // in batches: tinted by the region they start in; lines to index notes in a much fainter pass.
       {
         const d = st.dpr || 1;
-        const ox = (centerX() + cam.x) * d;
-        const oy = (centerY() + cam.y) * d;
-        const k = cam.k * d;
+        const dx = ox * d;
+        const dy = oy * d;
+        const dk = k * d;
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.lineWidth = 1;
-        ctx.strokeStyle = focus || filterOn ? 'rgba(170,170,180,0.09)' : 'rgba(170,170,180,0.26)';
-        ctx.beginPath();
-        for (const l of st.links) {
-          const a = l.source;
-          const b = l.target;
-          if (a.x == null || b.x == null) continue;
-          ctx.moveTo(ox + a.x * k, oy + a.y! * k);
-          ctx.lineTo(ox + b.x * k, oy + b.y! * k);
+        // Zoomed in, fewer lines are on screen, so each can be a little brighter.
+        const a = Math.min(0.4, st.linkAlpha * Math.min(1.4, grow)) * (dim ? 0.35 : 1);
+        const batch = (pick: (l: Link) => boolean) => {
+          ctx.beginPath();
+          for (const l of st.links) {
+            if (!pick(l)) continue;
+            const s0 = l.source;
+            const t0 = l.target;
+            if (s0.x == null || t0.x == null || !visible(s0) || !visible(t0)) continue;
+            ctx.moveTo(dx + s0.x * dk, dy + s0.y! * dk);
+            ctx.lineTo(dx + t0.x * dk, dy + t0.y! * dk);
+          }
+          ctx.stroke();
+        };
+        for (const reg of REGIONS) {
+          ctx.strokeStyle = rgba(reg.rgb, a);
+          batch((l) => !l.mega && !l.source.unresolved && l.source.region === reg.key);
         }
-        ctx.stroke();
+        ctx.strokeStyle = `rgba(160,160,170,${a * 0.8})`;
+        batch((l) => !l.mega && !!l.source.unresolved);
+        // Lines to index notes: a faint haze (left out on phones with big vaults, where they cost more than they show).
+        if (!(coarse && st.big)) {
+          ctx.strokeStyle = `rgba(190,180,220,${Math.min(a, 0.12) * 0.3})`;
+          batch((l) => l.mega);
+        }
         ctx.restore();
       }
-      if (focus) {
-        ctx.strokeStyle = rgba(focus.rgb, 0.85);
-        ctx.lineWidth = 1.4 / cam.k;
+
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.scale(k, k);
+
+      if (focus && visible(focus)) {
+        // A note with hundreds of links gets fainter, thinner lines, or they merge into a solid fan.
+        const count = st.adjacency.get(focus.id)?.length ?? 0;
+        ctx.strokeStyle = rgba(focus.rgb, Math.min(0.8, 3 / Math.sqrt(count + 1)));
+        ctx.lineWidth = (count > 40 ? 0.8 : 1.3) / k;
         ctx.beginPath();
         for (const l of st.adjacency.get(focus.id) ?? []) {
-          const a = pos.get(l.source);
-          const b = pos.get(l.target);
-          if (!a || !b) continue;
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+          if (l.source.x == null || l.target.x == null || !visible(l.source) || !visible(l.target)) continue;
+          ctx.moveTo(l.source.x, l.source.y!);
+          ctx.lineTo(l.target.x, l.target.y!);
         }
         ctx.stroke();
       }
 
-      // Signals only from the focused note (subtle) and fired notes.
-      if (focus && Math.random() < dt * 3) {
-        const ls = st.adjacency.get(focus.id);
-        if (ls?.length) {
-          const l = ls[(Math.random() * ls.length) | 0];
-          spawnPulse(l, l.source === focus, true);
-        }
-      }
+      // Signals from fired notes.
       for (let i = st.pulses.length - 1; i >= 0; i--) {
         const p = st.pulses[i];
         p.t += dt * p.speed;
@@ -448,14 +649,14 @@ export function BrainView(props: Props) {
           st.pulses.splice(i, 1);
           continue;
         }
-        const a = pos.get(p.link.source);
-        const b = pos.get(p.link.target);
-        if (!a || !b) continue;
+        const a = p.link.source;
+        const b = p.link.target;
+        if (a.x == null || b.x == null) continue;
         const u = p.forward ? p.t : 1 - p.t;
-        const from = p.forward ? p.link.source : p.link.target;
-        const size = 10 / Math.sqrt(cam.k);
+        const from = p.forward ? a : b;
+        const size = (10 * grow) / k;
         ctx.globalAlpha = Math.sin(p.t * Math.PI);
-        ctx.drawImage(glowSprite(from.rgb), a.x + (b.x - a.x) * u - size / 2, a.y + (b.y - a.y) * u - size / 2, size, size);
+        ctx.drawImage(glowSprite(from.rgb), a.x + (b.x - a.x) * u - size / 2, a.y! + (b.y! - a.y!) * u - size / 2, size, size);
       }
       ctx.globalAlpha = 1;
 
@@ -467,95 +668,170 @@ export function BrainView(props: Props) {
           st.ripples.splice(i, 1);
           continue;
         }
-        const p = pos.get(r.node);
-        if (!p) continue;
+        if (r.node.x == null) continue;
         ctx.strokeStyle = rgba(r.node.rgb, (1 - age / 1.6) * 0.8);
-        ctx.lineWidth = 1.5 / cam.k;
+        ctx.lineWidth = 1.5 / k;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, nodeRadius(r.node) + age * 50, 0, Math.PI * 2);
+        ctx.arc(r.node.x, r.node.y!, (nodePx(r.node) + age * 40) / k, 0, Math.PI * 2);
         ctx.stroke();
       }
 
-      // Nodes: solid dots (skipping ones off screen).
-      const offX = centerX() + cam.x;
-      const offY = centerY() + cam.y;
+      // Nodes. Plain ones are batched by colour (one fill per region); special ones are drawn singly.
+      const special: Node[] = [];
+      const batches = new Map<string, Path2D>();
+      const m = 40;
       for (const n of st.nodes) {
-        const p = pos.get(n);
-        if (!p) continue;
-        const sx = offX + p.x * cam.k;
-        const sy = offY + p.y * cam.k;
-        if (sx < -60 || sy < -60 || sx > W + 60 || sy > H + 60) continue;
+        if (n.x == null || !visible(n)) continue;
+        const sx = ox + n.x * k;
+        const sy = oy + n.y! * k;
+        if (sx < -m || sy < -m || sx > W + m || sy > H + m) continue;
+        const isSel = n.id === selectedId;
+        const recent = now - n.born < 1300 || now - n.firedAt < 1500;
+        if (isSel || n === st.hover || n === focus || recent || focusSet?.has(n.id) || (filterOn && matches(n))) {
+          special.push(n);
+          continue;
+        }
+        const key = n.unresolved ? 'u' : n.region;
+        let path = batches.get(key);
+        if (!path) batches.set(key, (path = new Path2D()));
+        const r = nodePx(n) / k;
+        path.moveTo(n.x + r, n.y!);
+        path.arc(n.x, n.y!, r, 0, Math.PI * 2);
+      }
+      const baseAlpha = dim ? (filterOn ? 0.12 : 0.28) : 1;
+      for (const [key, path] of batches) {
+        ctx.globalAlpha = baseAlpha * (key === 'u' ? 0.55 : 0.95);
+        ctx.fillStyle = key === 'u' ? rgba(UNRESOLVED_RGB, 1) : rgba(NETWORK_COLORS[key as RegionKey], 1);
+        ctx.fill(path);
+      }
+      for (const n of special) {
         const isSel = n.id === selectedId;
         const isHover = n === st.hover;
-        const near = focusSet?.has(n.id);
         let alpha = 1;
-        if (focus && !isSel && !isHover && !near && n !== focus) alpha = 0.25;
-        if (filterOn) alpha = matches(n) ? 1 : 0.1;
-        // rAF timestamps can trail performance.now() slightly, so clamp ages at 0.
+        if (filterOn && !matches(n)) alpha = focusSet?.has(n.id) || n === focus ? 0.6 : 0.12;
         const age = Math.max(0, (now - n.born) / 1000);
-        const grow = age < 1.2 ? Math.max(0.05, 1 - Math.pow(1 - age / 1.2, 3)) : 1;
+        const born = age < 1.2 ? Math.max(0.05, 1 - Math.pow(1 - age / 1.2, 3)) : 1;
         const fireAge = Math.max(0, (now - n.firedAt) / 1000);
         const fireBoost = fireAge < 1.5 ? 1 - fireAge / 1.5 : 0;
-        const r = nodeRadius(n) * grow * (1 + fireBoost * 0.5) * (isSel || isHover ? 1.3 : 1);
+        const r = (nodePx(n) * born * (1 + fireBoost * 0.5) * (isSel || isHover ? 1.35 : 1)) / k;
         if (fireBoost > 0 || isSel) {
           const glow = r * 4;
-          ctx.globalAlpha = alpha * Math.max(fireBoost, isSel ? 0.7 : 0);
-          ctx.drawImage(glowSprite(n.rgb), p.x - glow, p.y - glow, glow * 2, glow * 2);
+          ctx.globalAlpha = alpha * Math.max(fireBoost, isSel ? 0.6 : 0);
+          ctx.drawImage(glowSprite(n.rgb), n.x! - glow, n.y! - glow, glow * 2, glow * 2);
         }
         ctx.globalAlpha = alpha * (n.unresolved ? 0.6 : 1);
-        ctx.fillStyle = isHover || fireBoost > 0.5 ? '#ffffff' : (n.fill ??= rgba(n.rgb, 1));
+        ctx.fillStyle = isHover || fireBoost > 0.5 ? '#ffffff' : rgba(n.rgb, 1);
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        ctx.arc(n.x!, n.y!, r, 0, Math.PI * 2);
         ctx.fill();
         if (isSel) {
           ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-          ctx.lineWidth = 1.5 / cam.k;
+          ctx.lineWidth = 1.5 / k;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, r + 3.5 / cam.k, 0, Math.PI * 2);
+          ctx.arc(n.x!, n.y!, r + 3.5 / k, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
       ctx.globalAlpha = 1;
+      ctx.restore();
 
-      // Labels.
-      const fontPx = 12;
-      ctx.font = `500 ${fontPx / cam.k}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      const showAll = cam.k > 1.6 || (st.nodes.length <= 40 && cam.k > 0.75);
-      for (const n of st.nodes) {
-        const p = pos.get(n);
-        if (!p) continue;
-        const important = n === focus || n.id === selectedId || focusSet?.has(n.id) || (filterOn && matches(n));
-        if (!important && !showAll) continue;
-        let alpha = important ? 1 : Math.min(1, (cam.k - (st.nodes.length <= 40 ? 0.5 : 1.4)) * 1.5);
-        if (focus && !important) alpha *= 0.35;
-        if (filterOn && !matches(n)) alpha = 0;
-        if (alpha <= 0.02) continue;
-        const y = p.y + nodeRadius(n) + 3 / cam.k;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = important ? '#f2f2f4' : 'rgba(205,205,212,0.85)';
-        ctx.fillText(n.name, p.x, y);
+      // Names, in screen space at a fixed size. The most important claim space first (the focused note,
+      // its neighbours, search matches, then hubs by number of links); a name that would overlap another is skipped.
+      const font = W < 600 ? 11.5 : 12;
+      ctx.font = `500 ${font}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      placed.length = 0;
+      // Keep names off the toolbar, the zoom buttons and the dock.
+      placed.push(0, 0, 400, MARGIN.top - 8, 0, H - MARGIN.bottom + 4, W, MARGIN.bottom, freeW() - 64, 0, 64, 170);
+      const zoomRatio = k / st.kFit;
+      // How many plain hub names fit: few at "fit" on a phone, more on big screens and when zoomed in.
+      const small = st.nodes.length <= 60;
+      const budget = small ? Infinity : Math.round(Math.max(6, (W * H) / 55000) * Math.min(4, Math.pow(zoomRatio, 1.2)));
+      const draw = (n: Node, strong: boolean) => {
+        if (n.x == null || !visible(n)) return false;
+        const sx = ox + n.x * k;
+        const sy = oy + n.y! * k;
+        if (sx < -50 || sy < 0 || sx > W || sy > H) return false;
+        if (n.text === undefined) {
+          n.text = n.name.length > 30 ? n.name.slice(0, 29) + '…' : n.name;
+          n.textW = undefined;
+        }
+        const w = (n.textW ??= ctx.measureText(n.text).width);
+        let x = sx + nodePx(n) + 4;
+        // Near the right edge (or the open panel), the name goes on the left of its dot.
+        if (x + w > freeW() - 6) x = sx - nodePx(n) - 4 - w;
+        if (x < 4 && !strong) return false;
+        // Generous spacing around plain names, so they never stack into a column.
+        const pad = strong ? 3 : 10;
+        if (!fits(x - pad, sy - font * 0.75 - pad / 2, w + pad * 2, font * 1.5 + pad) && !strong) return false;
+        ctx.globalAlpha = strong ? 1 : n.hub ? 0.9 : 0.75;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(22,22,25,0.85)';
+        ctx.strokeText(n.text, x, sy);
+        ctx.fillStyle = strong ? '#ffffff' : labelColor(n.rgb);
+        ctx.fillText(n.text, x, sy);
+        return true;
+      };
+      if (focus) draw(focus, true);
+      if (selectedId && selectedId !== focus?.id) {
+        const sel = st.byId.get(selectedId);
+        if (sel) draw(sel, true);
+      }
+      if (focusSet) {
+        // Neighbours of the focused note, busiest first (a hub's hundreds of neighbours are capped by space).
+        let shown = 0;
+        const cap = small ? Infinity : Math.max(12, Math.min(budget, 36));
+        for (const n of st.ranked) if (focusSet.has(n.id) && draw(n, false) && ++shown >= cap) break;
+      }
+      if (filterOn) {
+        let shown = 0;
+        for (const n of st.ranked) if (matches(n) && draw(n, false) && ++shown > 60) break;
+      } else if (!focus || !focusSet) {
+        let shown = 0;
+        for (const n of st.ranked) {
+          if (shown >= budget) break;
+          if (n.unresolved && !small) continue;
+          if (draw(n, false)) shown++;
+        }
       }
       ctx.globalAlpha = 1;
-      ctx.restore();
     };
+
+    const savePositions = () => {
+      if (st.nodes.length < 50) return;
+      try {
+        const out: Record<string, [number, number]> = {};
+        for (const n of st.nodes) if (n.x != null) out[n.id] = [Math.round(n.x), Math.round(n.y!)];
+        localStorage.setItem(POS_KEY, JSON.stringify(out));
+      } catch {
+        /* storage full or blocked */
+      }
+    };
+
     raf = requestAnimationFrame(frame);
 
-    // --- pointer handling (mouse, pen, touch with pinch-zoom)
+    // --- pointer handling: mouse drags notes or pans; one finger pans, two fingers pinch; a tap opens a note.
     const onDown = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId);
       st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       st.camTarget = null;
       if (st.pointers.size === 2) {
         const [a, b] = [...st.pointers.values()];
-        st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: st.cam.k };
-        st.drag = null;
+        st.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, k: st.cam.k, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, cx: st.cam.x, cy: st.cam.y };
+        if (st.drag) {
+          st.drag.fx = st.drag.fy = null;
+          st.drag = null;
+        }
         st.pan = null;
+        st.moved = true;
         return;
       }
+      if (st.pointers.size > 2) return;
       st.moved = false;
-      const n = hitTest(e.clientX, e.clientY);
+      // Touch always pans (notes are small under a finger); mouse and pen can drag a note around.
+      const n = e.pointerType === 'touch' ? null : hitTest(e.clientX, e.clientY, false);
       if (n) {
         st.drag = n;
         n.fx = n.x;
@@ -566,8 +842,17 @@ export function BrainView(props: Props) {
       if (st.pointers.has(e.pointerId)) st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (st.pinch && st.pointers.size === 2) {
         const [a, b] = [...st.pointers.values()];
-        st.cam.k = Math.min(6, Math.max(0.1, (st.pinch.k * Math.hypot(a.x - b.x, a.y - b.y)) / st.pinch.d));
-        st.moved = true;
+        const r = canvas.getBoundingClientRect();
+        const p = st.pinch;
+        const nk = Math.min(st.kFit * 25, Math.max(st.kFit * 0.4, (p.k * Math.hypot(a.x - b.x, a.y - b.y)) / p.d));
+        // Zoom about the point between the fingers, and follow it as they move.
+        const mx0 = p.mx - r.left - centerX();
+        const my0 = p.my - r.top - centerY();
+        const mx = (a.x + b.x) / 2 - r.left - centerX();
+        const my = (a.y + b.y) / 2 - r.top - centerY();
+        st.cam = { k: nk, x: mx - ((mx0 - p.cx) * nk) / p.k, y: my - ((my0 - p.cy) * nk) / p.k };
+        st.userCam = true;
+        schedule();
         return;
       }
       if (st.drag) {
@@ -576,15 +861,20 @@ export function BrainView(props: Props) {
         st.moved = true;
         st.drag.fx = p.x;
         st.drag.fy = p.y;
-        st.sim?.alphaTarget(0.25).restart();
+        st.sim?.alphaTarget(0.12);
+        if (st.sim && st.sim.alpha() < 0.12) st.sim.alpha(0.12);
+        st.settling = true;
+        st.userCam = true;
       } else if (st.pan) {
         const dx = e.clientX - st.pan.x;
         const dy = e.clientY - st.pan.y;
-        if (Math.abs(dx) + Math.abs(dy) > 3) st.moved = true;
+        if (!st.moved && Math.abs(dx) + Math.abs(dy) <= (e.pointerType === 'touch' ? 8 : 3)) return;
+        st.moved = true;
+        st.userCam = true;
         st.cam.x = st.pan.cx + dx;
         st.cam.y = st.pan.cy + dy;
       } else if (e.pointerType === 'mouse') {
-        const n = hitTest(e.clientX, e.clientY);
+        const n = hitTest(e.clientX, e.clientY, false);
         if (n !== st.hover) {
           st.hover = n;
           canvas.style.cursor = n ? 'pointer' : 'grab';
@@ -592,12 +882,18 @@ export function BrainView(props: Props) {
       }
     };
     const onUp = (e: PointerEvent) => {
-      st.pointers.delete(e.pointerId);
+      const had = st.pointers.delete(e.pointerId);
       if (st.pinch) {
         if (st.pointers.size < 2) st.pinch = null;
+        // The finger left on the screen carries on panning from here.
+        if (st.pointers.size === 1) {
+          const [p] = [...st.pointers.values()];
+          st.pan = { x: p.x, y: p.y, cx: st.cam.x, cy: st.cam.y };
+        }
         return;
       }
-      const clicked = !st.moved ? hitTest(e.clientX, e.clientY) : null;
+      if (!had) return;
+      const clicked = !st.moved && e.type === 'pointerup' ? hitTest(e.clientX, e.clientY, e.pointerType !== 'mouse') : null;
       if (st.drag) {
         st.drag.fx = null;
         st.drag.fy = null;
@@ -610,16 +906,17 @@ export function BrainView(props: Props) {
         fire(clicked.id);
         if (clicked.unresolved) propsRef.current.onSelectUnresolved(clicked.name);
         else propsRef.current.onSelect(clicked.id);
-      } else if (wasPan && !st.moved) propsRef.current.onBackground();
+      } else if (wasPan && !st.moved && e.type === 'pointerup') propsRef.current.onBackground();
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       st.camTarget = null;
+      st.userCam = true;
       const r = canvas.getBoundingClientRect();
       const mx = e.clientX - r.left - centerX();
       const my = e.clientY - r.top - centerY();
       const { x, y, k } = st.cam;
-      const nk = Math.min(6, Math.max(0.1, k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+      const nk = Math.min(st.kFit * 25, Math.max(st.kFit * 0.4, k * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
       st.cam = { k: nk, x: mx - ((mx - x) * nk) / k, y: my - ((my - y) * nk) / k };
     };
     const onLeave = () => {
@@ -628,13 +925,22 @@ export function BrainView(props: Props) {
     const onVisibility = () => {
       if (document.hidden) {
         cancelAnimationFrame(raf);
-      clearTimeout(raf);
-        clearTimeout(raf);
-      }
-      else {
+        clearTimeout(timer);
+        raf = timer = 0;
+      } else {
         last = performance.now();
-        raf = requestAnimationFrame(frame);
+        schedule();
       }
+    };
+    // Buttons: zoom about the centre, and fit everything back in view.
+    zoomRef.current = (f: number) => {
+      const { x, y, k } = st.cam;
+      const nk = Math.min(st.kFit * 25, Math.max(st.kFit * 0.4, k * f));
+      st.camTarget = { k: nk, x: (x * nk) / k, y: (y * nk) / k };
+      st.userCam = true;
+    };
+    fitRef.current = () => {
+      st.refit = true;
     };
 
     canvas.addEventListener('pointerdown', onDown);
@@ -646,6 +952,7 @@ export function BrainView(props: Props) {
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(timer);
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
@@ -658,63 +965,104 @@ export function BrainView(props: Props) {
     };
   }, []);
 
+  // Hiding or showing a region re-frames what is left.
+  const firstHidden = useRef(true);
+  useEffect(() => {
+    if (firstHidden.current) firstHidden.current = false;
+    else s.current.refit = true;
+  }, [hidden]);
+
   // Fly to the selected thought (and keep it visible beside the panel).
   useEffect(() => {
     const st = s.current;
     if (!props.selected) return;
     const n = st.byId.get(props.selected);
     if (!n || n.x == null) return;
-    const k = Math.max(st.cam.k, 1.15);
+    const k = Math.max(st.cam.k, st.kFit * 2.2);
     st.camTarget = { k, x: -n.x * k, y: -n.y! * k };
+    st.userCam = true;
   }, [props.selected, props.data]);
-
-  const stats = props.data
-    ? { notes: props.data.nodes.filter((n) => !n.unresolved).length, links: props.data.links.length }
-    : null;
 
   const submitFilter = () => {
     const q = s.current.filter;
     if (!q) return;
     const hit = s.current.nodes
-      .filter((n) => n.name.toLowerCase().includes(q))
+      .filter((n) => n.name.toLowerCase().includes(q) && !s.current.hidden.has(n.region))
       .sort((a, b) => Number(a.name.toLowerCase() !== q) - Number(b.name.toLowerCase() !== q) || b.degree - a.degree)[0];
     if (hit) {
       if (hit.unresolved) props.onSelectUnresolved(hit.name);
       else props.onSelect(hit.id);
     }
   };
+  const toggle = (k: RegionKey) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
+  const total = props.data ? props.data.nodes.filter((n) => !n.unresolved).length : 0;
+  const freeRight = `calc(${props.rightInset * 100}% + 12px)`;
 
   return (
     <div className="brain" ref={wrapRef}>
       <canvas ref={canvasRef} />
-      <div className="brain-hud top">
-        <input
-          className="brain-search"
-          placeholder="Search the mind…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitFilter();
-            if (e.key === 'Escape') setFilter('');
-          }}
-        />
+      <div className="atlas-tools brain-tools" style={{ right: freeRight }}>
+        <button className="atlas-tool" aria-label="Zoom in" title="Zoom in" onClick={() => zoomRef.current(1.5)}>
+          ＋
+        </button>
+        <button className="atlas-tool" aria-label="Zoom out" title="Zoom out" onClick={() => zoomRef.current(1 / 1.5)}>
+          −
+        </button>
+        <button className="atlas-tool" aria-label="Show everything" title="Show everything" onClick={() => fitRef.current()}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+        </button>
       </div>
-      {stats && (
-        <div className="brain-hud bottom-left">
-          <div className="brain-stats">
-            <b>{stats.notes}</b> thoughts · <b>{stats.links}</b> connections
-          </div>
-          <div className="brain-legend">
+      {total > 0 && (
+        <div className="atlas-dock" style={{ right: freeRight }}>
+          <label className={`atlas-find${filter ? ' active' : ''}`}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+            <input
+              aria-label="Search the mind"
+              placeholder="Search the mind…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitFilter();
+                if (e.key === 'Escape') setFilter('');
+              }}
+            />
+          </label>
+          <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show">
+            {hidden.size > 0 && (
+              <button className="atlas-pill all" onClick={() => setHidden(new Set())}>
+                Show all
+              </button>
+            )}
             {REGIONS.filter((r) => regionCounts[r.key] > 0).map((r) => (
-              <span key={r.key} className="legend-item" title={r.subtitle}>
-                <i style={{ background: rgba(NETWORK_COLORS[r.key], 1) }} />
+              <button
+                key={r.key}
+                className={`atlas-pill${hidden.has(r.key) ? ' off' : ''}`}
+                style={{ ['--region' as string]: r.color }}
+                title={`${r.name} (${r.subtitle}): tap to hide or show`}
+                aria-pressed={!hidden.has(r.key)}
+                onClick={() => toggle(r.key)}
+              >
+                <i aria-hidden="true" />
                 {r.name}
-              </span>
+                <em>{regionCounts[r.key]}</em>
+              </button>
             ))}
           </div>
         </div>
       )}
-      {stats && stats.notes === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
+      {props.data && total === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
     </div>
   );
 }
