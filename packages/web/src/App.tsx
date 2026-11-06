@@ -1069,10 +1069,12 @@ export function App() {
         <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
         <div className="tb-brand" title={vaultName}>
           <span>{(vaultName || 'Octavo').toUpperCase()}</span>
-          <span className="faint"> — </span>
-          {viewMode === 'atlas' ? 'ATLAS' : 'NETWORK'}
-          <span className="faint"> — </span>
-          {graph ? graph.nodes.filter((n) => !n.unresolved).length : 0} notes
+          <span className="tb-detail">
+            <span className="faint"> — </span>
+            {viewMode === 'atlas' ? 'ATLAS' : 'NETWORK'}
+            <span className="faint"> — </span>
+            {graph ? graph.nodes.filter((n) => !n.unresolved).length : 0} notes
+          </span>
         </div>
         <button
           className="tb-btn"
