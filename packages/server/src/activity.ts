@@ -16,6 +16,11 @@ const MAX_BYTES = 256 * 1024;
 
 export function activityFile(vaultRoot: string): string {
   let key = path.resolve(vaultRoot);
+  try {
+    key = fs.realpathSync.native(key); // the same folder through a symlink or short name must hash the same
+  } catch {
+    /* keep the given path */
+  }
   if (process.platform !== 'linux') key = key.toLowerCase();
   const hash = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
   return path.join(os.tmpdir(), `octavo-activity-${hash}.jsonl`);
