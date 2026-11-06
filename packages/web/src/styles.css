@@ -2399,3 +2399,8 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .embed-drawing svg { max-width: 100%; height: auto; display: block; margin: 0 auto; }
 .embed-drawing:hover { border-color: var(--accent-soft); }
 .embed-drawing-caption { font-size: 12px; color: var(--text-faint); margin-top: 4px; }
+
+.remote-problem { border-left: 3px solid var(--warn, #f5a623); padding-left: 10px; }
+.remote-problem .small { display: block; margin-top: 4px; }
+.remote-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.remote-note { margin: 4px 0 8px; }

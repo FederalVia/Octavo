@@ -24,7 +24,8 @@ export function upnpRouter(gw: Gateway): Router {
       await add();
       clearInterval(mappings.get(internalPort)?.timer);
       // Renew well before the lease runs out.
-      const timer = setInterval(() => add().catch(() => {}), (LEASE_SECONDS / 2) * 1000);
+      // Renew often: a router that restarts (power cut) forgets its forwards, and this puts them back.
+      const timer = setInterval(() => add().catch(() => {}), 10 * 60 * 1000);
       timer.unref?.();
       mappings.set(internalPort, { externalPort, timer });
       return externalPort;

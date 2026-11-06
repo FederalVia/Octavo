@@ -240,8 +240,42 @@ async function qrPage(url, where) {
   );
 }
 
+/** Access-from-anywhere log, kept so problems can be looked at later (Settings → Use on your phone → Show log). */
+const remoteLogPath = () => path.join(app.getPath('userData'), 'remote', 'log.txt');
+function remoteLog(message) {
+  console.log(`[octavo] ${message}`);
+  try {
+    const file = remoteLogPath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if ((fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0) > 200_000) fs.writeFileSync(file, '');
+    fs.appendFileSync(file, `${new Date().toISOString()}  ${message}\n`);
+  } catch {
+    /* logging must never break anything */
+  }
+}
+
+let remoteRetries = 0;
+let remoteRetryTimer = null;
+const RETRY_MINUTES = [1, 2, 5, 10];
+function scheduleRemoteRetry() {
+  if (remoteRetryTimer || !remoteEnabled()) return;
+  const minutes = RETRY_MINUTES[Math.min(remoteRetries, RETRY_MINUTES.length - 1)];
+  remoteRetries++;
+  remoteLog(`Will try again in ${minutes} min`);
+  remoteRetryTimer = setTimeout(() => {
+    remoteRetryTimer = null;
+    if (remoteEnabled() && server && remote?.current?.state === 'error') startRemote(false).catch((err) => remoteLog(`Retry failed: ${err}`));
+  }, minutes * 60 * 1000);
+  remoteRetryTimer.unref?.();
+}
+
 async function startRemote(showWindow) {
   if (!server) return;
+  if (showWindow) remoteRetries = 0;
+  if (remoteRetryTimer) {
+    clearTimeout(remoteRetryTimer);
+    remoteRetryTimer = null;
+  }
   // Never expose the server to the internet without the access key.
   if (!needsKey()) throw new Error('Remote access requires the access key to be enabled');
   if (remote) await remote.stop();
@@ -257,10 +291,24 @@ async function startRemote(showWindow) {
       ? { httpsPort: Number(process.env.OCTAVO_HTTPS_PORT), externalHttpsPorts: [Number(process.env.OCTAVO_HTTPS_PORT)] }
       : {}),
     ...(process.env.OCTAVO_CHALLENGE_PORT ? { challengePort: Number(process.env.OCTAVO_CHALLENGE_PORT) } : {}),
-    log: (m) => console.log(`[octavo] ${m}`),
+    log: (m) => remoteLog(m),
   });
   remote.on('status', async (s) => {
     buildMenu();
+    if (s.state === 'error') remoteLog(`Problem: ${s.step}${s.advice ? ` — ${s.advice}` : ''}`);
+    else if (s.state === 'ready') remoteLog(`Ready: ${s.url}`);
+    // Router restarting (power cut), not ready yet at boot, network down: keep trying in the background.
+    if (s.state === 'error') scheduleRemoteRetry();
+    else if (s.state === 'ready') remoteRetries = 0;
+    // Started automatically with the app: nobody is watching, so say so when it fails (once per outage).
+    if (!showWindow && s.state === 'error' && remoteRetries <= 1) {
+      const n = new Notification({ title: 'Octavo: access from anywhere isn’t working', body: `${s.step} Open Settings → Use on your phone for details.` });
+      n.on('click', () => {
+        win?.show();
+        win?.webContents.send('octavo:open-settings', 'phone');
+      });
+      n.show();
+    }
     if (!showWindow && !(accessWin && !accessWin.isDestroyed())) return;
     if (s.state === 'starting') {
       await showAccessWindow(pageHtml('Setting up', `<div class="big">⏳</div><h2>Setting up access from anywhere</h2><p>${esc(s.step)}</p><p>This usually takes under a minute.</p>`));
@@ -860,6 +908,15 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('octavo:toggle-remote', async (e) => {
     if (fromMainWindow(e)) await toggleRemoteAccess();
     return desktopState();
+  });
+  ipcMain.handle('octavo:retry-remote', async (e) => {
+    if (fromMainWindow(e) && remoteEnabled()) await startRemote(true).catch((err) => remoteLog(`Retry failed: ${err}`));
+    return desktopState();
+  });
+  ipcMain.handle('octavo:remote-log', async (e) => {
+    if (!fromMainWindow(e)) return;
+    remoteLog('Log opened');
+    await shell.openPath(remoteLogPath());
   });
   ipcMain.handle('octavo:toggle-phone', async (e) => {
     if (fromMainWindow(e)) await togglePhoneAccess();
