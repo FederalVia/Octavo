@@ -57,6 +57,14 @@ describe('address classification', () => {
 describe('remote access failure modes (no certificate needed)', () => {
   const base = async () => ({ app, stateDir: await tmp(), httpsPort: 0, challengePort: 0 });
 
+  test('options passed as undefined keep their defaults (Let’s Encrypt address, ports)', async () => {
+    const r = new RemoteAccess({ ...(await base()), directoryUrl: undefined, publicIp: undefined, httpsPort: undefined });
+    const opts = (r as unknown as { opts: { directoryUrl: string; httpsPort: number; publicIp?: string } }).opts;
+    assert.equal(opts.directoryUrl, 'https://acme-v02.api.letsencrypt.org/directory');
+    assert.equal(opts.httpsPort, 4443);
+    assert.equal(opts.publicIp, undefined);
+  });
+
   test('no router', async () => {
     const r = new RemoteAccess({ ...(await base()), findRouter: async () => null });
     const s = await r.start();

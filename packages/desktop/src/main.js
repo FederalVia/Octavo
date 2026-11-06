@@ -206,8 +206,8 @@ async function startRemote(showWindow) {
       // Hard guard: the local server must reject requests without the access key.
       requireToken: async () => (await fetch(`${server.url}/api/vault`).then((r) => r.status).catch(() => 0)) === 401,
     // Advanced: ports forwarded by hand / testing against another ACME server.
-    publicIp: process.env.OCTAVO_PUBLIC_IP || undefined,
-    directoryUrl: process.env.OCTAVO_ACME_DIRECTORY || undefined,
+    ...(process.env.OCTAVO_PUBLIC_IP ? { publicIp: process.env.OCTAVO_PUBLIC_IP } : {}),
+    ...(process.env.OCTAVO_ACME_DIRECTORY ? { directoryUrl: process.env.OCTAVO_ACME_DIRECTORY } : {}),
     ...(process.env.OCTAVO_HTTPS_PORT
       ? { httpsPort: Number(process.env.OCTAVO_HTTPS_PORT), externalHttpsPorts: [Number(process.env.OCTAVO_HTTPS_PORT)] }
       : {}),
