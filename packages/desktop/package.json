@@ -17,5 +17,6 @@
   },
   "devDependencies": {
     "electron": "^45.2.3"
-  }
+  },
+  "license": "AGPL-3.0-or-later"
 }

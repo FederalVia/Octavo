@@ -44,3 +44,7 @@ When changing the UI, try both views (atlas and network) at desktop and phone wi
 - Everything that changes files goes through `Vault` in `packages/core`, so that path checks, atomic writes, the index and live events stay consistent.
 - New MCP tools need clear descriptions (Claude reads them), errors returned as `isError` results rather than thrown, and a test in `packages/server/test`.
 - Keep pull requests focused, and describe what you tested.
+
+## License
+
+By contributing, you agree that your contributions are licensed under the project's [AGPL-3.0-or-later](LICENSE) license.
