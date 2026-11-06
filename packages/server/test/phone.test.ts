@@ -18,3 +18,9 @@ test('phone access key is created once, kept private, and reused', async () => {
   assert.match(await qrDataUrl('http://x'), /^data:image\/png;base64,/);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+import { VERSION } from '../src/version.js';
+import { readFileSync } from 'node:fs';
+test('VERSION matches package.json', () => {
+  assert.equal(VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
+});
