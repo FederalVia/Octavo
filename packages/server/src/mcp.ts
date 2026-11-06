@@ -1,0 +1,292 @@
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import type { NoteSummary, Vault } from '@ultron/core';
+
+export const SERVER_INSTRUCTIONS = `Ultron Mind is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
+
+How to use it:
+- At the start of a task, call get_vault_overview (once per conversation), then search_notes for the people, projects and topics involved. Read the most relevant notes before answering.
+- Save things worth remembering: decisions, facts about the user and their preferences, project context, and lessons learned. Update an existing note with append_to_note or edit_note rather than creating near-duplicates; search first.
+- Keep one topic per note, give it a clear name, and connect notes with [[wikilinks]] (e.g. [[Project Ultron]]) and #tags. Linking to a note that doesn't exist yet is fine: it marks a topic to fill in later.
+- Use log_to_journal for a short running log of what happened in each session.
+- Note paths are relative to the vault, e.g. "Projects/Ultron.md". The .md extension is optional, and a bare note name like "Ultron" resolves the same way a wikilink would.
+- Never store secrets such as passwords or API keys in the vault.`;
+
+function text(value: unknown) {
+  return { content: [{ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }] };
+}
+
+function errorResult(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true };
+}
+
+function fmtDate(ms: number): string {
+  return new Date(ms).toISOString().replace('T', ' ').slice(0, 16);
+}
+
+function summaryLine(n: NoteSummary): string {
+  const tags = n.tags.length ? ` ${n.tags.map((t) => '#' + t).join(' ')}` : '';
+  return `- ${n.path} (updated ${fmtDate(n.mtime)})${tags}`;
+}
+
+type Handler<A> = (args: A) => Promise<ReturnType<typeof text>>;
+function safe<A>(fn: Handler<A>) {
+  return async (args: A) => {
+    try {
+      return await fn(args);
+    } catch (err) {
+      return errorResult(err);
+    }
+  };
+}
+
+export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {}): McpServer {
+  const server = new McpServer(
+    { name: 'ultron-mind', version: '0.1.0' },
+    { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } },
+  );
+
+  const pathArg = z.string().describe('Note path relative to the vault (e.g. "Projects/Ultron.md") or a note name.');
+
+  server.registerTool(
+    'get_vault_overview',
+    {
+      title: 'Vault overview',
+      description:
+        'Get a map of the memory vault: number of notes, folders, top tags, recently updated notes, and the home note (Home.md/Index.md) if present. Call this first in a new conversation.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    safe(async () => {
+      const o = vault.overview();
+      const parts = [
+        `Vault "${o.name}": ${o.noteCount} notes.`,
+        `Folders: ${o.folders.map((f) => `${f.folder} (${f.count})`).join(', ') || 'none'}`,
+        `Top tags: ${o.topTags.map((t) => `#${t.tag} (${t.count})`).join(', ') || 'none'}`,
+        `Recently updated:\n${o.recent.map(summaryLine).join('\n') || '(none)'}`,
+        o.home ? `Home note (${o.home.path}):\n\n${o.home.content}` : 'No home note yet. Consider creating Home.md as an index.',
+      ];
+      return text(parts.join('\n\n'));
+    }),
+  );
+
+  server.registerTool(
+    'search_notes',
+    {
+      title: 'Search notes',
+      description:
+        'Full-text search across all notes. All words must match (in title, tags, or body). Supports "exact phrases", tag:name or #name filters, and path:folder filters. Returns paths, matching lines and tags.',
+      inputSchema: {
+        query: z.string().describe('Search query, e.g. `ultron deploy`, `"api key rotation"`, `tag:person`, `path:Projects mcp`'),
+        limit: z.number().int().min(1).max(100).optional().describe('Max results (default 10)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ query, limit }) => {
+      const results = vault.search(query, limit ?? 10);
+      if (results.length === 0) return text(`No notes match "${query}".`);
+      return text(
+        results
+          .map((r) => {
+            const tags = r.tags.length ? ` ${r.tags.map((t) => '#' + t).join(' ')}` : '';
+            const snips = r.snippets.map((s) => `    L${s.line}: ${s.text}`).join('\n');
+            return `- ${r.path}${tags}${snips ? '\n' + snips : ''}`;
+          })
+          .join('\n'),
+      );
+    }),
+  );
+
+  server.registerTool(
+    'read_note',
+    {
+      title: 'Read note',
+      description: 'Read a note\'s full Markdown content plus its outgoing links and backlinks (notes that link to it).',
+      inputSchema: { path: pathArg },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ path }) => {
+      const n = await vault.read(path);
+      const out = n.links.length
+        ? n.links.map((l) => `- [[${l.target}]] → ${l.path ?? '(not created yet)'}`).join('\n')
+        : '(none)';
+      const back = n.backlinks.length
+        ? n.backlinks.map((b) => `- ${b.path}: ${b.context.map((c) => c.text).join(' | ')}`).join('\n')
+        : '(none)';
+      return text(
+        `# ${n.path}\nUpdated ${fmtDate(n.mtime)}\n\n${n.content}\n\n---\nOutgoing links:\n${out}\n\nBacklinks:\n${back}`,
+      );
+    }),
+  );
+
+  server.registerTool(
+    'list_notes',
+    {
+      title: 'List notes',
+      description: 'List notes, optionally filtered by folder and/or tag. Sorted by most recently updated.',
+      inputSchema: {
+        folder: z.string().optional().describe('Only notes in this folder (including subfolders)'),
+        tag: z.string().optional().describe('Only notes with this tag (nested tags match their parent)'),
+        limit: z.number().int().min(1).max(500).optional().describe('Max results (default 50)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ folder, tag, limit }) => {
+      const notes = vault
+        .list({ folder, tag })
+        .sort((a, b) => b.mtime - a.mtime)
+        .slice(0, limit ?? 50);
+      return text(notes.length ? notes.map(summaryLine).join('\n') : 'No matching notes.');
+    }),
+  );
+
+  server.registerTool(
+    'get_backlinks',
+    {
+      title: 'Get backlinks',
+      description: 'List the notes that link to a given note, with the lines containing each link.',
+      inputSchema: { path: pathArg },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ path }) => {
+      const bl = vault.backlinks(path);
+      if (!bl.length) return text('No notes link here yet.');
+      return text(bl.map((b) => `- ${b.path}\n${b.context.map((c) => `    L${c.line}: ${c.text}`).join('\n')}`).join('\n'));
+    }),
+  );
+
+  server.registerTool(
+    'get_related',
+    {
+      title: 'Get related notes',
+      description:
+        'Find notes related to a given note through direct links, backlinks, shared tags, and 2-hop links. Useful for pulling in surrounding context.',
+      inputSchema: { path: pathArg, limit: z.number().int().min(1).max(50).optional() },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ path, limit }) => {
+      const rel = vault.related(path, limit ?? 10);
+      if (!rel.length) return text('No related notes found.');
+      return text(rel.map((r) => `- ${r.path} (score ${r.score}): ${r.reasons.join('; ')}`).join('\n'));
+    }),
+  );
+
+  server.registerTool(
+    'list_tags',
+    {
+      title: 'List tags',
+      description: 'List all tags in the vault with how many notes use each.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    safe(async () => {
+      const tags = vault.tags();
+      return text(tags.length ? tags.map((t) => `#${t.tag} (${t.count})`).join('\n') : 'No tags yet.');
+    }),
+  );
+
+  if (opts.readOnly) return server;
+
+  server.registerTool(
+    'write_note',
+    {
+      title: 'Write note',
+      description:
+        'Create a note, or replace an existing note\'s entire content. Prefer append_to_note or edit_note for small changes to existing notes. Folders are created as needed.',
+      inputSchema: {
+        path: pathArg,
+        content: z.string().describe('Full Markdown content. Use [[wikilinks]] and #tags to connect it to other notes.'),
+        create_only: z.boolean().optional().describe('Fail instead of overwriting if the note already exists'),
+      },
+      annotations: { destructiveHint: true, idempotentHint: true },
+    },
+    safe(async ({ path, content, create_only }) => {
+      const existed = vault.has(path);
+      const s = create_only ? await vault.create(path, content) : await vault.write(path, content);
+      return text(`${existed ? 'Updated' : 'Created'} ${s.path}`);
+    }),
+  );
+
+  server.registerTool(
+    'append_to_note',
+    {
+      title: 'Append to note',
+      description:
+        'Append Markdown to the end of a note, or to the end of a specific section when `heading` is given (the heading is added if missing). Creates the note if it doesn\'t exist.',
+      inputSchema: {
+        path: pathArg,
+        content: z.string().describe('Markdown to append'),
+        heading: z.string().optional().describe('Section heading to append under, e.g. "Decisions"'),
+      },
+    },
+    safe(async ({ path, content, heading }) => {
+      const s = await vault.append(path, content, { heading });
+      return text(`Appended to ${s.path}${heading ? ` under "${heading}"` : ''}`);
+    }),
+  );
+
+  server.registerTool(
+    'edit_note',
+    {
+      title: 'Edit note',
+      description:
+        'Replace an exact piece of text in a note. old_text must match exactly once unless replace_all is true. Read the note first to copy the text exactly.',
+      inputSchema: {
+        path: pathArg,
+        old_text: z.string().describe('Exact text to find'),
+        new_text: z.string().describe('Replacement text'),
+        replace_all: z.boolean().optional(),
+      },
+      annotations: { destructiveHint: true },
+    },
+    safe(async ({ path, old_text, new_text, replace_all }) => {
+      const s = await vault.edit(path, old_text, new_text, { replaceAll: replace_all });
+      return text(`Edited ${s.path} (${s.replacements} replacement${s.replacements === 1 ? '' : 's'})`);
+    }),
+  );
+
+  server.registerTool(
+    'rename_note',
+    {
+      title: 'Rename or move note',
+      description: 'Rename or move a note. All links pointing to it are updated automatically.',
+      inputSchema: { from: pathArg, to: z.string().describe('New vault-relative path, e.g. "Archive/Old Project.md"') },
+      annotations: { destructiveHint: true },
+    },
+    safe(async ({ from, to }) => {
+      const r = await vault.rename(from, to);
+      return text(`Moved ${r.from} → ${r.to}; updated ${r.updatedLinks} link(s) in ${r.updatedNotes.length} note(s).`);
+    }),
+  );
+
+  server.registerTool(
+    'delete_note',
+    {
+      title: 'Delete note',
+      description: 'Delete a note by moving it to the vault\'s .trash folder, where it can be recovered. Only do this when the user asks or the note is clearly obsolete.',
+      inputSchema: { path: pathArg },
+      annotations: { destructiveHint: true },
+    },
+    safe(async ({ path }) => {
+      const r = await vault.delete(path);
+      return text(`Moved ${r.path} to ${r.trashedTo}`);
+    }),
+  );
+
+  server.registerTool(
+    'log_to_journal',
+    {
+      title: 'Log to journal',
+      description:
+        'Append a timestamped entry to today\'s daily journal note (Journal/YYYY-MM-DD.md). Use for a brief log of what was done, decided or learned in this session, with [[links]] to the relevant notes.',
+      inputSchema: { entry: z.string().describe('What happened, in a sentence or a few lines') },
+    },
+    safe(async ({ entry }) => {
+      const s = await vault.logToJournal(entry);
+      return text(`Logged to ${s.path}`);
+    }),
+  );
+
+  return server;
+}

@@ -1,0 +1,26 @@
+{
+  "name": "ultron-mind",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An Obsidian-like Markdown knowledge base that doubles as Claude's long-term memory via MCP.",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/server",
+    "packages/web",
+    "packages/desktop"
+  ],
+  "scripts": {
+    "build": "npm run build -w @ultron/core && npm run build -w @ultron/server && npm run build -w @ultron/web",
+    "start": "node packages/server/dist/cli.js serve",
+    "mcp": "node packages/server/dist/cli.js mcp",
+    "dev:server": "npm run dev -w @ultron/server",
+    "dev:web": "npm run dev -w @ultron/web",
+    "desktop": "npm run build && npm start -w @ultron/desktop",
+    "test": "npm test -w @ultron/core && npm test -w @ultron/server",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
