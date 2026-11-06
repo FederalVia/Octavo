@@ -1,6 +1,95 @@
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
 import { api, saveAllForOffline } from '../api';
+import { ACCENTS, applyAppearance, applySnippets, getAccent, getTheme, type ThemeChoice } from '../appearance';
+
+/** Theme, accent colour and CSS snippets. */
+function AppearanceSection({ snippetsOn, setSnippetsOn }: { snippetsOn: string[]; setSnippetsOn: (names: string[]) => void }) {
+  const [theme, setTheme] = useState<ThemeChoice>(getTheme);
+  const [accent, setAccent] = useState(getAccent);
+  const [snippets, setSnippets] = useState<{ name: string; css: string }[] | null>(null);
+  const [folder, setFolder] = useState('.octavo/snippets');
+  const load = () =>
+    api
+      .snippets()
+      .then((r) => {
+        setSnippets(r.snippets);
+        setFolder(r.folder);
+      })
+      .catch(() => setSnippets([]));
+  useEffect(() => {
+    load();
+  }, []);
+  return (
+    <section>
+      <h4>Appearance</h4>
+      <div className="setting-row">
+        <div>
+          <b>Theme</b>
+          <span className="muted small">The brain view always stays dark. Saved on this device.</span>
+        </div>
+        <select
+          className="input select"
+          value={theme}
+          onChange={(e) => {
+            const t = e.target.value as ThemeChoice;
+            setTheme(t);
+            applyAppearance(t, accent);
+          }}
+        >
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+          <option value="system">Match system</option>
+        </select>
+      </div>
+      <div className="setting-row">
+        <div>
+          <b>Accent colour</b>
+        </div>
+        <div className="accent-swatches">
+          {ACCENTS.map((a) => (
+            <button
+              key={a.key}
+              className={`accent-swatch${accent === a.key ? ' on' : ''}`}
+              style={{ background: a.color }}
+              title={a.label}
+              aria-label={a.label}
+              onClick={() => {
+                setAccent(a.key);
+                applyAppearance(theme, a.key);
+              }}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="setting-row snippets-row">
+        <div>
+          <b>CSS snippets</b>
+          <span className="muted small">
+            Put <code>.css</code> files in this brain’s <code>{folder}</code> folder to restyle Octavo, then switch them on here.
+          </span>
+        </div>
+        <button className="btn" onClick={load}>
+          Reload
+        </button>
+      </div>
+      {snippets?.length === 0 && <p className="muted small settings-note">No snippets yet.</p>}
+      {snippets?.map((sn) => (
+        <Toggle
+          key={sn.name}
+          label={sn.name}
+          help={`${sn.css.split('\n').length} lines`}
+          checked={snippetsOn.includes(sn.name)}
+          onChange={(v) => {
+            const next = v ? [...snippetsOn, sn.name] : snippetsOn.filter((n) => n !== sn.name);
+            setSnippetsOn(next);
+            applySnippets(snippets.filter((x) => next.includes(x.name)));
+          }}
+        />
+      ))}
+    </section>
+  );
+}
 
 /** Phones (HTTPS): keep a copy of every note for reading without a connection. */
 function OfflineSection() {
@@ -77,6 +166,8 @@ export interface DesktopBridge {
   onOpenSettings?(callback: (section: string) => void): () => void;
   /** Open a note in a new app window. */
   popOut?(path: string): Promise<void>;
+  /** Save HTML as a PDF (asks where). Resolves true when saved. */
+  exportPdf?(html: string, title: string): Promise<boolean>;
 }
 
 export interface Brain {
@@ -367,6 +458,9 @@ interface Props {
   viewMode: 'atlas' | 'network';
   setViewMode: (v: 'atlas' | 'network') => void;
   onClose: () => void;
+  onOpenHotkeys?: () => void;
+  snippetsOn: string[];
+  setSnippetsOn: (names: string[]) => void;
   /** Section to scroll to when opening, e.g. "brains". */
   focus?: string;
 }
@@ -387,7 +481,7 @@ export function SettingsDialog(p: Props) {
   const secure = window.isSecureContext;
   return (
     <Overlay onClose={p.onClose}>
-      <div className="dialog settings-dialog" onKeyDown={(e) => e.key === 'Escape' && p.onClose()}>
+      <div className="dialog settings-dialog" onKeyDown={(e) => e.key === 'Escape' && (e.preventDefault(), p.onClose())}>
         <header className="settings-head">
           <h3>Settings</h3>
           <button className="icon-btn" onClick={p.onClose} title="Close">
@@ -412,6 +506,8 @@ export function SettingsDialog(p: Props) {
           )}
         </section>
 
+        <AppearanceSection snippetsOn={p.snippetsOn} setSnippetsOn={p.setSnippetsOn} />
+
         <section>
           <h4>Editor</h4>
           <Toggle
@@ -422,6 +518,17 @@ export function SettingsDialog(p: Props) {
           />
           <Toggle label="Vim keybindings" help="Modal editing in the note editor." checked={p.vimMode} onChange={p.setVimMode} />
           <Toggle label="Line numbers" help="Show line numbers while editing." checked={p.lineNumbers} onChange={p.setLineNumbers} />
+          {p.onOpenHotkeys && (
+            <div className="setting-row">
+              <div>
+                <b>Hotkeys</b>
+                <span className="muted small">Give any command your own keyboard shortcut.</span>
+              </div>
+              <button className="btn" onClick={p.onOpenHotkeys}>
+                Customize
+              </button>
+            </div>
+          )}
         </section>
 
         <section>

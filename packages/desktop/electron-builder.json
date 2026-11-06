@@ -49,7 +49,24 @@
     ],
     "category": "public.app-category.productivity",
     "icon": "packages/desktop/build/icon.png",
-    "identity": "-"
+    "identity": "-",
+    "extendInfo": {
+      "CFBundleDocumentTypes": [
+        {
+          "CFBundleTypeName": "Markdown note",
+          "CFBundleTypeRole": "Editor",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": [
+            "net.daringfireball.markdown",
+            "public.plain-text"
+          ],
+          "CFBundleTypeExtensions": [
+            "md",
+            "markdown"
+          ]
+        }
+      ]
+    }
   },
   "linux": {
     "target": [

@@ -4,6 +4,9 @@ import { App } from './App';
 import 'katex/dist/katex.min.css';
 import './styles.css';
 import { getToken, setToken } from './api';
+import { applyAppearance } from './appearance';
+
+applyAppearance();
 
 // Phone links carry the access key (?token=…): remember it.
 const urlToken = new URLSearchParams(location.search).get('token');

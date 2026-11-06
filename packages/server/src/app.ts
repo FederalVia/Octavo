@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -319,7 +320,17 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
-  const CONFIG_NAMES = new Set(['bookmarks', 'settings']);
+  // CSS snippets: .css files in the vault's .octavo/snippets folder. The app turns them on and off.
+  api.get('/snippets', async (_req, res) => {
+    const dir = path.join(vault.root, '.octavo', 'snippets');
+    const names = (await fsp.readdir(dir).catch(() => [] as string[])).filter((n) => /^[^./\\][^/\\]*\.css$/i.test(n)).sort();
+    const snippets = await Promise.all(
+      names.map(async (name) => ({ name, css: (await fsp.readFile(path.join(dir, name), 'utf8').catch(() => '')).slice(0, 200_000) })),
+    );
+    res.json({ folder: '.octavo/snippets', snippets });
+  });
+
+  const CONFIG_NAMES = new Set(['bookmarks', 'settings', 'hotkeys', 'workspaces', 'snippets']);
   api.get('/config/:name', async (req, res) => {
     if (!CONFIG_NAMES.has(req.params.name)) {
       res.status(404).json({ error: 'Unknown config' });

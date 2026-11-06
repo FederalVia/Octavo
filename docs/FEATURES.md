@@ -21,14 +21,14 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Mac, Windows, Linux | ✅ | Desktop app with installers on the [Releases page](https://github.com/FederalVia/octavo/releases), or any browser |
 | iOS and Android | 🟡 | Scan a QR code and add Octavo to your home screen. **Access from Anywhere** connects your phone directly to your PC over Wi-Fi or mobile data (automatic router setup and HTTPS). No native apps |
 | Multiple vaults | ✅ | **Brains**: create, switch and remove separate vaults in **Settings → Brains** or **File → Brains**. Each brain is its own Claude connection, so each chat can get only the brains it should. Server: run one per vault (`--vault`, `--port`) |
-| Open a single Markdown file outside a vault | 🚧 | |
+| Open a single Markdown file outside a vault | ✅ | Desktop: **File → Brains → Open Markdown File…**, or *Open with → Octavo*. A file outside every brain opens with its folder added as a brain |
 
 ## Writing
 
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Source mode and Reading view | ✅ | Ctrl/Cmd+E toggles |
-| Live Preview (rendered while editing) | 🚧 | |
+| Live Preview (rendered while editing) | ✅ | On by default: formatting marks are hidden except on the line you're editing; checkboxes, links, images, highlights, quotes and rules render inline. **Settings → Editor → Live preview** switches to source mode |
 | Headings, bold, italics, strikethrough, quotes, nested lists | ✅ | |
 | Task checkboxes with custom marks (`[x]`, `[-]`, `[?]`, `[!]`…) | ✅ | Click to tick in reading view |
 | Tables | ✅ | Rendered, and inserted with `/table`. In reading view, right-click a cell (or tap it, then ⋯) to sort, insert, move, align or delete rows and columns |
@@ -71,7 +71,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Properties / metadata | ✅ | Shown as a properties table and used for tags, aliases and region. **Edit** (or *Edit properties* in the command palette) gives typed fields: text, list, number, checkbox, date |
 | Bases (database views) | 🚧 | |
 | Canvas | 🚧 | |
-| Workspaces (saved layouts) | 🚧 | |
+| Workspaces (saved layouts) | ✅ | Command palette → *Save workspace* / *Open workspace*: open tabs, split view, sidebar and brain view, saved with the vault |
 | Note composer (split / merge) | ✅ | *Extract selection to new note*, and *Merge this note into another…* (links are updated; Claude can use `merge_notes`) |
 | File recovery snapshots | ✅ | ⟲ on each note: diff against the current version, restore. Kept in `.octavo/history/` |
 | Rename/move updates every link | ✅ | |
@@ -82,8 +82,8 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | --- | --- | --- |
 | Command palette | ✅ | Ctrl/Cmd+P |
 | Slash commands | ✅ | Type `/` in the editor |
-| Custom hotkeys | 🚧 | |
-| Tabs, split panes, pop-out windows | 🚧 | |
+| Custom hotkeys | ✅ | **Settings → Editor → Hotkeys** (or *Customize hotkeys…*): any command can get a shortcut, saved with the vault |
+| Tabs, split panes, pop-out windows | ✅ | Tabs (Ctrl/Cmd+click or middle-click opens a new one; Ctrl+T/W/Tab in the desktop app), split view (a second note alongside in reading view), and *Open this note in a new window* |
 | Stacked tabs | 🚧 | |
 | Vim keybindings | ✅ | Command palette → *Turn on Vim keybindings* |
 | Web viewer | 🚧 | |
@@ -95,10 +95,10 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | --- | --- | --- |
 | Random note | ✅ | Command palette |
 | Audio recorder | 🚧 | |
-| Slides (note → presentation) | 🚧 | |
+| Slides (note → presentation) | ✅ | *Start presentation*: full screen, one slide per `---` section; arrows, space or click to move |
 | Web Clipper browser extension | ❌ | A separate product |
 | iOS Quick Capture, Share Sheet, Siri/Shortcuts, voice capture, widgets | ❌ | Needs a native mobile app |
-| Mobile PDF export | 🚧 | |
+| Mobile PDF export | ✅ | *Export to PDF*: the desktop app saves a PDF; browsers and phones open the print dialog, where you can save as PDF |
 | macOS Quick Look | ❌ | Needs a native macOS extension |
 
 ## Automation
@@ -127,7 +127,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Themes / CSS snippets | 🚧 | |
+| Themes / CSS snippets | ✅ | **Settings → Appearance**: dark, light or match system, six accent colours, and CSS snippets from the vault's `.octavo/snippets` folder |
 | Plugins | 🚧 | |
 | Import from other apps | ✅ | Obsidian vaults open as-is. **File → Import** (or `octavo import`) brings in Notion exports and Evernote `.enex` files |
 
@@ -138,4 +138,5 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Tasks | ✅ | Vault-wide task list (drawer ☑, by note or by date), due dates (`📅 2026-11-10`, or `/due` in the editor), live ` ```tasks ` query blocks, `octavo tasks`, and Claude's `list_tasks` (can filter overdue / today / next 7 days) |
 | Templater | 🟡 | Templates with variables: `{{title}}`, `{{folder}}`, `{{date:dddd D MMMM}}`, offsets like `{{date+7d}}`, `{{weekday}}`, `{{week}}`… No scripting, by design: notes can be written by Claude and other tools, so templates never run code |
 | Periodic Notes | ✅ | Daily, weekly (`Journal/Weekly/2026-W45`) and monthly (`Journal/Monthly/2026-11`) notes, from the command palette, `octavo weekly`/`monthly`, or Claude's `open_periodic_note` |
-| Dataview, Calendar, Excalidraw, Outliner | 🚧 | |
+| Calendar | ✅ | Calendar tab in the sidebar: journal days, weekly/monthly notes and due tasks; click a day to open or create its note |
+| Dataview, Excalidraw, Outliner | 🚧 | |

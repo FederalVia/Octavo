@@ -605,6 +605,7 @@ function buildMenu() {
             { type: 'separator' },
             { label: 'New Brain…', click: openBrainSettings },
             { label: 'Add Existing Folder as Brain…', accelerator: 'CmdOrCtrl+Shift+O', click: chooseVault },
+            { label: 'Open Markdown File…', click: chooseMarkdownFile },
             { label: 'Manage Brains…', click: openBrainSettings },
           ],
         },
@@ -760,6 +761,68 @@ async function handleLink(link) {
   }
 }
 
+/** Show a note in the main window (same-page navigation, no reload). */
+async function showNote(rel) {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  const go = async () => {
+    const hash = `#/note/${rel.split('/').map(encodeURIComponent).join('/')}`;
+    await win.webContents.executeJavaScript(`location.hash = ${JSON.stringify(hash)}; void 0;`).catch(() => {});
+  };
+  if (win.webContents.isLoading()) setTimeout(() => showNote(rel), 200);
+  else await go();
+}
+
+/** Open a Markdown file from anywhere: in its brain if it's in one, otherwise its folder becomes a brain. */
+async function openMarkdownFile(file) {
+  if (!/\.(md|markdown)$/i.test(file) || !fs.existsSync(file)) return;
+  const abs = path.resolve(file);
+  const inside = (root) => {
+    const rel = path.relative(root, abs);
+    return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel.split(path.sep).join('/') : null;
+  };
+  let brain = brainList().find((b) => inside(b.path));
+  if (!brain) {
+    const dir = path.dirname(abs);
+    const { response } = await dialog.showMessageBox(win ?? undefined, {
+      type: 'question',
+      message: `Open “${path.basename(abs)}” in Octavo?`,
+      detail: `Its folder (${dir}) will be added as a brain, so links between the notes in it work. Nothing is moved or changed.`,
+      buttons: ['Open', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+    await openVault(dir);
+    brain = brainList().find((b) => samePath(b.path, dir));
+  } else if (!server || !samePath(server.vault.root, brain.path)) {
+    await switchBrain(brain.path);
+  }
+  const rel = brain && inside(brain.path);
+  if (rel) await showNote(rel.replace(/\.markdown$/i, '.md'));
+}
+
+async function chooseMarkdownFile() {
+  const res = await dialog.showOpenDialog(win ?? undefined, {
+    title: 'Open a Markdown file',
+    properties: ['openFile'],
+    filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }],
+  });
+  if (!res.canceled && res.filePaths[0]) await openMarkdownFile(res.filePaths[0]);
+}
+
+const findMdFile = (argv) => argv.slice(1).find((a) => typeof a === 'string' && /\.(md|markdown)$/i.test(a) && !a.startsWith('-')) ?? null;
+let pendingFile = findMdFile(process.argv);
+
+app.on('open-file', (e, file) => {
+  // macOS: double-clicked .md files (also at launch).
+  e.preventDefault();
+  if (ready) openMarkdownFile(file);
+  else pendingFile = file;
+});
+
 app.on('open-url', (e, link) => {
   // macOS delivers links here, also at launch (before the app is ready).
   e.preventDefault();
@@ -778,6 +841,8 @@ if (!app.requestSingleInstanceLock()) {
     // Windows and Linux pass the link as a command-line argument to a second copy.
     const link = findLink(argv);
     if (link && ready) handleLink(link);
+    const file = findMdFile(argv);
+    if (file && ready) openMarkdownFile(file);
   });
 
   // Desktop actions for the in-app Settings. Only Octavo's own main window may call them.
@@ -851,6 +916,31 @@ if (!app.requestSingleInstanceLock()) {
     });
     await child.loadURL(`${windowUrl()}#/note/${rel.split('/').map(encodeURIComponent).join('/')}`);
   });
+  // Export to PDF: render the note's HTML off-screen and save it where the user chooses.
+  ipcMain.handle('octavo:export-pdf', async (e, html, title) => {
+    if (!fromMainWindow(e) || typeof html !== 'string' || html.length > 20_000_000) return false;
+    const safe = String(title || 'Note').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').slice(0, 120) || 'Note';
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: 'Export to PDF',
+      defaultPath: path.join(app.getPath('documents'), `${safe}.pdf`),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (canceled || !filePath) return false;
+    const tmp = path.join(app.getPath('temp'), `octavo-export-${Date.now()}.html`);
+    fs.writeFileSync(tmp, html, 'utf8');
+    const pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, javascript: false } });
+    try {
+      await pdfWin.loadFile(tmp);
+      await new Promise((r) => setTimeout(r, 400)); // images and fonts
+      const pdf = await pdfWin.webContents.printToPDF({ printBackground: true, pageSize: 'A4', margins: { marginType: 'default' } });
+      fs.writeFileSync(filePath, pdf);
+      shell.showItemInFolder(filePath);
+      return true;
+    } finally {
+      pdfWin.destroy();
+      fs.rmSync(tmp, { force: true });
+    }
+  });
   ipcMain.handle('octavo:show-qr', async (e) => {
     if (fromMainWindow(e)) await showPhoneQr();
     return desktopState();
@@ -874,6 +964,12 @@ if (!app.requestSingleInstanceLock()) {
       await chooseVault();
     }
     ready = true;
+    if (pendingFile) {
+      const file = pendingFile;
+      pendingFile = null;
+      const go = () => (win?.webContents.isLoading() ? setTimeout(go, 200) : openMarkdownFile(file));
+      go();
+    }
     if (pendingLink) {
       const link = pendingLink;
       pendingLink = null;

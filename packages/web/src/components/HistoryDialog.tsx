@@ -78,7 +78,7 @@ export function HistoryDialog({ path, current, decode, onRestored, onClose }: Pr
 
   return (
     <Overlay onClose={onClose}>
-      <div className="history-dialog" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <div className="history-dialog" onKeyDown={(e) => e.key === 'Escape' && (e.preventDefault(), onClose())}>
         <header>
           <h3>Version history</h3>
           <span className="muted small">{path}</span>
