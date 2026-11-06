@@ -511,6 +511,8 @@ export function App() {
   );
   const closePanelRef = useRef<() => void>(() => {});
   /** Second note shown alongside, in reading view. */
+  const [stacked, setStacked] = useState(() => load('octavo.stackedTabs', false));
+  useEffect(() => store('octavo.stackedTabs', stacked), [stacked]);
   const [split, setSplit] = useState<string | null>(() => load<string | null>('octavo.split', null));
   useEffect(() => store('octavo.split', split), [split]);
   const [splitPick, setSplitPick] = useState(false);
@@ -1374,6 +1376,7 @@ export function App() {
                 { id: 'tab-others', label: 'Close other tabs', keywords: 'tabs', run: () => setTabs(route.view === 'note' ? [route.path] : []) },
               ]
             : []),
+          { id: 'stacked-tabs', label: stacked ? 'Show tabs in a row' : 'Stack tabs (open tabs become spines beside the note)', keywords: 'tabs stacked sliding panes spines layout', run: () => setStacked((v: boolean) => !v) },
           { id: 'split', label: 'Show another note alongside (split view)…', keywords: 'pane side by side compare', run: () => setSplitPick(true) },
           ...(split ? [{ id: 'split-close', label: 'Close split view', keywords: 'pane', run: () => setSplit(null) }] : []),
           { id: 'export-pdf', label: window.octavoDesktop ? 'Export to PDF…' : 'Export to PDF / print…', keywords: 'pdf save share print', run: () => exportNote('pdf') },
@@ -1421,6 +1424,12 @@ export function App() {
     conflict: 'Conflict',
   };
   const panelOpen = route.view === 'note' && (!!detail || !!missing);
+  // Stacked tabs: tabs before the open one become spines on its left, later ones on its right.
+  const SPINE = 38;
+  const activeIdx = route.view === 'note' ? tabs.indexOf(route.path) : -1;
+  const stackOn = stacked && !isNarrow && panelOpen && tabs.length > 1 && activeIdx >= 0;
+  const stackLeft = stackOn ? tabs.slice(0, activeIdx) : [];
+  const stackRight = stackOn ? tabs.slice(activeIdx + 1) : [];
   const graphView = useMemo(
     () => (graph ? { ...graph, nodes: graph.nodes.map((n) => (n.encrypted ? { ...n, name: `🔒 ${n.name}` } : n)) } : null),
     [graph],
@@ -1586,11 +1595,42 @@ export function App() {
 
       {/* Note panel */}
       <section
-        className={`note-panel${panelOpen ? ' open' : ''}`}
-        style={{ width: isNarrow ? '100%' : `${panelFraction * 100}%` }}
+        className={`note-panel${panelOpen ? ' open' : ''}${stackOn ? ' stacked' : ''}`}
+        style={
+          stackOn
+            ? { width: `calc(${panelFraction * 100}% + ${(stackLeft.length + stackRight.length) * SPINE}px)`, paddingLeft: stackLeft.length * SPINE, paddingRight: stackRight.length * SPINE }
+            : { width: isNarrow ? '100%' : `${panelFraction * 100}%` }
+        }
         aria-hidden={!panelOpen}
       >
-        {tabs.length > 0 && (
+        {stackOn &&
+          [...stackLeft.map((t, i) => ({ t, side: 'left' as const, i })), ...stackRight.map((t, i) => ({ t, side: 'right' as const, i }))].map(({ t, side, i }) => (
+            <div
+              key={t}
+              className={`tab-spine ${side}`}
+              style={side === 'left' ? { left: i * SPINE } : { right: (stackRight.length - 1 - i) * SPINE }}
+              role="tab"
+              aria-selected={false}
+              tabIndex={0}
+              title={t.replace(/\.md$/, '')}
+              onClick={() => navigate(t)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), navigate(t))}
+              onAuxClick={(e) => e.button === 1 && closeTab(t)}
+            >
+              <button
+                className="tab-spine-close"
+                aria-label="Close tab"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(t);
+                }}
+              >
+                ×
+              </button>
+              <span className="tab-spine-name">{t.replace(/\.md$/, '').split('/').pop()}</span>
+            </div>
+          ))}
+        {tabs.length > 0 && !stackOn && (
           <div className="tab-bar" role="tablist">
             {tabs.map((t) => {
               const active = route.view === 'note' && route.path === t;

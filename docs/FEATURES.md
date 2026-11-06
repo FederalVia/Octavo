@@ -84,7 +84,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Slash commands | ✅ | Type `/` in the editor |
 | Custom hotkeys | ✅ | **Settings → Editor → Hotkeys** (or *Customize hotkeys…*): any command can get a shortcut, saved with the vault |
 | Tabs, split panes, pop-out windows | ✅ | Tabs (Ctrl/Cmd+click or middle-click opens a new one; Ctrl+T/W/Tab in the desktop app), split view (a second note alongside in reading view), and *Open this note in a new window* |
-| Stacked tabs | 🚧 | |
+| Stacked tabs | ✅ | Command palette → *Stack tabs*: the other open tabs become narrow spines beside the note (earlier ones on the left, later on the right); click one to open it |
 | Vim keybindings | ✅ | Command palette → *Turn on Vim keybindings* |
 | Web viewer | ✅ | Alt/Option-click a web link (or turn on *Open web links in Octavo’s web viewer*), or *Open web page…*. **Reader** mode shows just the article; **Live** shows the real page (the desktop app can show almost any site). **Save to vault** clips the article to `Clippings/` as Markdown with its source |
 | Word and character count | ✅ | Status bar |
@@ -141,4 +141,5 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Periodic Notes | ✅ | Daily, weekly (`Journal/Weekly/2026-W45`) and monthly (`Journal/Monthly/2026-11`) notes, from the command palette, `octavo weekly`/`monthly`, or Claude's `open_periodic_note` |
 | Calendar | ✅ | Calendar tab in the sidebar: journal days, weekly/monthly notes and due tasks; click a day to open or create its note |
 | Dataview | ✅ | The common Dataview syntax: `TABLE`/`LIST` with `FROM`, `WHERE`, `SORT`, `GROUP BY`, `LIMIT`, inline `key:: value` fields and `file.*` fields. Not JavaScript queries |
-| Excalidraw, Outliner | 🚧 | |
+| Outliner | ✅ | In lists, Tab / Shift-Tab move an item with everything under it, Ctrl/Cmd+Shift+↑/↓ move it past its siblings, Ctrl/Cmd+Enter cycles a checkbox, and list items and heading sections fold from the gutter |
+| Excalidraw | 🚧 | |
