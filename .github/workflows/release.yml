@@ -1,7 +1,7 @@
 name: Release
 
-# Builds the desktop app for Windows, macOS and Linux and publishes a GitHub
-# release, either when a version tag (e.g. v0.1.0) is pushed, or when run by
+# Builds the desktop app for Windows and Linux and publishes a GitHub release
+# (the macOS build adds itself afterwards), either when a version tag (e.g. v0.1.0) is pushed, or when run by
 # hand from the Actions tab (GitHub then creates the tag for you).
 on:
   push:
@@ -40,8 +40,6 @@ jobs:
         include:
           - os: windows-latest
             target: --win
-          - os: macos-latest
-            target: --mac
           - os: ubuntu-latest
             target: --linux
     runs-on: ${{ matrix.os }}
@@ -89,3 +87,29 @@ jobs:
             --title "Octavo ${TAG#v} (test build)" \
             --notes-file .github/release-notes.md \
             --prerelease
+
+  # macOS machines on GitHub are sometimes unavailable for a long time, so the Mac build
+  # doesn't hold up the release: it adds its files to the published release once it's done.
+  mac:
+    needs: release
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build installer
+        run: npm run dist:desktop -- --mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Add to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          shopt -s nullglob
+          gh release upload "$TAG" release/dist/*.dmg release/dist/*.zip release/dist/latest-mac.yml release/dist/*.blockmap \
+            --repo "$GITHUB_REPOSITORY" --clobber
