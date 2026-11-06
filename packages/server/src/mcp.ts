@@ -64,6 +64,10 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   };
   /** The full text of a note, with its region, links and backlinks; also lights it up in the app's trail. */
   const noteText = async (path: string) => {
+    if (!vault.resolve(path)) {
+      const t = await vault.findInTrash(path);
+      if (t) throw new Error(`"${path}" isn't in the vault, but a deleted note with that name is in the trash (${t.trashPath}, originally ${t.originalPath}). Use restore_note to bring it back.`);
+    }
     vault.noteAccessed(path);
     if (vault.isEncrypted(path)) {
       return `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Octavo app, so don't guess at what it contains. Ask the user if you need information from it.`;
@@ -141,19 +145,56 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     {
       title: 'Random note',
       description:
-        'Pick a random note and read it, to rediscover older memories instead of only recent ones. Notes that haven\'t been updated in a long time are more likely (set prefer_old to false for an even chance). Optionally limit to a folder, tag or brain region.',
+        'Pick a random note and read it, to rediscover memories instead of only recent ones. By default notes that haven\'t been updated in a long time are more likely; `favor` "unlinked" picks notes few others link to (good for connecting forgotten notes), "both" combines the two, "none" gives an even chance. Optionally limit to a folder, tag or brain region.',
       inputSchema: {
         folder: z.string().optional(),
         tag: z.string().optional(),
         region: regionArg.optional(),
-        prefer_old: z.boolean().optional().describe('Favour notes not updated for a long time (default true)'),
+        favor: z.enum(['old', 'unlinked', 'both', 'none']).optional().describe('Which notes are likelier: old (default), unlinked, both or none'),
+        prefer_old: z.boolean().optional().describe('Deprecated: use favor'),
       },
       annotations: { readOnlyHint: true },
     },
-    safe(async ({ folder, tag, region, prefer_old }) => {
-      const n = vault.randomNote({ folder, tag, region, preferOld: prefer_old });
+    safe(async ({ folder, tag, region, prefer_old, favor }) => {
+      const n = vault.randomNote({ folder, tag, region, preferOld: prefer_old, favor });
       if (!n) return text('No notes match.');
       return text(await noteText(n.path));
+    }),
+  );
+
+  server.registerTool(
+    'find_orphans',
+    {
+      title: 'Find orphans, dead ends and missing notes',
+      description:
+        'Help tend the vault: orphans are notes nothing links to, dead ends are notes that link nowhere, and missing notes are links to notes that don\'t exist yet (with how many notes point to each). Optionally limit to a folder.',
+      inputSchema: {
+        kind: z.enum(['orphans', 'dead_ends', 'missing', 'all']).optional().describe('Which list (default all)'),
+        folder: z.string().optional().describe('Only notes in this folder'),
+        limit: z.number().int().min(1).max(500).optional().describe('Max per list (default 50)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ kind = 'all', folder, limit = 50 }) => {
+      const ins = vault.insights();
+      const f = folder ? folder.replace(/^\/+|\/+$/g, '') + '/' : '';
+      const inFolder = (p: string) => !f || p.startsWith(f);
+      const parts: string[] = [];
+      const list = (title: string, items: string[], total: number) =>
+        parts.push(`${title} (${total}):\n${items.length ? items.join('\n') : '(none)'}${total > items.length ? `\n…and ${total - items.length} more` : ''}`);
+      if (kind === 'all' || kind === 'orphans') {
+        const o = ins.orphans.filter((n) => inFolder(n.path));
+        list('Orphans: nothing links to them', o.slice(0, limit).map((n) => `- ${n.path}`), o.length);
+      }
+      if (kind === 'all' || kind === 'dead_ends') {
+        const d = ins.deadEnds.filter((n) => inFolder(n.path));
+        list('Dead ends: they link nowhere', d.slice(0, limit).map((n) => `- ${n.path}`), d.length);
+      }
+      if (kind === 'all' || kind === 'missing') {
+        const m = ins.unresolved.filter((u) => u.from.some(inFolder));
+        list('Missing notes: linked but not written yet', m.slice(0, limit).map((u) => `- [[${u.target}]] ← ${u.from.length} note(s): ${u.from.slice(0, 3).join(', ')}${u.from.length > 3 ? ', …' : ''}`), m.length);
+      }
+      return text(parts.join('\n\n'));
     }),
   );
 
@@ -367,14 +408,56 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     {
       title: 'Set brain region of a note',
       description:
-        'Pin a note to a brain region by setting `region:` in its properties, or pass "auto" to place it by folder and tags again. Prefer putting notes in the matching folder; use this when a note belongs somewhere its folder doesn\'t suggest.',
-      inputSchema: { path: pathArg, region: z.union([regionArg, z.literal('auto')]) },
+        'Pin notes to a brain region by setting `region:` in their properties, or pass "auto" to place them by folder and tags again. Give one `path`, a list of `paths`, or a whole `folder` (including subfolders). Prefer putting notes in the matching folder; use this when notes belong somewhere their folder doesn\'t suggest.',
+      inputSchema: {
+        path: pathArg.optional(),
+        paths: z.array(z.string()).max(2000).optional().describe('Several notes at once'),
+        folder: z.string().optional().describe('Every note in this folder and its subfolders'),
+        region: z.union([regionArg, z.literal('auto')]),
+      },
     },
-    safe(async ({ path, region }) => {
-      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; only the user can change it, from the Octavo app.`);
-      await vault.setRegion(path, region === 'auto' ? null : region);
-      const r = vault.regionOf(path);
-      return text(`${vault.resolve(path)} is now in the ${regionLabel(r.region)} region (${r.reason}).`);
+    safe(async ({ path, paths, folder, region }) => {
+      const targets = new Set<string>();
+      if (path) targets.add(path);
+      for (const p of paths ?? []) targets.add(p);
+      if (folder) for (const n of vault.list({ folder })) targets.add(n.path);
+      if (!targets.size) throw new Error('Give a path, a list of paths, or a folder.');
+      const done: string[] = [];
+      const skipped: string[] = [];
+      for (const t of targets) {
+        const rel = vault.resolve(t);
+        if (!rel) skipped.push(`${t} (not found)`);
+        else if (vault.isEncrypted(rel)) skipped.push(`${rel} (locked)`);
+        else {
+          try {
+            await vault.setRegion(rel, region === 'auto' ? null : region);
+            done.push(rel);
+          } catch (err) {
+            skipped.push(`${rel} (${(err as Error).message})`);
+          }
+        }
+      }
+      if (done.length === 1 && !skipped.length) {
+        const r = vault.regionOf(done[0]);
+        return text(`${done[0]} is now in the ${regionLabel(r.region)} region (${r.reason}).`);
+      }
+      const where = region === 'auto' ? 'placed automatically again' : `pinned to the ${regionLabel(region)} region`;
+      return text(`${done.length} note(s) ${where}.${skipped.length ? `\nSkipped ${skipped.length}:\n${skipped.slice(0, 20).map((x) => `- ${x}`).join('\n')}` : ''}`);
+    }),
+  );
+
+  server.registerTool(
+    'restore_note',
+    {
+      title: 'Restore note from trash',
+      description: 'Bring back a deleted note from the vault\'s .trash folder to where it was. Pass its old name or path (e.g. "Test" or "Projects/Test.md").',
+      inputSchema: { path: z.string().describe('The deleted note\'s name or original path') },
+    },
+    safe(async ({ path }) => {
+      const t = await vault.findInTrash(path);
+      if (!t) throw new Error(`No deleted note called "${path}" is in the trash.`);
+      const s = await vault.restore(t.trashPath);
+      return text(`Restored ${s.path}.`);
     }),
   );
 

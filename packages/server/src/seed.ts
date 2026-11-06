@@ -13,7 +13,7 @@ Welcome to **Octavo**, a knowledge base of plain Markdown files that you and Cla
 
 - [[People]]
 - [[Projects]]
-- [[Journal]]
+- **Journal**: today's note is one click away (◷, or Ctrl/Cmd + D). Daily notes live in the Journal folder.
 `;
 
 const GUIDE = `---

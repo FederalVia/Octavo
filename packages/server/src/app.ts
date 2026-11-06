@@ -209,10 +209,23 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
-  api.get('/resolve', (req, res) => {
+  api.get('/resolve', async (req, res) => {
     const link = typeof req.query.link === 'string' ? req.query.link : '';
     const from = typeof req.query.from === 'string' ? req.query.from : undefined;
-    res.json({ path: link ? vault.resolveLink({ target: link }, from) : null });
+    const p = link ? vault.resolveLink({ target: link }, from) : null;
+    // A link to a deleted note: say where it is in the trash, so the app can offer to restore it.
+    const trashed = !p && link ? await vault.findInTrash(link) : null;
+    res.json({ path: p, ...(trashed ? { trashed } : {}) });
+  });
+
+  api.post('/trash/restore', async (req, res, next) => {
+    try {
+      const { trashPath } = req.body ?? {};
+      if (typeof trashPath !== 'string') return void res.status(400).json({ error: 'Body must include "trashPath"' });
+      res.json(await vault.restore(trashPath));
+    } catch (err) {
+      next(err);
+    }
   });
 
   api.get('/search', (req, res) => {

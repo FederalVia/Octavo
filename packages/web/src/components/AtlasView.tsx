@@ -41,6 +41,8 @@ interface ALink {
   b: ANode;
   /** Touches a note linked to a large share of the vault (an index or home): drawn faintly. */
   mega?: boolean;
+  /** From or to a note marked #surprise: always highlighted. */
+  surprise?: boolean;
 }
 
 interface Layout {
@@ -120,6 +122,7 @@ function buildLayout(data: GraphData): Layout {
   const degrees = data.nodes.filter((n) => !n.unresolved).map((n) => n.degree).sort((a, b) => b - a);
   const hubCut = Math.max(5, degrees[Math.floor(degrees.length * 0.04)] ?? 5);
 
+  const surprising = new Set(data.nodes.filter((n) => n.surprise).map((n) => n.id));
   // Index-like notes linked to a big share of the vault: their hundreds of lines would drown everything else.
   const megaCut = Math.max(30, total * 0.05);
 
@@ -191,7 +194,7 @@ function buildLayout(data: GraphData): Layout {
     const a = byId.get(l.source);
     const b = byId.get(l.target);
     if (!a || !b) continue;
-    const link: ALink = { a, b, mega: a.degree >= megaCut || b.degree >= megaCut };
+    const link: ALink = { a, b, mega: a.degree >= megaCut || b.degree >= megaCut, surprise: surprising.has(a.id) || surprising.has(b.id) };
     links.push(link);
     for (const [x, y] of [
       [a, b],
@@ -267,11 +270,11 @@ function softDot(rgb: [number, number, number]): HTMLCanvasElement {
 }
 
 const STORE_KEY = 'octavo.atlas';
-function loadPrefs(): { labels: boolean; hidden: RegionKey[]; trail: boolean } {
+function loadPrefs(): { labels: boolean; hidden: RegionKey[]; trail: boolean; bridges: boolean } {
   try {
-    return { labels: true, hidden: [], trail: true, ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };
+    return { labels: true, hidden: [], trail: true, bridges: false, ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };
   } catch {
-    return { labels: true, hidden: [], trail: true };
+    return { labels: true, hidden: [], trail: true, bridges: false };
   }
 }
 
@@ -310,15 +313,16 @@ export function AtlasView(props: Props) {
   const [labels, setLabels] = useState(() => loadPrefs().labels);
   const [hidden, setHidden] = useState<Set<RegionKey>>(() => new Set(loadPrefs().hidden));
   const [showTrail, setShowTrail] = useState(() => loadPrefs().trail);
+  const [bridges, setBridges] = useState(() => loadPrefs().bridges);
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ labels, hidden: [...hidden], trail: showTrail }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ labels, hidden: [...hidden], trail: showTrail, bridges }));
     } catch {
       /* ignore */
     }
-  }, [labels, hidden, showTrail]);
+  }, [labels, hidden, showTrail, bridges]);
 
   const layout = useMemo(() => (props.data ? buildLayout(props.data) : null), [props.data]);
 
@@ -339,6 +343,7 @@ export function AtlasView(props: Props) {
     hover: null as ANode | null,
     labels: true,
     showTrail: true,
+    bridges: false,
     hidden: new Set<RegionKey>(),
     filter: '',
     rings: [] as { node: ANode; start: number }[],
@@ -350,6 +355,7 @@ export function AtlasView(props: Props) {
   });
   st.current.labels = labels;
   st.current.showTrail = showTrail;
+  st.current.bridges = bridges;
   st.current.hidden = hidden;
   st.current.filter = filter.trim().toLowerCase();
 
@@ -579,17 +585,47 @@ export function AtlasView(props: Props) {
       } else {
         // Lines take a tint of the region they start in: six batches, one per region colour.
         // Lines to index-like hubs go in a much fainter pass (all of them show when the hub is hovered or open).
+        const showBridges = s.bridges;
         for (const reg of REGIONS) {
-          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.55, lineAlpha * 1.35)})`;
+          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.55, lineAlpha * (showBridges ? 0.45 : 1.35))})`;
           ctx.beginPath();
           for (let li = 0; li < drawn; li++) {
             const l = linkList[li];
-            if (l.mega || l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
+            if (l.mega || l.surprise || l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
+            if (showBridges && l.a.region !== l.b.region && l.a.region !== 'stem' && l.b.region !== 'stem') continue;
             ctx.moveTo(l.a.sx * k, l.a.sy * k);
             ctx.lineTo(l.b.sx * k, l.b.sy * k);
           }
           ctx.stroke();
         }
+        if (showBridges) {
+          // Links between regions, in the colour of where they start, much brighter.
+          for (const reg of REGIONS) {
+            // Hub notes link everywhere by design; those aren't bridges, so they stay dim.
+            if (reg.key === 'stem') continue;
+            ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.75, Math.max(0.28, lineAlpha * 4))})`;
+            ctx.beginPath();
+            for (const l of L.links) {
+              if (l.mega || l.surprise || l.a.region !== reg.key || l.b.region === reg.key || l.b.region === 'stem' || !l.a.visible || !l.b.visible) continue;
+              ctx.moveTo(l.a.sx * k, l.a.sy * k);
+              ctx.lineTo(l.b.sx * k, l.b.sy * k);
+            }
+            ctx.stroke();
+          }
+        }
+        // Links from notes marked #surprise: always highlighted.
+        ctx.strokeStyle = 'rgba(255, 244, 214, 0.55)';
+        ctx.lineWidth = Math.max(1, k);
+        ctx.setLineDash([4 * k, 3 * k]);
+        ctx.beginPath();
+        for (const l of L.links) {
+          if (!l.surprise || !l.a.visible || !l.b.visible) continue;
+          ctx.moveTo(l.a.sx * k, l.a.sy * k);
+          ctx.lineTo(l.b.sx * k, l.b.sy * k);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
         if (!busy) {
           ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.12, lineAlpha * 0.22)})`;
           ctx.beginPath();
@@ -984,7 +1020,7 @@ export function AtlasView(props: Props) {
   // Anything that changes the picture needs a redraw (the canvas only draws on demand).
   useEffect(() => {
     st.current.kick();
-  }, [props.selected, props.rightInset, props.paused, layout, labels, hidden, filter, showTrail]);
+  }, [props.selected, props.rightInset, props.paused, layout, labels, hidden, filter, showTrail, bridges]);
 
   const toggle = (k: RegionKey) =>
     setHidden((h) => {
@@ -1056,6 +1092,9 @@ export function AtlasView(props: Props) {
               </label>
               <label title="A fading line through the notes Claude read or changed in the last 30 minutes">
                 <input type="checkbox" checked={showTrail} onChange={() => setShowTrail((t) => !t)} /> Claude’s trail
+              </label>
+              <label title="Brighten links that cross from one region to another, dim the rest">
+                <input type="checkbox" checked={bridges} onChange={() => setBridges((b) => !b)} /> Bridges between regions
               </label>
             </div>
           )}

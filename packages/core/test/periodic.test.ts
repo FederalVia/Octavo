@@ -146,3 +146,91 @@ test('related: direct links first; hubs and journal notes do not dominate', asyn
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('moving a note does not touch notes whose links read the same; identical saves are no-ops', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-move-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    await vault.write('Ideas/Fermi.md', '# Fermi');
+    await vault.write('A.md', 'See [[Fermi]].');
+    await vault.write('B.md', 'See [md](Ideas/Fermi.md).');
+    const before = (p: string) => vault.list().find((n) => n.path === p)!.mtime;
+    const aTime = before('A.md');
+    await new Promise((r) => setTimeout(r, 30));
+    const r = await vault.rename('Ideas/Fermi', 'Physics/Fermi.md');
+    assert.deepEqual(r.updatedNotes, ['B.md']); // the Markdown link's path changed; the [[name]] link did not
+    assert.equal(before('A.md'), aTime, 'A.md untouched');
+    assert.equal((await vault.read('B')).content, 'See [md](Physics/Fermi.md).');
+
+    // Saving the same text again: no new version, same mtime.
+    const t = before('A.md');
+    await vault.write('A.md', 'See [[Fermi]].');
+    assert.equal(before('A.md'), t);
+    assert.equal((await vault.history('A.md')).length, 0);
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('trash: find a deleted note by name and restore it', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-trash-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    await vault.write('Notes/Test.md', '# Test\nimportant');
+    await vault.delete('Test');
+    assert.equal(vault.resolve('Test'), null);
+    const t = await vault.findInTrash('Test');
+    assert.deepEqual(t, { trashPath: '.trash/Notes/Test.md', originalPath: 'Notes/Test.md' });
+    const s = await vault.restore(t!.trashPath);
+    assert.equal(s.path, 'Notes/Test.md');
+    assert.equal((await vault.read('Test')).content, '# Test\nimportant');
+    assert.equal(await vault.findInTrash('Test'), null);
+    await assert.rejects(vault.restore('../outside.md'));
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('append keeps a closing #tags line or "Back to" footer at the end', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-append-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    await vault.write('A.md', '# A\n\nIntro.\n\n## Notes\n\n- one\n\n#physics #idea\n');
+    await vault.append('A', '- two', { heading: 'Notes' });
+    assert.equal((await vault.read('A')).content, '# A\n\nIntro.\n\n## Notes\n\n- one\n- two\n\n#physics #idea\n');
+    await vault.append('A', 'A new paragraph.');
+    assert.equal((await vault.read('A')).content, '# A\n\nIntro.\n\n## Notes\n\n- one\n- two\n\nA new paragraph.\n\n#physics #idea\n');
+    await vault.append('A', 'Fresh section text.', { heading: 'Later' });
+    assert.match((await vault.read('A')).content, /A new paragraph\.\n\n## Later\n\nFresh section text\.\n\n#physics #idea\n$/);
+
+    await vault.write('B.md', '# B\n\nBody.\n\n---\nBack to [[Home]]\n');
+    await vault.append('B', 'More body.');
+    assert.equal((await vault.read('B')).content, '# B\n\nBody.\n\nMore body.\n\n---\nBack to [[Home]]\n');
+
+    // Notes without a footer behave as before; a note that is only tags isn't treated as a footer.
+    await vault.write('C.md', '#just #tags');
+    await vault.append('C', 'text');
+    assert.equal((await vault.read('C')).content, '#just #tags\n\ntext\n');
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a Journal.md index gets a link to each new journal note', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-jindex-'));
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    await vault.write('Journal.md', '# Journal\n');
+    await vault.ensurePeriodicNote('day', new Date(2026, 10, 6));
+    await vault.ensurePeriodicNote('day', new Date(2026, 10, 6)); // existing: no duplicate
+    await vault.logToJournal('hello', new Date(2026, 10, 7));
+    await vault.ensurePeriodicNote('week', new Date(2026, 10, 6));
+    assert.equal((await vault.read('Journal')).content, '# Journal\n\n- [[2026-11-06]]\n- [[2026-11-07]]\n- [[2026-W45]]\n');
+  } finally {
+    await vault.close?.();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

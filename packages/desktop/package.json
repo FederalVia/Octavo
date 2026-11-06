@@ -1,7 +1,7 @@
 {
   "name": "@octavo/desktop",
   "productName": "Octavo",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "Octavo desktop app",
   "type": "module",

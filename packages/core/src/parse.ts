@@ -42,7 +42,7 @@ export function splitFrontmatter(content: string): {
   if (!m) return { frontmatter: {}, body: content, lineOffset: 0 };
   let frontmatter: Record<string, unknown> = {};
   try {
-    const parsed = YAML.parse(m[1]);
+    const parsed = YAML.parse(m[1], { logLevel: 'error' });
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
       frontmatter = parsed as Record<string, unknown>;
     }

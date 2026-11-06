@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { watchActivity } from './activity.js';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { Vault } from '@octavo/core';
@@ -10,6 +11,7 @@ export { seedIfEmpty } from './seed.js';
 export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js';
 export { RemoteAccess, diagnose, type RemoteStatus, type RemoteProblem } from './remote/remote.js';
 export { importNotion, importEnex, type ImportResult } from './importers.js';
+export { activityFile, recordAccess, watchActivity } from './activity.js';
 
 export interface StartOptions {
   vaultPath: string;
@@ -84,6 +86,8 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
       throw err;
     }
   }
+  // Reads by Claude Desktop's separate Octavo process show up in this app's atlas trail.
+  const stopActivity = watchActivity(vault.root, (p) => vault.noteAccessed(p));
   const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
   return {
     url: `http://${displayHost}:${port}`,
@@ -92,6 +96,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
     app,
     close: () =>
       new Promise<void>((resolve) => {
+        stopActivity();
         vault.close();
         server.closeAllConnections?.();
         server.close(() => resolve());

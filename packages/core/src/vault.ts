@@ -105,9 +105,32 @@ export function formatDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/**
+ * Index of the first line of a closing footer: trailing lines that are only #tags, "Back to …" / "← …" links,
+ * or a --- rule right above those. lines.length when there is none.
+ */
+function footerStart(lines: string[]): number {
+  const isFooterLine = (l: string) => {
+    const t = l.trim();
+    return /^(#[\p{L}\p{N}_/-]+[ \t]*)+$/u.test(t) || /^(back to\b|←|↩)/i.test(t);
+  };
+  let i = lines.length;
+  while (i > 0 && lines[i - 1].trim() === '') i--;
+  let start = i;
+  while (start > 0 && (isFooterLine(lines[start - 1]) || (lines[start - 1].trim() === '' && start < i))) start--;
+  while (start < i && lines[start].trim() === '') start++;
+  if (start === i) return lines.length;
+  // Take a --- divider just above the footer along with it.
+  let j = start;
+  while (j > 0 && lines[j - 1].trim() === '') j--;
+  if (j > 0 && /^(-{3,}|\*{3,}|_{3,})$/.test(lines[j - 1].trim())) start = j - 1;
+  // Never treat the whole note as a footer.
+  return start === 0 ? lines.length : start;
+}
+
 /** What the graph shows for a note: its links, tags, region and lock state. A change here needs a graph refresh. */
 function graphKey(n: { links: { target: string }[]; tags: string[]; encrypted?: boolean; frontmatter?: Record<string, unknown> }): string {
-  return JSON.stringify([n.links.map((l) => l.target), n.tags, !!n.encrypted, n.frontmatter?.region ?? null]);
+  return JSON.stringify([n.links.map((l) => l.target), n.tags, !!n.encrypted, n.frontmatter?.region ?? null, n.frontmatter?.surprise ?? null]);
 }
 
 export type Period = 'day' | 'week' | 'month';
@@ -544,6 +567,7 @@ export class Vault extends EventEmitter {
         degree: 0,
         ...(region ? { region } : {}),
         ...(n.encrypted ? { encrypted: true } : {}),
+        ...(n.frontmatter.surprise === true || n.tags.some((t) => t.toLowerCase() === 'surprise') ? { surprise: true } : {}),
       });
     }
     for (const n of this.notes.values()) {
@@ -696,6 +720,15 @@ export class Vault extends EventEmitter {
     if (stat && opts.expectedMtime != null && Math.abs(stat.mtimeMs - opts.expectedMtime) > 1) {
       throw new NoteConflictError(rel, stat.mtimeMs);
     }
+    // Identical content: leave the file alone (no new version in history, no "updated" time).
+    if (stat) {
+      const known = this.notes.get(rel);
+      const current = known && known.mtime === stat.mtimeMs ? known.content : await fsp.readFile(full, 'utf8').catch(() => null);
+      if (current === content) {
+        if (!known || known.mtime !== stat.mtimeMs) await this.refreshFile(rel, true);
+        return summarize(this.notes.get(rel)!);
+      }
+    }
     const wasEncrypted = stat ? (this.notes.get(rel)?.encrypted ?? false) : false;
     if (stat && isEncryptedContent(content) && !wasEncrypted) {
       // Locking a note: earlier plain-text versions must not linger in the history folder.
@@ -743,21 +776,47 @@ export class Vault extends EventEmitter {
     const sepFor = (c: string) =>
       c === '' || c.endsWith('\n\n') ? '' : c.endsWith('\n') ? (lineMode ? '' : '\n') : lineMode ? '\n' : '\n\n';
 
+    const lines = current.split('\n');
+    // A closing footer (a "#tags" line, "Back to [[Home]]") stays at the very end: new text goes above it.
+    const footer = footerStart(lines);
+    const insertBeforeFooter = (insertion: string[]) => {
+      let at = footer;
+      while (at > 0 && lines[at - 1].trim() === '') at--;
+      const before = lines.slice(0, at);
+      const after = lines.slice(footer);
+      const out = [...before, ...(before.length && before[before.length - 1].trim() !== '' ? [''] : []), ...insertion, '', ...after];
+      let result = out.join('\n');
+      if (!result.endsWith('\n')) result += '\n';
+      return this.write(rel, result);
+    };
+
     if (!opts.heading) {
+      if (footer < lines.length) {
+        const prevLine = lines.slice(0, footer).filter((l) => l.trim()).pop();
+        const tightList = lineMode || (isListItem(block) && isListItem(prevLine));
+        if (tightList) {
+          let at = footer;
+          while (at > 0 && lines[at - 1].trim() === '') at--;
+          lines.splice(at, 0, block);
+          return this.write(rel, lines.join('\n').replace(/\n*$/, '\n'));
+        }
+        return insertBeforeFooter([block]);
+      }
       const sep = sepFor(current);
       return this.write(rel, `${current}${sep}${block}\n`);
     }
 
-    const lines = current.split('\n');
     const note = this.notes.get(rel);
     const wanted = opts.heading.replace(/^#+\s*/, '').trim().toLowerCase();
     const heading = note?.headings.find((h) => h.text.trim().toLowerCase() === wanted);
     if (!heading) {
+      const title = `## ${opts.heading.replace(/^#+\s*/, '').trim()}`;
+      if (footer < lines.length) return insertBeforeFooter([title, '', block]);
       const sep = current === '' || current.endsWith('\n\n') ? '' : current.endsWith('\n') ? '\n' : '\n\n';
-      return this.write(rel, `${current}${sep}## ${opts.heading.replace(/^#+\s*/, '').trim()}\n\n${block}\n`);
+      return this.write(rel, `${current}${sep}${title}\n\n${block}\n`);
     }
     const next = note!.headings.find((h) => h.line > heading.line && h.level <= heading.level);
-    let insertAt = next ? next.line - 1 : lines.length; // 0-based index of the line to insert before
+    let insertAt = next ? next.line - 1 : Math.max(heading.line, footer); // 0-based index of the line to insert before
     // Skip back over trailing blank lines in the section.
     while (insertAt > heading.line && lines[insertAt - 1].trim() === '') insertAt--;
     const prev = lines[insertAt - 1];
@@ -857,11 +916,58 @@ export class Vault extends EventEmitter {
           edits.sort((a, b) => b.start - a.start);
           let content = n.content;
           for (const e of edits) content = content.slice(0, e.start) + e.text + content.slice(e.end);
-          rewrites.set(n.path, { content, count: edits.length });
+          // Links by name usually read the same after a move: only notes whose text changes are rewritten.
+          if (content !== n.content) rewrites.set(n.path, { content, count: edits.length });
         }
       }
     }
     return rewrites;
+  }
+
+  /** Notes in the vault's `.trash` folder: where each is stored and the path it had. */
+  async trashed(): Promise<{ trashPath: string; originalPath: string; time: number }[]> {
+    const root = path.join(this.root, '.trash');
+    const out: { trashPath: string; originalPath: string; time: number }[] = [];
+    const walk = async (dir: string) => {
+      for (const e of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) await walk(full);
+        else if (e.isFile() && /\.md$/i.test(e.name)) {
+          const rel = path.relative(this.root, full).split(path.sep).join('/');
+          // ".trash/Folder/Note.md", or ".trash/Folder/Note 1730000000000.md" when the name was taken.
+          const original = rel.slice('.trash/'.length).replace(/ \d{13}\.md$/i, '.md');
+          const st = await fsp.stat(full).catch(() => null);
+          out.push({ trashPath: rel, originalPath: original, time: st?.mtimeMs ?? 0 });
+        }
+      }
+    };
+    await walk(root);
+    return out.sort((a, b) => b.time - a.time);
+  }
+
+  /** The most recently trashed note with this name or path, if any. */
+  async findInTrash(nameOrPath: string): Promise<{ trashPath: string; originalPath: string } | null> {
+    const want = stripMd(nameOrPath.trim().replace(/\\/g, '/')).toLowerCase();
+    const hit = (await this.trashed()).find((t) => {
+      const orig = stripMd(t.originalPath).toLowerCase();
+      return orig === want || orig.split('/').pop() === want;
+    });
+    return hit ? { trashPath: hit.trashPath, originalPath: hit.originalPath } : null;
+  }
+
+  /** Move a trashed note back to where it was (or a free name next to it). */
+  async restore(trashPath: string): Promise<NoteSummary> {
+    const clean = trashPath.replace(/\\/g, '/');
+    if (!clean.startsWith('.trash/') || clean.split('/').some((seg) => seg === '..')) throw new VaultPathError(`Not in the trash: ${trashPath}`);
+    const src = path.join(this.root, ...clean.split('/'));
+    if (!(await fsp.stat(src).catch(() => null))) throw new NoteNotFoundError(trashPath);
+    let rel = normalizeNotePath(clean.slice('.trash/'.length).replace(/ \d{13}\.md$/i, '.md'));
+    const stem = stripMd(rel);
+    for (let i = 2; this.notes.has(rel) || (await fsp.stat(this.abs(rel)).catch(() => null)); i++) rel = `${stem} ${i}.md`;
+    await fsp.mkdir(path.dirname(this.abs(rel)), { recursive: true });
+    await fsp.rename(src, this.abs(rel));
+    await this.refreshFile(rel, true);
+    return summarize(this.notes.get(rel)!);
   }
 
   /**
@@ -1190,7 +1296,7 @@ export class Vault extends EventEmitter {
     let data: Record<string, unknown> = {};
     if (m) {
       try {
-        const v = YAML.parse(m[1]);
+        const v = YAML.parse(m[1], { logLevel: 'error' });
         if (v && typeof v === 'object' && !Array.isArray(v)) data = v as Record<string, unknown>;
         else throw new Error();
       } catch {
@@ -1205,7 +1311,10 @@ export class Vault extends EventEmitter {
   }
 
   /** A random note, weighted towards ones that haven't been touched in a while. */
-  randomNote(opts: { folder?: string; tag?: string; region?: RegionKey; preferOld?: boolean } = {}): NoteSummary | null {
+  randomNote(
+    opts: { folder?: string; tag?: string; region?: RegionKey; preferOld?: boolean; favor?: 'old' | 'unlinked' | 'both' | 'none' } = {},
+  ): NoteSummary | null {
+    const favor = opts.favor ?? (opts.preferOld === false ? 'none' : 'old');
     const now = Date.now();
     const folder = opts.folder ? normalizeFolderPath(opts.folder) : '';
     const tag = opts.tag?.replace(/^#/, '').toLowerCase();
@@ -1219,8 +1328,22 @@ export class Vault extends EventEmitter {
       return true;
     });
     if (!pool.length) return null;
-    // Weight by age in days (+1), so a year-old note is far likelier than today's.
-    const weights = pool.map((n) => (opts.preferOld === false ? 1 : 1 + Math.max(0, now - n.mtime) / 86400000));
+    // Old: weight by age in days (+1), so a year-old note is far likelier than today's.
+    // Unlinked: weight by how few notes link to it, so forgotten notes get connected.
+    let incoming: Map<string, number> | null = null;
+    if (favor === 'unlinked' || favor === 'both') {
+      incoming = new Map();
+      for (const n of this.notes.values())
+        for (const l of n.links) {
+          const p = this.resolveLink(l, n.path);
+          if (p && p !== n.path) incoming.set(p, (incoming.get(p) ?? 0) + 1);
+        }
+    }
+    const weights = pool.map((n) => {
+      const age = 1 + Math.max(0, now - n.mtime) / 86400000;
+      const lonely = incoming ? 10 / (1 + (incoming.get(n.path) ?? 0)) ** 2 : 1;
+      return favor === 'old' ? age : favor === 'unlinked' ? lonely : favor === 'both' ? Math.sqrt(age) * lonely : 1;
+    });
     let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
     for (let i = 0; i < pool.length; i++) {
       pick -= weights[i];
@@ -1264,7 +1387,22 @@ export class Vault extends EventEmitter {
     } else if (period === 'month') {
       content = `# ${MONTHS[date.getMonth()]} ${date.getFullYear()}\n\n## Goals\n\n## Notes\n\n## Review\n\n`;
     } else content = `# ${formatDate(date)}\n\n`;
-    return this.write(rel, content);
+    const created = await this.write(rel, content);
+    await this.addToJournalIndex(rel);
+    return created;
+  }
+
+  /**
+   * If the vault has a note named after the journal folder (e.g. Journal.md, often linked from Home),
+   * keep it useful: each new daily, weekly or monthly note adds a link to itself there.
+   */
+  private async addToJournalIndex(rel: string): Promise<void> {
+    if (!this.dailyFolder) return;
+    const index = this.resolve(this.dailyFolder.split('/').pop()!);
+    if (!index || index === rel || index.startsWith(this.dailyFolder + '/') || this.notes.get(index)?.encrypted) return;
+    const name = noteName(rel);
+    if (this.notes.get(index)!.links.some((l) => stripMd(l.target).split('/').pop()?.toLowerCase() === name.toLowerCase())) return;
+    await this.append(index, `- [[${name}]]`).catch(() => {});
   }
 
   /** Append a timestamped bullet to today's daily note. */

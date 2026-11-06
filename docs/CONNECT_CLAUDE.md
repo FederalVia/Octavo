@@ -134,20 +134,22 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `get_vault_overview` | Note count, folders, top tags, recently updated notes and the home note | |
 | `search_notes` | Full-text search with `"phrases"`, `tag:` and `path:` filters; returns matching lines | |
 | `read_note` | Full content, its brain region (and why), outgoing links and backlinks | |
-| `random_note` | Read a random note, favouring ones not updated for a long time, optionally in a folder, tag or region | |
+| `random_note` | Read a random note, optionally in a folder, tag or region; `favor` picks old notes (default), under-linked ones, both, or none | |
 | `get_note_region` | Which brain region a note is drawn in, and why | |
 | `list_notes` | Notes in a folder and/or with a tag, newest first | |
 | `get_backlinks` | Notes linking to a note, with the linking lines | |
 | `get_related` | Related notes via links, backlinks, shared tags and two-step links | |
+| `find_orphans` | Notes nothing links to, notes that link nowhere, and links to notes that don't exist | |
 | `list_tags` | All tags with counts | |
-| `list_tasks` | Tasks (`- [ ] …`) across the vault, or in one note, with line numbers and due dates (`📅 2026-11-10`); can filter to overdue, today, next 7 days | |
+| `list_tasks` | Tasks (`- [ ] …`) across the vault, or in one note, with line numbers and due dates (`📅 2026-11-10`); can filter to overdue, today, next 7 days, and by status (open to-dos by default, `[?]` questions, done, all) | |
 | `write_note` | Create a note or replace its content (`create_only` to never overwrite) | ✓ |
 | `append_to_note` | Append to the end, or under a heading (created if missing) | ✓ |
 | `edit_note` | Replace an exact snippet of text | ✓ |
 | `rename_note` | Rename or move; updates every link to it | ✓ |
-| `set_note_region` | Pin a note to a region (`region:` in its properties), or back to automatic | ✓ |
+| `set_note_region` | Pin one note, a list of notes or a whole folder to a region (`region:` in its properties), or back to automatic | ✓ |
 | `merge_notes` | Merge one note into another; links to it are updated and it moves to `.trash` | ✓ |
 | `delete_note` | Move to `.trash` (recoverable) | ✓ |
+| `restore_note` | Bring a note back from `.trash` | ✓ |
 | `update_task` | Tick, untick or set a task's status (`x`, `-`, `?`…) by note and line | ✓ |
 | `log_to_journal` | Add a timestamped entry to today's journal note | ✓ |
 | `open_periodic_note` | Read (creating if needed) today's, this week's or this month's note | ✓ |
@@ -167,6 +169,7 @@ claude mcp add octavo-ro -- node /path/to/octavo/packages/server/dist/cli.js mcp
 ## Troubleshooting
 
 - **The tools don't show up.** Run the command from the config yourself, e.g. `node /path/to/.../cli.js mcp --vault ~/Octavo`. It should print `MCP server (stdio) ready` to stderr and then wait. If it errors, fix that first. Often the path is wrong, or `npm run build` hasn't been run.
+- **New tools don't appear after updating Octavo.** First check which Octavo Claude is using: ask it to call `get_vault_overview`; the first line ends with the version, e.g. "(Octavo 0.3.9)". If the version is old, fully quit Claude (from the tray icon, not just the window) so it starts a fresh copy, and make sure the update installed. If the version is right but the tools are still missing, Claude is holding on to the tool list from its first connection: rename the entry in `claude_desktop_config.json` (e.g. `"octavo"` → `"octavo-memory"`) and restart Claude, which makes it fetch the full list.
 - **`node: command not found` in Claude Desktop.** Desktop apps don't always see your shell's `PATH`. Use the full path to node (`which node` on macOS/Linux, `where node` on Windows) as `"command"`.
 - **HTTP connection gets 401.** The token is missing or wrong. Check the `Authorization: Bearer …` header.
 - **HTTP connection gets 403 "Host not allowed".** You're connecting to a server without a token using a hostname other than `localhost`/`127.0.0.1`. Set a token on the server.
