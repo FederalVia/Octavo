@@ -115,6 +115,8 @@ interface Props {
   onEditContent?: (content: string) => void;
   /** Changes to open the properties editor. */
   editPropertiesSignal?: number;
+  /** A web link was clicked; return true if it was handled (e.g. opened in the web viewer). */
+  onOpenUrl?: (url: string, e: { altKey: boolean; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => boolean;
 }
 
 
@@ -225,7 +227,7 @@ interface Hover {
   title: string;
 }
 
-export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, onToggleTask, scrollToHeading, onScrolled, bookmarkedHeadings, onBookmarkHeading, onEditContent, editPropertiesSignal }: Props) {
+export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, onToggleTask, scrollToHeading, onScrolled, bookmarkedHeadings, onBookmarkHeading, onEditContent, editPropertiesSignal, onOpenUrl }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -457,6 +459,11 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
           if (box && onToggleTask) {
             e.preventDefault();
             onToggleTask(Number(box.dataset.task));
+            return;
+          }
+          const web = target.closest('a[href^="http://"], a[href^="https://"]') as HTMLAnchorElement | null;
+          if (web && !web.classList.contains('wikilink') && onOpenUrl?.(web.href, e)) {
+            e.preventDefault();
             return;
           }
           const link = target.closest('a.wikilink') as HTMLAnchorElement | null;

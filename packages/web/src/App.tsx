@@ -12,6 +12,8 @@ import { applyTemplate } from './templates';
 import { SplitPane } from './components/SplitPane';
 import { HotkeysDialog } from './components/HotkeysDialog';
 import { PublishDialog } from './components/PublishDialog';
+import { AudioRecorder } from './components/AudioRecorder';
+import { WebViewer } from './components/WebViewer';
 import { comboFromEvent, formatCombo, type Hotkeys } from './hotkeys';
 import { applySnippets } from './appearance';
 import { Presentation } from './components/Presentation';
@@ -517,6 +519,10 @@ export function App() {
   const [hotkeys, setHotkeys] = useState<Hotkeys>({});
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [webUrl, setWebUrl] = useState<string | null>(null);
+  const [webLinksInApp, setWebLinksInApp] = useState(() => load('octavo.webLinks', false));
+  useEffect(() => store('octavo.webLinks', webLinksInApp), [webLinksInApp]);
   const [presenting, setPresenting] = useState(false);
   // Workspaces: named layouts (tabs, split, sidebar, view), saved with the vault.
   type Workspace = { tabs: string[]; active: string | null; split: string | null; showLeft: boolean; leftTab: DrawerTab; viewMode: 'atlas' | 'network'; panelWide: boolean; mode: Mode };
@@ -884,6 +890,17 @@ export function App() {
       }
     },
     [confirm, refreshNotes, route, navigate, handleError],
+  );
+
+  // Web links in notes: Alt/Option-click (or always, if chosen) opens them in the web viewer.
+  const openUrl = useCallback(
+    (url: string, e: { altKey: boolean; metaKey: boolean; ctrlKey: boolean }) => {
+      if (e.metaKey || e.ctrlKey) return false;
+      if (!e.altKey && !webLinksInApp) return false;
+      setWebUrl(url);
+      return true;
+    },
+    [webLinksInApp],
   );
 
   const openPeriodic = useCallback(
@@ -1303,6 +1320,10 @@ export function App() {
     { id: 'monthly', label: 'Open this month’s note', keywords: 'monthly note periodic plan goals', run: () => openPeriodic('month') },
     { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
     { id: 'random', label: 'Open random note', run: openRandom },
+    { id: 'record-audio', label: 'Record audio note', keywords: 'audio voice microphone record memo dictate', run: () => setRecording(true) },
+    { id: 'web-open', label: 'Open web page…', keywords: 'browser web viewer url link reader clip', run: async () => { const u = await prompt('Open web page', '', { placeholder: 'example.com/article', confirmLabel: 'Open' }); if (u) setWebUrl(u); } },
+    { id: 'web-links', label: webLinksInApp ? 'Open web links in your browser (not the web viewer)' : 'Open web links in Octavo’s web viewer', keywords: 'browser web viewer links reader', run: () => setWebLinksInApp((v: boolean) => !v) },
+    { id: 'publish-site', label: 'Publish as a website…', keywords: 'publish site static html export web share host pages', run: () => setPublishOpen(true) },
     ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
     { id: 'workspace-save', label: 'Save workspace (layout)…', keywords: 'layout tabs save', run: saveWorkspace },
     ...(Object.keys(workspaces).length
@@ -1357,7 +1378,6 @@ export function App() {
           ...(split ? [{ id: 'split-close', label: 'Close split view', keywords: 'pane', run: () => setSplit(null) }] : []),
           { id: 'export-pdf', label: window.octavoDesktop ? 'Export to PDF…' : 'Export to PDF / print…', keywords: 'pdf save share print', run: () => exportNote('pdf') },
           ...(window.octavoDesktop ? [{ id: 'print', label: 'Print…', keywords: 'printer paper', run: () => exportNote('print') }] : []),
-          { id: 'publish-site', label: 'Publish as a website…', keywords: 'publish site static html export web share host pages', run: () => setPublishOpen(true) },
           ...(route.view === 'note' && detail && !detail.encrypted
             ? [
                 detail.frontmatter.publish === true
@@ -1751,6 +1771,7 @@ export function App() {
               exists={exists}
               namesKey={namesKey}
               onOpenLink={openLink}
+              onOpenUrl={openUrl}
               onTag={(t) => showSearch(`tag:${t}`)}
               scrollToHeading={pendingHeading}
               onScrolled={() => setPendingHeading(null)}
@@ -1926,6 +1947,32 @@ export function App() {
       )}
       {presenting && detail && (
         <Presentation content={draft} path={detail.path} exists={exists} namesKey={namesKey} onClose={() => setPresenting(false)} />
+      )}
+      {webUrl && (
+        <WebViewer
+          url={webUrl}
+          onClose={() => setWebUrl(null)}
+          onSaved={() => void refreshNotes()}
+        />
+      )}
+      {recording && (
+        <AudioRecorder
+          onClose={() => setRecording(false)}
+          onSaved={async (embed) => {
+            const now = new Date();
+            const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            if (route.view === 'note' && detail && !detail.encrypted) {
+              if (mode === 'edit' && editor.current) editor.current.insert(`${embed}\n`);
+              else onChange(`${draftRef.current.replace(/\s*$/, '')}\n\n${embed}\n`);
+            } else {
+              // No note open: it goes in today's journal.
+              const day = await api.periodic('day');
+              await api.append(day.path, `- ${time} 🎙 ${embed}`);
+              await refreshNotes();
+              navigate(day.path);
+            }
+          }}
+        />
       )}
       {publishOpen && (
         <PublishDialog

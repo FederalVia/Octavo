@@ -1,3 +1,4 @@
+import { clipNote, readPage, WebReadError } from './webread.js';
 import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -343,6 +344,48 @@ export function createApp(opts: AppOptions): express.Express {
     const lang = req.query.lang === 'base' || req.query.lang === 'dql' ? req.query.lang : undefined;
     const from = typeof req.query.from === 'string' ? req.query.from : undefined;
     res.json(vault.query(q, { lang, thisPath: from }));
+  });
+
+  // Web viewer: reader mode and clipping a page into the vault.
+  api.get('/web/read', async (req, res, next) => {
+    try {
+      res.json(await readPage(String(req.query.url ?? '')));
+    } catch (err) {
+      if (err instanceof WebReadError) res.status(422).json({ error: err.message });
+      else next(err);
+    }
+  });
+
+  api.post('/web/clip', async (req, res, next) => {
+    try {
+      const { url, folder } = req.body ?? {};
+      if (typeof url !== 'string') {
+        res.status(400).json({ error: 'Body must include "url"' });
+        return;
+      }
+      const page = await readPage(url);
+      const dir = (typeof folder === 'string' && folder.trim() ? folder.trim() : 'Clippings').replace(/^\/+|\/+$/g, '');
+      const base = page.title.replace(/[\\/:*?"<>|#^[\]]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) || 'Clipping';
+      let name = `${dir}/${base}.md`;
+      for (let i = 2; vault.has(name); i++) name = `${dir}/${base} ${i}.md`;
+      res.json(await vault.create(name, clipNote(page)));
+    } catch (err) {
+      if (err instanceof WebReadError) res.status(422).json({ error: err.message });
+      else next(err);
+    }
+  });
+
+  api.post('/append', async (req, res, next) => {
+    try {
+      const { path: p, text, heading } = req.body ?? {};
+      if (typeof p !== 'string' || typeof text !== 'string') {
+        res.status(400).json({ error: 'Body must include "path" and "text"' });
+        return;
+      }
+      res.json(await vault.append(p, text, { heading: typeof heading === 'string' ? heading : undefined }));
+    } catch (err) {
+      next(err);
+    }
   });
 
   api.post('/property', async (req, res, next) => {

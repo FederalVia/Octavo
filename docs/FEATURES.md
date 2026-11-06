@@ -86,7 +86,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Tabs, split panes, pop-out windows | ✅ | Tabs (Ctrl/Cmd+click or middle-click opens a new one; Ctrl+T/W/Tab in the desktop app), split view (a second note alongside in reading view), and *Open this note in a new window* |
 | Stacked tabs | 🚧 | |
 | Vim keybindings | ✅ | Command palette → *Turn on Vim keybindings* |
-| Web viewer | 🚧 | |
+| Web viewer | ✅ | Alt/Option-click a web link (or turn on *Open web links in Octavo’s web viewer*), or *Open web page…*. **Reader** mode shows just the article; **Live** shows the real page (the desktop app can show almost any site). **Save to vault** clips the article to `Clippings/` as Markdown with its source |
 | Word and character count | ✅ | Status bar |
 
 ## Capture and media
@@ -94,7 +94,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Random note | ✅ | Command palette |
-| Audio recorder | 🚧 | |
+| Audio recorder | ✅ | Command palette → *Record audio note*: pause/resume, level meter; saves to `attachments/` and embeds it in the open note (or today's journal). Needs the desktop app, this computer, or an https address on phones |
 | Slides (note → presentation) | ✅ | *Start presentation*: full screen, one slide per `---` section; arrows, space or click to move |
 | Web Clipper browser extension | ❌ | A separate product |
 | iOS Quick Capture, Share Sheet, Siri/Shortcuts, voice capture, widgets | ❌ | Needs a native mobile app |
