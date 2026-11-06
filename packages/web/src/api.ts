@@ -87,7 +87,7 @@ export class ApiError extends Error {
   }
 }
 
-const TOKEN_KEY = 'ultron.token';
+const TOKEN_KEY = 'octavo.token';
 
 export function getToken(): string {
   try {

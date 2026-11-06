@@ -1,16 +1,16 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { NoteSummary, Vault } from '@ultron/core';
+import type { NoteSummary, Vault } from '@octavo/core';
 
-export const SERVER_INSTRUCTIONS = `Ultron Mind is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
+export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
 
 How to use it:
 - At the start of a task, call get_vault_overview (once per conversation), then search_notes for the people, projects and topics involved. Read the most relevant notes before answering.
 - Save things worth remembering: decisions, facts about the user and their preferences, project context, and lessons learned. Update an existing note with append_to_note or edit_note rather than creating near-duplicates; search first.
-- Keep one topic per note, give it a clear name, and connect notes with [[wikilinks]] (e.g. [[Project Ultron]]) and #tags. Linking to a note that doesn't exist yet is fine: it marks a topic to fill in later.
+- Keep one topic per note, give it a clear name, and connect notes with [[wikilinks]] (e.g. [[Project Octavo]]) and #tags. Linking to a note that doesn't exist yet is fine: it marks a topic to fill in later.
 - Use log_to_journal for a short running log of what happened in each session.
 - The app draws the vault as a brain, and folders decide the region: Projects/ and Decisions/ (frontal), Concepts/ and Tools/ (parietal), People/ and Orgs/ (temporal), Sources/, Repos/ and Reading/ (occipital), Journal/ and Logs/ (cerebellum), Home/Index notes (brain stem). Put new notes in the matching folder, or set \`region:\` in frontmatter.
-- Note paths are relative to the vault, e.g. "Projects/Ultron.md". The .md extension is optional, and a bare note name like "Ultron" resolves the same way a wikilink would.
+- Note paths are relative to the vault, e.g. "Projects/Octavo.md". The .md extension is optional, and a bare note name like "Octavo" resolves the same way a wikilink would.
 - Notes marked 🔒 locked are encrypted by the user. You can't read, edit or delete them, and you shouldn't try to infer their contents.
 - Never store secrets such as passwords or API keys in the vault.`;
 
@@ -45,11 +45,11 @@ function safe<A>(fn: Handler<A>) {
 
 export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {}): McpServer {
   const server = new McpServer(
-    { name: 'ultron-mind', version: '0.1.0' },
+    { name: 'octavo', version: '0.1.0' },
     { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } },
   );
 
-  const pathArg = z.string().describe('Note path relative to the vault (e.g. "Projects/Ultron.md") or a note name.');
+  const pathArg = z.string().describe('Note path relative to the vault (e.g. "Projects/Octavo.md") or a note name.');
 
   server.registerTool(
     'get_vault_overview',
@@ -80,7 +80,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       description:
         'Full-text search across all notes. All words must match (in title, tags, or body). Supports "exact phrases", tag:name or #name filters, and path:folder filters. Returns paths, matching lines and tags.',
       inputSchema: {
-        query: z.string().describe('Search query, e.g. `ultron deploy`, `"api key rotation"`, `tag:person`, `path:Projects mcp`'),
+        query: z.string().describe('Search query, e.g. `octavo deploy`, `"api key rotation"`, `tag:person`, `path:Projects mcp`'),
         limit: z.number().int().min(1).max(100).optional().describe('Max results (default 10)'),
       },
       annotations: { readOnlyHint: true },
@@ -111,7 +111,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     safe(async ({ path }) => {
       if (vault.isEncrypted(path)) {
         return text(
-          `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Ultron app, so don't guess at what it contains. Ask the user if you need information from it.`,
+          `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Octavo app, so don't guess at what it contains. Ask the user if you need information from it.`,
         );
       }
       const n = await vault.read(path);
@@ -296,7 +296,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       annotations: { destructiveHint: true },
     },
     safe(async ({ path }) => {
-      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; only the user can delete it, from the Ultron app.`);
+      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; only the user can delete it, from the Octavo app.`);
       const r = await vault.delete(path);
       return text(`Moved ${r.path} to ${r.trashedTo}`);
     }),

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { Vault } from '@ultron/core';
+import { Vault } from '@octavo/core';
 import { createApp } from './app.js';
 
 export { createApp } from './app.js';
@@ -28,11 +28,11 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-/** Locate the built web UI shipped in the @ultron/web workspace package. */
+/** Locate the built web UI shipped in the @octavo/web workspace package. */
 export function defaultWebDir(): string | undefined {
   try {
     const require = createRequire(import.meta.url);
-    return path.join(path.dirname(require.resolve('@ultron/web/package.json')), 'dist');
+    return path.join(path.dirname(require.resolve('@octavo/web/package.json')), 'dist');
   } catch {
     return undefined;
   }

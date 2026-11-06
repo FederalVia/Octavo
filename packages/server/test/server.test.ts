@@ -20,7 +20,7 @@ describe('HTTP server', () => {
     });
 
   before(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-srv-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-srv-'));
     srv = await startServer({ vaultPath: dir, port: 0, token: TOKEN, webDir: '/nonexistent' });
     await seedIfEmpty(srv.vault);
   });
@@ -140,7 +140,7 @@ describe('HTTP server', () => {
         return { text: r.content.map((c) => c.text).join('\n'), isError: !!r.isError };
       };
 
-      let r = await call('write_note', { path: 'People/Ada', content: '# Ada\nLikes [[Ultron Mind]]. #person' });
+      let r = await call('write_note', { path: 'People/Ada', content: '# Ada\nLikes [[Octavo]]. #person' });
       assert.equal(r.text, 'Created People/Ada.md');
       r = await call('append_to_note', { path: 'Ada', content: '- prefers dark mode', heading: 'Preferences' });
       assert.match(r.text, /Appended to People\/Ada.md/);
@@ -158,10 +158,10 @@ describe('HTTP server', () => {
       assert.equal(r.isError, true);
 
       // Locked notes: existence visible, contents not; no overwrite/delete/append.
-      await srv.vault.write('Secret.md', '---\nultron-encrypted: v1\n---\n# Locked\n\n```ultron-encrypted\n{}\n```\n');
+      await srv.vault.write('Secret.md', '---\noctavo-encrypted: v1\n---\n# Locked\n\n```octavo-encrypted\n{}\n```\n');
       r = await call('read_note', { path: 'Secret' });
       assert.match(r.text, /locked \(encrypted\) note/);
-      assert.doesNotMatch(r.text, /ultron-encrypted/);
+      assert.doesNotMatch(r.text, /octavo-encrypted/);
       r = await call('write_note', { path: 'Secret', content: 'overwritten' });
       assert.equal(r.isError, true);
       r = await call('append_to_note', { path: 'Secret', content: 'x' });
@@ -179,7 +179,7 @@ describe('HTTP server', () => {
 
 describe('loopback host guard', () => {
   test('rejects foreign Host header when no token', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-host-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-host-'));
     const srv = await startServer({ vaultPath: dir, port: 0, webDir: '/nonexistent' });
     try {
       const ok = await fetch(`${srv.url}/api/vault`);

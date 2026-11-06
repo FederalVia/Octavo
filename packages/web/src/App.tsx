@@ -88,23 +88,23 @@ export function App() {
   const [draft, setDraft] = useState('');
   const [version, setVersion] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>('saved');
-  const [mode, setMode] = useState<Mode>(() => load('ultron.mode', 'preview'));
+  const [mode, setMode] = useState<Mode>(() => load('octavo.mode', 'preview'));
   const [leftTab, setLeftTab] = useState<DrawerTab>('files');
   const [palette, setPalette] = useState<null | 'commands' | 'templates' | 'new-from-template'>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [mentions, setMentions] = useState<Backlink[]>([]);
-  const [vimMode, setVimMode] = useState<boolean>(() => load('ultron.vim', false));
+  const [vimMode, setVimMode] = useState<boolean>(() => load('octavo.vim', false));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<VaultSettings>(DEFAULT_SETTINGS);
   const [query, setQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
-  const [showLeft, setShowLeft] = useState<boolean>(() => !narrow() && load('ultron.left', false));
-  const [panelWide, setPanelWide] = useState<boolean>(() => load('ultron.panelWide', false));
-  const [lineNumbers, setLineNumbers] = useState(() => load('ultron.lineNumbers', false));
-  useEffect(() => store('ultron.vim', vimMode), [vimMode]);
+  const [showLeft, setShowLeft] = useState<boolean>(() => !narrow() && load('octavo.left', false));
+  const [panelWide, setPanelWide] = useState<boolean>(() => load('octavo.panelWide', false));
+  const [lineNumbers, setLineNumbers] = useState(() => load('octavo.lineNumbers', false));
+  useEffect(() => store('octavo.vim', vimMode), [vimMode]);
   const [switcher, setSwitcher] = useState(false);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [connected, setConnected] = useState(true);
@@ -131,13 +131,13 @@ export function App() {
   const [unlockError, setUnlockError] = useState('');
   const [unlocking, setUnlocking] = useState(false);
 
-  useEffect(() => store('ultron.mode', mode), [mode]);
-  useEffect(() => void (!narrow() && store('ultron.left', showLeft)), [showLeft]);
-  useEffect(() => store('ultron.panelWide', panelWide), [panelWide]);
-  const [viewMode, setViewMode] = useState<'atlas' | 'network'>(() => load('ultron.view', 'atlas'));
-  useEffect(() => store('ultron.view', viewMode), [viewMode]);
+  useEffect(() => store('octavo.mode', mode), [mode]);
+  useEffect(() => void (!narrow() && store('octavo.left', showLeft)), [showLeft]);
+  useEffect(() => store('octavo.panelWide', panelWide), [panelWide]);
+  const [viewMode, setViewMode] = useState<'atlas' | 'network'>(() => load('octavo.view', 'atlas'));
+  useEffect(() => store('octavo.view', viewMode), [viewMode]);
   const brain = useRef<BrainHandle | null>(null);
-  useEffect(() => store('ultron.lineNumbers', lineNumbers), [lineNumbers]);
+  useEffect(() => store('octavo.lineNumbers', lineNumbers), [lineNumbers]);
   const [isNarrow, setIsNarrow] = useState(narrow);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 800px)');
@@ -166,7 +166,7 @@ export function App() {
     async (err: unknown) => {
       if (err instanceof ApiError && err.status === 401) {
         const token = await prompt('Access token required', '', {
-          message: 'This vault is protected. Enter the token the server was started with (--token / ULTRON_TOKEN).',
+          message: 'This vault is protected. Enter the token the server was started with (--token / OCTAVO_TOKEN).',
           confirmLabel: 'Unlock',
         });
         if (token) {
@@ -417,7 +417,7 @@ export function App() {
       try {
         const v = await api.vault();
         setVaultName(v.name);
-        document.title = `${v.name} · Ultron Mind`;
+        document.title = `${v.name} · Octavo`;
         const list = await refreshNotes();
         await refreshGraph().catch(() => {});
         void list;
@@ -1019,7 +1019,7 @@ export function App() {
   if (fatal) {
     return (
       <div className="fatal">
-        <h2>Can’t reach the Ultron Mind server</h2>
+        <h2>Can’t reach the Octavo server</h2>
         <p className="muted">{fatal}</p>
         <button className="btn primary" onClick={() => location.reload()}>
           Retry
@@ -1068,7 +1068,7 @@ export function App() {
         </button>
         <span className={`dot ${connected ? 'ok' : 'bad'}`} title={connected ? 'Live sync connected' : 'Reconnecting…'} />
         <div className="tb-brand" title={vaultName}>
-          <span>{(vaultName || 'Ultron Mind').toUpperCase()}</span>
+          <span>{(vaultName || 'Octavo').toUpperCase()}</span>
           <span className="faint"> — </span>
           {viewMode === 'atlas' ? 'ATLAS' : 'NETWORK'}
           <span className="faint"> — </span>

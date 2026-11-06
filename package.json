@@ -1,5 +1,5 @@
 {
-  "name": "ultron-mind",
+  "name": "octavo",
   "version": "0.1.0",
   "private": true,
   "description": "An Obsidian-like Markdown knowledge base that doubles as Claude's long-term memory via MCP.",
@@ -11,14 +11,14 @@
     "packages/desktop"
   ],
   "scripts": {
-    "build": "npm run build -w @ultron/core && npm run build -w @ultron/server && npm run build -w @ultron/web",
+    "build": "npm run build -w @octavo/core && npm run build -w @octavo/server && npm run build -w @octavo/web",
     "start": "node packages/server/dist/cli.js serve",
     "demo": "node packages/server/dist/cli.js serve --vault examples/demo-vault",
     "mcp": "node packages/server/dist/cli.js mcp",
-    "dev:server": "npm run dev -w @ultron/server",
-    "dev:web": "npm run dev -w @ultron/web",
-    "desktop": "npm run build && npm start -w @ultron/desktop",
-    "test": "npm test -w @ultron/core && npm test -w @ultron/server && npm test -w @ultron/web",
+    "dev:server": "npm run dev -w @octavo/server",
+    "dev:web": "npm run dev -w @octavo/web",
+    "desktop": "npm run build && npm start -w @octavo/desktop",
+    "test": "npm test -w @octavo/core && npm test -w @octavo/server && npm test -w @octavo/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {

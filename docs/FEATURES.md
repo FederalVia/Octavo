@@ -1,8 +1,8 @@
 # Features
 
-Status of every feature on the Ultron feature list.
+Status of every feature on the Octavo feature list.
 
-**Everything in Ultron is free.** There are no paid tiers, subscriptions or accounts, and features that other apps sell, like sync and publishing, will be free here too.
+**Everything in Octavo is free.** There are no paid tiers, subscriptions or accounts, and features that other apps sell, like sync and publishing, will be free here too.
 
 ✅ done · 🟡 partly done · 🚧 planned · ❌ not planned (needs a separate product or service)
 
@@ -19,7 +19,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Lock individual notes with a password | ✅ | Optional, off by default (⚙ Settings). End-to-end encrypted on your device (AES-256-GCM, PBKDF2 600k), including on phones over plain Wi-Fi. The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
 | Mac, Windows, Linux | ✅ | Desktop app (Electron) or any browser |
-| iOS and Android | 🟡 | Scan a QR code (`--phone` or desktop **File → Use on Your Phone**) and add Ultron to your home screen. Works on home Wi-Fi, or anywhere with Tailscale or your own server. No native apps |
+| iOS and Android | 🟡 | Scan a QR code (`--phone` or desktop **File → Use on Your Phone**) and add Octavo to your home screen. Works on home Wi-Fi, or anywhere with Tailscale or your own server. No native apps |
 | Multiple vaults | 🟡 | Desktop: **File → Open Vault Folder…**; server: run one per vault (`--vault`, `--port`). No in-app vault switcher yet |
 | Open a single Markdown file outside a vault | 🚧 | |
 
@@ -55,7 +55,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Graph view | ✅ | Two views: 3D anatomical **Atlas** and flat **Network** |
 | Outline / table of contents | ✅ | ≡ button on each note |
 | Tags, including nested tags | ✅ | `#project/hooked` also matches `#project` |
-| Orphan and dead-end notes | ✅ | Drawer → Insights (◇), and `ultron orphans` |
+| Orphan and dead-end notes | ✅ | Drawer → Insights (◇), and `octavo orphans` |
 
 ## Organisation
 
@@ -73,7 +73,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Canvas | 🚧 | |
 | Workspaces (saved layouts) | 🚧 | |
 | Note composer (split / merge) | 🟡 | *Extract selection to new note* works. Merging isn't built yet |
-| File recovery snapshots | ✅ | ⟲ on each note: diff against the current version, restore. Kept in `.ultron/history/` |
+| File recovery snapshots | ✅ | ⟲ on each note: diff against the current version, restore. Kept in `.octavo/history/` |
 | Rename/move updates every link | ✅ | |
 
 ## Editor and layout
@@ -105,14 +105,14 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Links that open a note | 🟡 | Every note has a URL (`…/#/note/Folder/Note.md`); command palette → *Copy link*. No custom `ultron://` scheme |
-| CLI: create, read, append, search, move notes | ✅ | `ultron new / read / append / search / move` |
-| CLI: daily note, add a task | ✅ | `ultron daily [text]`, `ultron task <text>` |
-| CLI: list tags and tasks, toggle checkboxes | ✅ | `ultron tags`, `ultron tasks`, `ultron done <note> <line>` |
-| CLI: version history and restore | ✅ | `ultron history`, `ultron restore` |
+| Links that open a note | 🟡 | Every note has a URL (`…/#/note/Folder/Note.md`); command palette → *Copy link*. No custom `octavo://` scheme |
+| CLI: create, read, append, search, move notes | ✅ | `octavo new / read / append / search / move` |
+| CLI: daily note, add a task | ✅ | `octavo daily [text]`, `octavo task <text>` |
+| CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
+| CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query Bases, install plugins/themes, terminal UI | 🚧 | |
 | AI access | ✅ | MCP server with 15 tools, so Claude can read, write and organise the vault |
-| Headless client | 🟡 | `ultron serve` / Docker runs the vault headless with a REST API |
+| Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)
 
@@ -135,7 +135,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Plugin | Status | Notes |
 | --- | --- | --- |
-| Tasks | 🟡 | Vault-wide task list (drawer ☑, `ultron tasks`, Claude's `list_tasks`). No due dates or queries |
+| Tasks | 🟡 | Vault-wide task list (drawer ☑, `octavo tasks`, Claude's `list_tasks`). No due dates or queries |
 | Templater | 🟡 | Basic templates; no scripting |
 | Periodic Notes | 🟡 | Daily notes only |
 | Dataview, Calendar, Excalidraw, Outliner | 🚧 | |

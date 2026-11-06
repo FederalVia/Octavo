@@ -3,12 +3,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from '@ultron/server';
+import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 4321;
 
-/** @type {import('@ultron/server').RunningServer | null} */
+/** @type {import('@octavo/server').RunningServer | null} */
 let server = null;
 /** @type {BrowserWindow | null} */
 let win = null;
@@ -58,7 +58,7 @@ async function openVault(vaultPath) {
   await seedIfEmpty(server.vault);
   saveConfig({ ...loadConfig(), vaultPath });
   if (win) {
-    win.setTitle(`${path.basename(vaultPath)} · Ultron Mind`);
+    win.setTitle(`${path.basename(vaultPath)} · Octavo`);
     await win.loadURL(windowUrl());
   }
   buildMenu();
@@ -76,7 +76,7 @@ async function chooseVault() {
 // ------------------------------------------------------------------ Claude connection info
 
 function serverCliPath() {
-  return path.join(path.dirname(require.resolve('@ultron/server/package.json')), 'dist', 'cli.js');
+  return path.join(path.dirname(require.resolve('@octavo/server/package.json')), 'dist', 'cli.js');
 }
 
 function claudeConfig() {
@@ -85,7 +85,7 @@ function claudeConfig() {
   const desktopJson = JSON.stringify(
     {
       mcpServers: {
-        'ultron-mind': {
+        'octavo': {
           command: process.execPath,
           args: [serverCliPath(), 'mcp', '--vault', vaultPath],
           env: { ELECTRON_RUN_AS_NODE: '1' },
@@ -95,7 +95,7 @@ function claudeConfig() {
     null,
     2,
   );
-  const claudeCode = `claude mcp add --transport http ultron-mind ${httpUrl}`;
+  const claudeCode = `claude mcp add --transport http octavo ${httpUrl}`;
   return { httpUrl, desktopJson, claudeCode };
 }
 
@@ -108,7 +108,7 @@ async function showConnectClaude() {
     detail:
       `While this app is open, its MCP endpoint is:\n${httpUrl}\n\n` +
       `Claude Code:\n${claudeCode}\n\n` +
-      `Claude Desktop: add the "ultron-mind" entry to claude_desktop_config.json. It runs without this app being open.\n\n` +
+      `Claude Desktop: add the "octavo" entry to claude_desktop_config.json. It runs without this app being open.\n\n` +
       `Copy one of the configs below.`,
     buttons: ['Copy Claude Code command', 'Copy Claude Desktop JSON', 'Close'],
     defaultId: 0,
@@ -158,9 +158,9 @@ async function togglePhoneAccess() {
   if (enable) {
     const { response } = await dialog.showMessageBox(win ?? undefined, {
       type: 'question',
-      message: 'Open Ultron to your phone?',
+      message: 'Open Octavo to your phone?',
       detail:
-        'Ultron will be reachable from devices on this Wi-Fi network, protected by a secret access key in the QR code. Only turn this on for networks you trust, such as your home Wi-Fi.',
+        'Octavo will be reachable from devices on this Wi-Fi network, protected by a secret access key in the QR code. Only turn this on for networks you trust, such as your home Wi-Fi.',
       buttons: ['Turn On', 'Cancel'],
       defaultId: 0,
       cancelId: 1,
@@ -239,7 +239,7 @@ function createWindow() {
     height: 900,
     minWidth: 420,
     minHeight: 400,
-    title: 'Ultron Mind',
+    title: 'Octavo',
     backgroundColor: '#1b1a21',
     autoHideMenuBar: process.platform !== 'darwin',
     webPreferences: {
@@ -281,7 +281,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     buildMenu();
     const cfg = loadConfig();
-    const vaultPath = process.env.ULTRON_VAULT || cfg.vaultPath || path.join(os.homedir(), 'UltronMind');
+    const vaultPath = process.env.OCTAVO_VAULT || cfg.vaultPath || path.join(os.homedir(), 'Octavo');
     try {
       await openVault(vaultPath);
     } catch (err) {

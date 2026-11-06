@@ -4,7 +4,7 @@ aliases: [Cheat Sheet]
 ---
 # Formatting Showcase
 
-Everything Ultron can render. Switch to **Edit** (Ctrl/Cmd+E) to see the source.
+Everything Octavo can render. Switch to **Edit** (Ctrl/Cmd+E) to see the source.
 
 ## Text
 
@@ -25,7 +25,7 @@ Everything Ultron can render. Switch to **Edit** (Ctrl/Cmd+E) to see the source.
 ## Callouts
 
 > [!note] A note callout
-> Callouts can contain **any** Markdown, even [[Ultron Mind|links]].
+> Callouts can contain **any** Markdown, even [[Octavo|links]].
 
 > [!tip]- Click to expand (foldable)
 > Hidden until you open it.
@@ -35,7 +35,7 @@ Everything Ultron can render. Switch to **Edit** (Ctrl/Cmd+E) to see the source.
 
 ## Links and embeds
 
-- Link to a section: [[Ultron Mind#Decisions]]
+- Link to a section: [[Octavo#Decisions]]
 - Link to a block: [[Formatting Showcase#^key-idea]]
 - Hover over a link to preview the note.
 
@@ -43,15 +43,15 @@ This paragraph has a block id, so other notes can link straight to it. ^key-idea
 
 An embedded section of another note:
 
-![[Ultron Mind#Decisions]]
+![[Octavo#Decisions]]
 
 An image from the vault, resized to 96px:
 
-![[ultron-logo.png|96]]
+![[octavo-logo.png|96]]
 
 ## Footnotes
 
-Ultron stores notes as plain Markdown.[^1]
+Octavo stores notes as plain Markdown.[^1]
 
 [^1]: So they work with git, Obsidian and any text editor.
 
@@ -82,5 +82,5 @@ graph LR
 ## Code
 
 ```ts
-const mind = await Vault.open('~/UltronMind');
+const mind = await Vault.open('~/Octavo');
 ```

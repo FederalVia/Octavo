@@ -6,7 +6,7 @@ import path from 'node:path';
 import { loadOrCreateToken, phoneUrl, lanAddresses, qrDataUrl } from '../src/phone.js';
 
 test('phone access key is created once, kept private, and reused', async () => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-phone-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-phone-'));
   const file = path.join(dir, 'nested', 'phone-token');
   const a = loadOrCreateToken(file);
   const b = loadOrCreateToken(file);

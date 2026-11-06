@@ -1,6 +1,6 @@
 # Architecture
 
-Ultron Mind is a TypeScript monorepo (npm workspaces) with four packages:
+Octavo is a TypeScript monorepo (npm workspaces) with four packages:
 
 ```
 ┌─────────────── packages/web ───────────────┐   ┌──── packages/desktop ────┐
@@ -10,7 +10,7 @@ Ultron Mind is a TypeScript monorepo (npm workspaces) with four packages:
                │ REST + Server-Sent Events        └────────────┬─────────────┘
 ┌──────────────▼──────────── packages/server ──────────────────▼─────────────┐
 │ Express app: /api (REST), /api/events (SSE), /mcp (MCP over HTTP),         │
-│ static web UI · `ultron mcp` (MCP over stdio) · CLI · auth & host checks  │
+│ static web UI · `octavo mcp` (MCP over stdio) · CLI · auth & host checks  │
 └──────────────┬─────────────────────────────────────────────────────────────┘
 ┌──────────────▼──────────── packages/core ──────────────────────────────────┐
 │ Vault: index of Markdown files, link resolution, backlinks, search,       │
@@ -30,15 +30,15 @@ The `Vault` class (`src/vault.ts`) holds an in-memory index of every `.md` file 
 - **Writes are atomic**: each write goes to a hidden temp file, which is then renamed over the target. `write()` can take an `expectedMtime` and throws `NoteConflictError` if the file changed since it was read.
 - **Rename** rewrites every wiki and Markdown link pointing to the note, using the pre-rename index to decide which links match. Links made through an alias are left alone, since they still resolve.
 - **Delete** moves the file into `.trash/`.
-- **History**: before a note is overwritten, its previous content is saved to `.ultron/history/<path>/<timestamp>.md`. This happens at most once every 5 minutes per note, and the newest 50 versions are kept.
+- **History**: before a note is overwritten, its previous content is saved to `.octavo/history/<path>/<timestamp>.md`. This happens at most once every 5 minutes per note, and the newest 50 versions are kept.
 - **Attachments**: non-Markdown files are indexed by name, so `![[photo.png]]` resolves anywhere in the vault. `[[file.pdf]]`-style references aren't counted as links between notes.
 - **Tasks**: `- [ ]`-style items (any single-character status) are found outside code blocks and can be toggled by line.
 - **Watching**: a recursive `fs.watch` with debounced per-file refreshes, plus a full rescan for directory-level changes. Refreshes compare mtime and size, so the vault's own writes don't cause duplicate events. Every change is emitted as a `VaultEvent` (`change`, `delete`, `rename`, `rescan`).
 
 ## packages/server
 
-- `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, `src/cli.ts` is the `ultron` command, and `src/commands.ts` holds its note commands.
-- **MCP** (`src/mcp.ts`) registers 15 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `ultron mcp` connects one server to stdin/stdout and logs to stderr.
+- `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, `src/cli.ts` is the `octavo` command, and `src/commands.ts` holds its note commands.
+- **MCP** (`src/mcp.ts`) registers 15 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `octavo mcp` connects one server to stdin/stdout and logs to stderr.
 - **Starter notes** (`src/seed.ts`) are written into an empty vault on first run.
 
 ### REST API
@@ -67,7 +67,7 @@ All endpoints are under `/api` and need `Authorization: Bearer <token>` (or `?to
 | GET | `/api/mentions/<path>` | Unlinked mentions of a note |
 | GET | `/api/insights` | `{ orphans, deadEnds, unresolved }` |
 | GET / POST | `/api/tasks` | List tasks (`?done=1` for all) / body `{ path, line, status? }` to set one |
-| GET / PUT | `/api/config/bookmarks` | Bookmarks, stored in `.ultron/bookmarks.json` |
+| GET / PUT | `/api/config/bookmarks` | Bookmarks, stored in `.octavo/bookmarks.json` |
 | GET | `/api/events` | Server-Sent Events stream of `VaultEvent`s |
 
 Errors are JSON `{ error }` with status `400` (bad path or edit), `401`, `403` (host), `404`, `409` (conflict or exists) or `500`.
@@ -101,10 +101,10 @@ A Vite + React single-page app, served by the server (or by Vite in development,
 - **Rendered Markdown is sanitised**. External links open in a new tab with `noopener`.
 - **Locked notes** are end-to-end encrypted by the browser (`packages/web/src/crypto.ts`):
   - AES-256-GCM, with a fresh 96-bit IV for every save and a key from PBKDF2-SHA256 (600,000 iterations, a random 128-bit salt per note).
-  - The file keeps `ultron-encrypted: v1` in its frontmatter and the JSON envelope in an `ultron-encrypted` code block.
+  - The file keeps `octavo-encrypted: v1` in its frontmatter and the JSON envelope in an `octavo-encrypted` code block.
   - The core marks such notes `encrypted` and indexes nothing from them. Plain-text operations (`append`, `edit`, `setTask`) refuse them with `EncryptedNoteError` (HTTP 423), and MCP read/write/delete return a "locked" message instead.
   - The first encrypted write purges the note's plain-text history.
   - Keys live only in the tab's memory and are cleared on reload, on "Lock", or after 15 minutes idle.
   - Web Crypto is used when available. On insecure origins (a phone on plain-http Wi-Fi) the same algorithms run via `@noble/hashes` and `@noble/ciphers`, producing identical envelopes.
-  - Locking is opt-in per vault (`.ultron/settings.json` → `locking`).
-- **Phone access** (`ultron serve --phone`, or the desktop app's **Use on Your Phone**): listens on `0.0.0.0` with a saved random access key, stored outside the vault, and prints a QR code linking to `http://<lan-ip>:<port>/?token=…`. The web app stores the key and removes it from the URL.
+  - Locking is opt-in per vault (`.octavo/settings.json` → `locking`).
+- **Phone access** (`octavo serve --phone`, or the desktop app's **Use on Your Phone**): listens on `0.0.0.0` with a saved random access key, stored outside the vault, and prints a QR code linking to `http://<lan-ip>:<port>/?token=…`. The web app stores the key and removes it from the URL.

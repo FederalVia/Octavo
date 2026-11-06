@@ -35,7 +35,7 @@ function buildTree(notes: NoteSummary[]): Folder {
   return root;
 }
 
-const COLLAPSE_KEY = 'ultron.collapsed';
+const COLLAPSE_KEY = 'octavo.collapsed';
 
 function loadCollapsed(): Set<string> {
   try {
@@ -67,14 +67,14 @@ export function FileTree(props: Props) {
 
   const dropProps = (folder: string) => ({
     onDragOver: (e: React.DragEvent) => {
-      if (!e.dataTransfer.types.includes('application/x-ultron-note')) return;
+      if (!e.dataTransfer.types.includes('application/x-octavo-note')) return;
       e.preventDefault();
       e.stopPropagation();
       setDropTarget(folder);
     },
     onDragLeave: () => setDropTarget((d) => (d === folder ? null : d)),
     onDrop: (e: React.DragEvent) => {
-      const p = e.dataTransfer.getData('application/x-ultron-note');
+      const p = e.dataTransfer.getData('application/x-octavo-note');
       e.preventDefault();
       e.stopPropagation();
       setDropTarget(null);
@@ -114,7 +114,7 @@ export function FileTree(props: Props) {
             style={{ paddingLeft: 22 + depth * 14 }}
             draggable
             onDragStart={(e) => {
-              e.dataTransfer.setData('application/x-ultron-note', n.path);
+              e.dataTransfer.setData('application/x-octavo-note', n.path);
               e.dataTransfer.effectAllowed = 'move';
             }}
             onClick={() => props.onOpen(n.path)}

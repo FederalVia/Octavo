@@ -10,7 +10,7 @@ describe('Vault extras', () => {
   let vault: Vault;
 
   before(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-extras-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-extras-'));
     await fs.mkdir(path.join(dir, 'img'));
     await fs.writeFile(path.join(dir, 'img', 'Cat Photo.png'), Buffer.from([137, 80, 78, 71]));
     await fs.writeFile(path.join(dir, 'Alpha.md'), '# Alpha\nTalks about Beta a lot. ![[Cat Photo.png]]\n- [ ] open task\n- [x] done task\n- [?] question\n```\n- [ ] not a task\n```\n');
@@ -33,7 +33,7 @@ describe('Vault extras', () => {
     assert.equal(a, 'attachments/shot.png');
     assert.equal(b, 'attachments/shot 1.png');
     assert.throws(() => vault.filePath('../etc/passwd'));
-    assert.throws(() => vault.filePath('.ultron/bookmarks.json'));
+    assert.throws(() => vault.filePath('.octavo/bookmarks.json'));
   });
 
   test('unlinked mentions skip notes that already link', () => {
@@ -75,6 +75,16 @@ describe('Vault extras', () => {
     await vault.restoreVersion('Beta', h[0].id);
     assert.equal((await vault.read('Beta')).content, '# Beta\nNo links here.\n');
     assert.equal((await vault.history('Beta')).length, 2); // restore snapshotted "version three"
+  });
+
+  test('migrates the legacy .ultron folder', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-legacy-'));
+    await fs.mkdir(path.join(d, '.ultron'));
+    await fs.writeFile(path.join(d, '.ultron', 'bookmarks.json'), '[{"type":"url","url":"https://x"}]');
+    const v = await Vault.open(d, { watch: false });
+    assert.deepEqual(await v.getConfig('bookmarks', []), [{ type: 'url', url: 'https://x' }]);
+    v.close();
+    await fs.rm(d, { recursive: true, force: true });
   });
 
   test('config storage', async () => {

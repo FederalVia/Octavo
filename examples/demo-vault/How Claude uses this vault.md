@@ -11,4 +11,4 @@ When you connect Claude through MCP (see the project README), this vault becomes
 - It keeps a short log of each session in the journal (see [[2026-11-06]]).
 - It links new notes to existing ones with `[[wikilinks]]` so the brain keeps growing.
 
-Related: [[Second Brain]], [[Ultron Mind]].
+Related: [[Second Brain]], [[Octavo]].

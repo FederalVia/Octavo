@@ -1,6 +1,6 @@
 {
-  "name": "Ultron Mind",
-  "short_name": "Ultron",
+  "name": "Octavo",
+  "short_name": "Octavo",
   "description": "A Markdown knowledge base shown as a brain, shared with Claude.",
   "start_url": "./",
   "scope": "./",

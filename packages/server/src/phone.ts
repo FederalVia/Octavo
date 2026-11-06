@@ -27,7 +27,7 @@ export function lanAddresses(): string[] {
  * A long random access key, saved so the phone's bookmark keeps working across
  * restarts. Stored outside the vault so it never ends up in git or sync.
  */
-export function loadOrCreateToken(file = path.join(os.homedir(), '.ultron-mind', 'phone-token')): string {
+export function loadOrCreateToken(file = path.join(os.homedir(), '.octavo', 'phone-token')): string {
   try {
     const t = fs.readFileSync(file, 'utf8').trim();
     if (t.length >= 32) return t;

@@ -1,10 +1,10 @@
-import type { Vault } from '@ultron/core';
+import type { Vault } from '@octavo/core';
 
 const HOME = `# Home
 
-Welcome to **Ultron Mind**, a knowledge base of plain Markdown files that you and Claude share.
+Welcome to **Octavo**, a knowledge base of plain Markdown files that you and Claude share.
 
-- Link notes with \`[[double brackets]]\`, like [[How to use Ultron Mind]].
+- Link notes with \`[[double brackets]]\`, like [[How to use Octavo]].
 - Tag notes with \`#tags\`. #meta
 - Every note is a point in the **brain**. Click one to open it.
 - Claude reads and writes this vault through MCP, so it remembers things between conversations.
@@ -19,7 +19,7 @@ Welcome to **Ultron Mind**, a knowledge base of plain Markdown files that you an
 const GUIDE = `---
 tags: [meta]
 ---
-# How to use Ultron Mind
+# How to use Octavo
 
 ## Keyboard shortcuts
 
@@ -50,6 +50,6 @@ Back to [[Home]].
 export async function seedIfEmpty(vault: Vault): Promise<boolean> {
   if (vault.list().length > 0) return false;
   await vault.write('Home.md', HOME);
-  await vault.write('How to use Ultron Mind.md', GUIDE);
+  await vault.write('How to use Octavo.md', GUIDE);
   return true;
 }

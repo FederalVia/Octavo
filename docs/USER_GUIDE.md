@@ -125,7 +125,7 @@ Click a point, or pick a note from the drawer or the quick switcher, to open it 
 
 ## Writing syntax
 
-Ultron reads standard Markdown plus these extras. The demo vault's **Formatting Showcase** note shows all of them.
+Octavo reads standard Markdown plus these extras. The demo vault's **Formatting Showcase** note shows all of them.
 
 | Write | Get |
 | --- | --- |
@@ -227,11 +227,11 @@ The demo vault includes `Templates/Meeting` and `Templates/Book`.
 
 ## Bookmarks
 
-The **☆** button on a note bookmarks it, and **☆ Bookmark this search** in the Search tab saves a search. In the Bookmarks tab (☆) you can also add web links. Bookmarks are stored in the vault at `.ultron/bookmarks.json`, so they move with the vault.
+The **☆** button on a note bookmarks it, and **☆ Bookmark this search** in the Search tab saves a search. In the Bookmarks tab (☆) you can also add web links. Bookmarks are stored in the vault at `.octavo/bookmarks.json`, so they move with the vault.
 
 ## Tasks
 
-The **Tasks** tab (☑) lists every open task in the vault, grouped by note. Tick tasks right there, or click a task to jump to it. *Show completed* includes finished ones. From a terminal: `ultron tasks` and `ultron task "something"`. Claude can list and update tasks too.
+The **Tasks** tab (☑) lists every open task in the vault, grouped by note. Tick tasks right there, or click a task to jump to it. *Show completed* includes finished ones. From a terminal: `octavo tasks` and `octavo task "something"`. Claude can list and update tasks too.
 
 ## Insights: orphans, dead ends, unlinked mentions
 
@@ -245,7 +245,7 @@ Under each note, **Mentioned in** lists notes that use its name in plain text wi
 
 ## Version history
 
-Before a note changes, Ultron keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.ultron/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
+Before a note changes, Octavo keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.octavo/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
 
 ## Locked (encrypted) notes
 
@@ -264,7 +264,7 @@ You can lock any note with a password: diary entries, health records, anything p
 - **The note's title (file name), folder and links *to* it stay visible.** Choose a neutral title if the title itself is sensitive.
 - **Locked notes are left out** of search, tasks, tags, mentions and the brain's link lines from that note. They appear in the brain with a 🔒.
 - **Claude can see that a locked note exists, but can't read, change or delete it.**
-- **Locking deletes the note's earlier plain-text versions from Ultron's version history.** Copies elsewhere, such as git history, backups or sync services, may still hold the old plain text.
+- **Locking deletes the note's earlier plain-text versions from Octavo's version history.** Copies elsewhere, such as git history, backups or sync services, may still hold the old plain text.
 - **The file is still a `.md` file** with a short "this note is locked" message, so Obsidian and git show a placeholder. Don't edit that file by hand, or it can no longer be unlocked.
 - On your phone over home Wi-Fi (`http://`), the same encryption runs in JavaScript. Unlocking takes a moment longer but is just as secure, and the password never leaves the phone.
 
@@ -300,8 +300,8 @@ On macOS, use **Cmd** instead of **Ctrl**.
 
 ## Using it alongside Obsidian, git and other editors
 
-- The vault is just a folder of `.md` files. Ultron Mind ignores hidden folders such as `.obsidian`, `.git` and `.trash`.
-- You can open the same folder in **Obsidian** and in Ultron Mind at the same time. Changes appear in both.
+- The vault is just a folder of `.md` files. Octavo ignores hidden folders such as `.obsidian`, `.git` and `.trash`.
+- You can open the same folder in **Obsidian** and in Octavo at the same time. Changes appear in both.
 - **git** works well for history and sync. Commit the vault folder as usual.
 - Obsidian attachments (`![[image.png]]`) display as they do in Obsidian, and Obsidian-style callouts, highlights, footnotes, maths, block links and comments all render.
-- Ultron keeps its own data (bookmarks, version history) in a hidden `.ultron/` folder. Add it to `.gitignore` if you don't want it committed.
+- Octavo keeps its own data (bookmarks, version history) in a hidden `.octavo/` folder. Add it to `.gitignore` if you don't want it committed.

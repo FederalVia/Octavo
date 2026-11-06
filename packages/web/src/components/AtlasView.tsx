@@ -196,7 +196,7 @@ function softDot(rgb: [number, number, number]): HTMLCanvasElement {
   return c;
 }
 
-const STORE_KEY = 'ultron.atlas';
+const STORE_KEY = 'octavo.atlas';
 function loadPrefs(): { labels: boolean; hidden: RegionKey[] } {
   try {
     return { labels: true, hidden: [], ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };

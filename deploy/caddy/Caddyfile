@@ -1,4 +1,4 @@
 # Caddy gets and renews the HTTPS certificate automatically.
-{$ULTRON_DOMAIN} {
-	reverse_proxy ultron-mind:4321
+{$OCTAVO_DOMAIN} {
+	reverse_proxy octavo:4321
 }

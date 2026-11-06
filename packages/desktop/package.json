@@ -1,17 +1,17 @@
 {
-  "name": "@ultron/desktop",
-  "productName": "Ultron Mind",
+  "name": "@octavo/desktop",
+  "productName": "Octavo",
   "version": "0.1.0",
   "private": true,
-  "description": "Ultron Mind desktop app",
+  "description": "Octavo desktop app",
   "type": "module",
   "main": "src/main.js",
   "scripts": {
     "start": "electron ."
   },
   "dependencies": {
-    "@ultron/server": "0.1.0",
-    "@ultron/web": "0.1.0",
+    "@octavo/server": "0.1.0",
+    "@octavo/web": "0.1.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {

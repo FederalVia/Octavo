@@ -1,6 +1,6 @@
-# Installing Ultron Mind
+# Installing Octavo
 
-There are three ways to run Ultron Mind. All of them use the same notes, which are plain Markdown files in a folder you choose (your **vault**).
+There are three ways to run Octavo. All of them use the same notes, which are plain Markdown files in a folder you choose (your **vault**).
 
 | Option | Best for |
 | --- | --- |
@@ -85,13 +85,13 @@ Open **http://127.0.0.1:4321**. You'll see the example vault from `examples/demo
 ### Use your own vault
 
 ```bash
-npm start -- --vault ~/UltronMind
+npm start -- --vault ~/Octavo
 ```
 
 - The folder is created if it doesn't exist. An empty vault gets two starter notes (use `--no-seed` to skip them).
-- Without `--vault`, the default is `~/UltronMind`.
+- Without `--vault`, the default is `~/Octavo`.
 - You can point it at an existing **Obsidian vault**. The files stay compatible, and Obsidian's `.obsidian` folder is ignored.
-- On Windows, use a path like `--vault "C:\Users\you\Documents\UltronMind"`.
+- On Windows, use a path like `--vault "C:\Users\you\Documents\Octavo"`.
 
 Stop the server with **Ctrl+C**.
 
@@ -105,13 +105,13 @@ Stop the server with **Ctrl+C**.
 npm run desktop
 ```
 
-This builds the project and opens Ultron Mind in its own window.
+This builds the project and opens Octavo in its own window.
 
-- On first launch it uses `~/UltronMind`. Use **File → Open Vault Folder…** to switch, and it remembers your choice.
+- On first launch it uses `~/Octavo`. Use **File → Open Vault Folder…** to switch, and it remembers your choice.
 - **File → Connect Claude…** copies a ready-made Claude Code command or Claude Desktop config.
 - While it's open, the desktop app also serves the web UI and MCP endpoint at `http://127.0.0.1:4321`. If that port is busy it picks another one.
 
-After the first build, `npm start -w @ultron/desktop` opens the app faster because it skips the rebuild.
+After the first build, `npm start -w @octavo/desktop` opens the app faster because it skips the rebuild.
 
 > Packaged installers (`.dmg`, `.exe`, AppImage) aren't available yet, so the desktop app runs from the source folder.
 
@@ -123,15 +123,15 @@ To keep the web app (and the HTTP MCP endpoint) available without a terminal ope
 
 ### Linux: systemd
 
-Create `~/.config/systemd/user/ultron-mind.service`:
+Create `~/.config/systemd/user/octavo.service`:
 
 ```ini
 [Unit]
-Description=Ultron Mind
+Description=Octavo
 
 [Service]
 WorkingDirectory=%h/ultron-mind
-ExecStart=/usr/bin/node packages/server/dist/cli.js serve --vault %h/UltronMind
+ExecStart=/usr/bin/node packages/server/dist/cli.js serve --vault %h/Octavo
 Restart=on-failure
 
 [Install]
@@ -142,8 +142,8 @@ Then:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now ultron-mind
-journalctl --user -u ultron-mind -f     # view logs
+systemctl --user enable --now octavo
+journalctl --user -u octavo -f     # view logs
 ```
 
 Check the path to `node` with `which node`, and update `ExecStart` if it's different (for example, if you use nvm).
@@ -152,7 +152,7 @@ Check the path to `node` with `which node`, and update `ExecStart` if it's diffe
 
 ```bash
 npm install -g pm2
-pm2 start packages/server/dist/cli.js --name ultron-mind -- serve --vault ~/UltronMind
+pm2 start packages/server/dist/cli.js --name octavo -- serve --vault ~/Octavo
 pm2 save
 pm2 startup      # follow the printed instructions to start on boot
 ```
@@ -161,7 +161,7 @@ pm2 startup      # follow the printed instructions to start on boot
 
 ## 5. Self-hosting with Docker
 
-To run Ultron as an always-on server, for example on your PC, follow **[SELF_HOSTING.md](SELF_HOSTING.md)**. It covers installing Docker, the settings file, and three ways to reach it:
+To run Octavo as an always-on server, for example on your PC, follow **[SELF_HOSTING.md](SELF_HOSTING.md)**. It covers installing Docker, the settings file, and three ways to reach it:
 
 - **Tailscale:** from your phone anywhere, no router setup
 - **Your own domain with automatic HTTPS**
@@ -170,11 +170,11 @@ To run Ultron as an always-on server, for example on your PC, follow **[SELF_HOS
 The short version, for this computer only:
 
 ```bash
-cp .env.example .env        # then set ULTRON_TOKEN in .env
+cp .env.example .env        # then set OCTAVO_TOKEN in .env
 docker compose up -d        # open http://localhost:4321
 ```
 
-Notes are stored as plain Markdown in the folder set by `ULTRON_VAULT_DIR` (default `./vault`).
+Notes are stored as plain Markdown in the folder set by `OCTAVO_VAULT_DIR` (default `./vault`).
 
 ## 6. Use it on your phone and other devices
 
@@ -185,31 +185,31 @@ Notes are stored as plain Markdown in the folder set by `ULTRON_VAULT_DIR` (defa
 **From a terminal:**
 
 ```bash
-npm start -- --phone --vault ~/UltronMind
+npm start -- --phone --vault ~/Octavo
 ```
 
 This prints a QR code. Scan it with your phone, which must be on the same Wi-Fi network.
 
 - The link contains a long random **access key**. The app remembers it on the phone and removes it from the address bar. Anyone without the key gets "Unauthorized".
-- The key is saved, so the same link keeps working after restarts: `~/.ultron-mind/phone-token` for the terminal version, and the desktop app's settings folder for the desktop app. Delete that file to generate a new key, which logs out every phone.
-- To keep Ultron as an app on your phone: **Share → Add to Home Screen** (iPhone, Safari) or **⋮ → Install app** (Android, Chrome).
+- The key is saved, so the same link keeps working after restarts: `~/.octavo/phone-token` for the terminal version, and the desktop app's settings folder for the desktop app. Delete that file to generate a new key, which logs out every phone.
+- To keep Octavo as an app on your phone: **Share → Add to Home Screen** (iPhone, Safari) or **⋮ → Install app** (Android, Chrome).
 - [Locked notes](USER_GUIDE.md#locked-encrypted-notes) open on the phone too. They're decrypted on the phone itself, so the password never crosses the network.
 
 > On Wi-Fi, the connection is plain `http://`. Your notes and the access key travel unencrypted across your local network. That's fine on a home network you trust, but don't use phone mode on public Wi-Fi. For that, use one of the options below.
 
 ### Away from home
 
-Your phone needs a way to reach the computer running Ultron. Two good options:
+Your phone needs a way to reach the computer running Octavo. Two good options:
 
 **Tailscale (recommended, free for personal use):** a private, encrypted network between your own devices.
 
 1. Install [Tailscale](https://tailscale.com) on the computer and on your phone, and sign in on both.
-2. Run Ultron in phone mode (`npm start -- --phone`, or the desktop menu). The QR code includes the computer's Tailscale address (`100.x.y.z`) when Tailscale is running. You can also open `http://<computer's tailscale name>:4321` on the phone.
+2. Run Octavo in phone mode (`npm start -- --phone`, or the desktop menu). The QR code includes the computer's Tailscale address (`100.x.y.z`) when Tailscale is running. You can also open `http://<computer's tailscale name>:4321` on the phone.
 3. It works from anywhere, and Tailscale encrypts the connection.
 
 **Your PC (or any machine) as an always-on server:** [SELF_HOSTING.md](SELF_HOSTING.md) has ready-made Docker setups with Tailscale or your own domain. To set up HTTPS by hand instead:
 
-1. **Always set a token**: `--token <secret>` or `ULTRON_TOKEN`. Without one, anyone who can reach the port can read and change your notes. The server prints a warning if you forget.
+1. **Always set a token**: `--token <secret>` or `OCTAVO_TOKEN`. Without one, anyone who can reach the port can read and change your notes. The server prints a warning if you forget.
 2. **Listen on the network**: `--host 0.0.0.0` (the Docker image already does this).
 3. **Put HTTPS in front of it.** [Caddy](https://caddyserver.com) is the easiest option. It gets certificates automatically. Here's a `Caddyfile`:
 
@@ -224,8 +224,8 @@ Your phone needs a way to reach the computer running Ultron. Two good options:
 ## 7. Command-line options
 
 ```
-ultron serve [options]   Web app + REST API + MCP endpoint (/mcp)
-ultron mcp   [options]   MCP server over stdio (for Claude Desktop / Claude Code)
+octavo serve [options]   Web app + REST API + MCP endpoint (/mcp)
+octavo mcp   [options]   MCP server over stdio (for Claude Desktop / Claude Code)
 ```
 
 From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <options>` runs `mcp`. You can also call `node packages/server/dist/cli.js <command> <options>` directly.
@@ -235,31 +235,31 @@ From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <
 These work directly on the vault folder, so no server needs to be running:
 
 ```bash
-alias ultron="node /path/to/ultron-mind/packages/server/dist/cli.js"   # optional shortcut
+alias octavo="node /path/to/ultron-mind/packages/server/dist/cli.js"   # optional shortcut
 
-ultron new "Projects/Website" --content "# Website"   # or pipe content: echo text | ultron new Inbox/Idea
-ultron read "Website"
-ultron append "Website" "- [ ] Draft homepage" --heading "Tasks"
-ultron search 'tag:project "launch date"'
-ultron daily "Shipped the new homepage"              # timestamped journal entry
-ultron task "Call the printer"                       # adds - [ ] to today's journal
-ultron tasks                                         # open tasks across the vault (--done for all)
-ultron done "Journal/2026-11-06" 4                   # toggle the task on line 4
-ultron tags
-ultron move "Website" "Archive/Website"              # updates every link
-ultron history "Website"                             # saved versions
-ultron restore "Website" 1793928299164
-ultron orphans                                       # unlinked notes and dead ends
+octavo new "Projects/Website" --content "# Website"   # or pipe content: echo text | octavo new Inbox/Idea
+octavo read "Website"
+octavo append "Website" "- [ ] Draft homepage" --heading "Tasks"
+octavo search 'tag:project "launch date"'
+octavo daily "Shipped the new homepage"              # timestamped journal entry
+octavo task "Call the printer"                       # adds - [ ] to today's journal
+octavo tasks                                         # open tasks across the vault (--done for all)
+octavo done "Journal/2026-11-06" 4                   # toggle the task on line 4
+octavo tags
+octavo move "Website" "Archive/Website"              # updates every link
+octavo history "Website"                             # saved versions
+octavo restore "Website" 1793928299164
+octavo orphans                                       # unlinked notes and dead ends
 ```
 
-All of them take `--vault <dir>` (or use `ULTRON_VAULT`). `search`, `tasks`, `tags`, `history` and `orphans` accept `--json`.
+All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `tags`, `history` and `orphans` accept `--json`.
 
 | Option | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
-| `--vault <dir>` | `ULTRON_VAULT` | `~/UltronMind` | Folder containing your notes |
+| `--vault <dir>` | `OCTAVO_VAULT` | `~/Octavo` | Folder containing your notes |
 | `--port <n>` | `PORT` | `4321` | HTTP port (`serve`) |
-| `--host <addr>` | `ULTRON_HOST` | `127.0.0.1` | Address to listen on (`serve`) |
-| `--token <secret>` | `ULTRON_TOKEN` | none | Require `Authorization: Bearer <secret>` for `/api` and `/mcp` |
+| `--host <addr>` | `OCTAVO_HOST` | `127.0.0.1` | Address to listen on (`serve`) |
+| `--token <secret>` | `OCTAVO_TOKEN` | none | Require `Authorization: Bearer <secret>` for `/api` and `/mcp` |
 | `--phone` | | off | Listen on the Wi-Fi network with a saved access key, and print a QR code for your phone |
 | `--read-only` | | off | Only expose read tools over MCP |
 | `--daily <folder>` | | `Journal` | Folder for daily notes |
@@ -267,7 +267,7 @@ All of them take `--vault <dir>` (or use `ULTRON_VAULT`). `search`, `tasks`, `ta
 
 ### Installing on a phone
 
-Open your server's address in Safari (iOS) or Chrome (Android), then choose **Share → Add to Home Screen** (iOS) or **⋮ → Install app** (Android). Ultron then opens full-screen like an app. Your phone needs to be able to reach the server: see [section 6](#6-use-it-on-your-phone-and-other-devices).
+Open your server's address in Safari (iOS) or Chrome (Android), then choose **Share → Add to Home Screen** (iOS) or **⋮ → Install app** (Android). Octavo then opens full-screen like an app. Your phone needs to be able to reach the server: see [section 6](#6-use-it-on-your-phone-and-other-devices).
 
 ---
 
@@ -290,22 +290,22 @@ Updates never change your notes.
 
 1. Stop the server or app (and remove any systemd/pm2 service you created).
 2. Delete the `ultron-mind` folder.
-3. Your notes stay in your vault folder (e.g. `~/UltronMind`). Delete it only if you no longer want them.
-4. The desktop app keeps a tiny settings file in an `Ultron Mind` folder inside your OS's app-data folder (`~/Library/Application Support` on macOS, `%APPDATA%` on Windows, `~/.config` on Linux).
-5. Remove Claude's connection: `claude mcp remove ultron-mind`, or delete the entry from `claude_desktop_config.json`.
+3. Your notes stay in your vault folder (e.g. `~/Octavo`). Delete it only if you no longer want them.
+4. The desktop app keeps a tiny settings file in an `Octavo` folder inside your OS's app-data folder (`~/Library/Application Support` on macOS, `%APPDATA%` on Windows, `~/.config` on Linux).
+5. Remove Claude's connection: `claude mcp remove octavo`, or delete the entry from `claude_desktop_config.json`.
 
 ---
 
 ## 10. Troubleshooting
 
 **`EADDRINUSE: address already in use :::4321`**
-Something is already using the port, often a previous Ultron Mind. Stop it, or use another port: `npm start -- --port 4322`.
+Something is already using the port, often a previous Octavo. Stop it, or use another port: `npm start -- --port 4322`.
 
-**The page says "Can't reach the Ultron Mind server"**
+**The page says "Can't reach the Octavo server"**
 The server isn't running, or you're using a different port. Check the terminal where you ran `npm start`.
 
 **The browser asks for an "Access token"**
-The server was started with `--token` / `ULTRON_TOKEN`. Enter the same value. To clear a saved token, clear the site data for that address in your browser.
+The server was started with `--token` / `OCTAVO_TOKEN`. Enter the same value. To clear a saved token, clear the site data for that address in your browser.
 
 **`403 Host "…" not allowed`**
 Without a token, the server only accepts requests addressed to `localhost`/`127.0.0.1`. This protects it from malicious websites. Use `http://127.0.0.1:4321`, or start the server with a `--token` if you need another hostname.
