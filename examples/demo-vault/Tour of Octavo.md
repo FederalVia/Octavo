@@ -2,7 +2,7 @@
 tags: [meta]
 region: stem
 ---
-# Tour of Ultron Mind
+# Tour of Octavo
 
 1. **Atlas view.** Drag to rotate the brain and scroll to zoom. Each region holds a different kind of note (see [[Brain Regions]]).
 2. **Network view.** Use the toolbar button to switch to a flat graph.

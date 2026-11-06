@@ -1,20 +1,20 @@
-import { Vault } from '@ultron/core';
+import { Vault } from '@octavo/core';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
-  ultron new <path> [--content TEXT]   Create a note (content from --content or stdin)
-  ultron read <note>                   Print a note
-  ultron append <note> <text…> [--heading H]
+  octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
+  octavo read <note>                   Print a note
+  octavo append <note> <text…> [--heading H]
                                        Append text (under a heading if given)
-  ultron search <query…> [--limit N]   Full-text search ("phrases", tag:x, path:y)
-  ultron daily [text…]                 Print today's journal path, or log an entry to it
-  ultron task <text…>                  Add "- [ ] text" to today's journal
-  ultron tasks [--done]                List open (or all) tasks across the vault
-  ultron done <note> <line>            Toggle a task between open and done
-  ultron tags                          List tags with counts
-  ultron move <from> <to>              Rename or move a note, updating links
-  ultron history <note>                List saved versions of a note
-  ultron restore <note> <version-id>   Restore a saved version
-  ultron orphans                       Notes nothing links to, and dead ends
+  octavo search <query…> [--limit N]   Full-text search ("phrases", tag:x, path:y)
+  octavo daily [text…]                 Print today's journal path, or log an entry to it
+  octavo task <text…>                  Add "- [ ] text" to today's journal
+  octavo tasks [--done]                List open (or all) tasks across the vault
+  octavo done <note> <line>            Toggle a task between open and done
+  octavo tags                          List tags with counts
+  octavo move <from> <to>              Rename or move a note, updating links
+  octavo history <note>                List saved versions of a note
+  octavo restore <note> <version-id>   Restore a saved version
+  octavo orphans                       Notes nothing links to, and dead ends
 
 Add --json to tasks, search, tags, history or orphans for machine-readable output.`;
 
@@ -42,7 +42,7 @@ async function readStdin(): Promise<string> {
 }
 
 function need(args: string[], n: number, usage: string): void {
-  if (args.length < n) throw new Error(`Usage: ultron ${usage}`);
+  if (args.length < n) throw new Error(`Usage: octavo ${usage}`);
 }
 
 export interface NoteCommandOptions {
@@ -74,7 +74,7 @@ export async function runNoteCommand(
       }
       case 'read': {
         need(args, 1, 'read <note>');
-        if (vault.isEncrypted(args.join(' '))) throw new Error(`${vault.resolve(args.join(' '))} is locked (encrypted). Unlock it in the Ultron app to read it.`);
+        if (vault.isEncrypted(args.join(' '))) throw new Error(`${vault.resolve(args.join(' '))} is locked (encrypted). Unlock it in the Octavo app to read it.`);
         process.stdout.write((await vault.read(args.join(' '))).content);
         break;
       }

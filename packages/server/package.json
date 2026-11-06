@@ -1,12 +1,12 @@
 {
-  "name": "@ultron/server",
+  "name": "@octavo/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "ultron": "dist/cli.js"
+    "octavo": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@ultron/core": "0.1.0",
+    "@octavo/core": "0.1.0",
     "express": "^5.1.0",
     "qrcode": "^1.5.4",
     "zod": "^4.1.0"

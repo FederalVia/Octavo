@@ -42,12 +42,12 @@ export function normalizeFolderPath(input: string | undefined | null): string {
   return segments.join('/');
 }
 
-/** "Projects/Ultron.md" -> "Ultron" */
+/** "Projects/Octavo.md" -> "Octavo" */
 export function noteName(relPath: string): string {
   return path.posix.basename(relPath).replace(/\.md$/i, '');
 }
 
-/** "Projects/Ultron.md" -> "Projects" ("" for root). */
+/** "Projects/Octavo.md" -> "Projects" ("" for root). */
 export function noteFolder(relPath: string): string {
   const d = path.posix.dirname(relPath);
   return d === '.' ? '' : d;

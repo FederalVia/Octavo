@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-const target = process.env.ULTRON_API ?? 'http://127.0.0.1:4321';
+const target = process.env.OCTAVO_API ?? 'http://127.0.0.1:4321';
 
 export default defineConfig({
   plugins: [react()],

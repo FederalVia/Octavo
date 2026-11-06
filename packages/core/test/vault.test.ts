@@ -11,7 +11,7 @@ describe('parseNote', () => {
       [
         '---',
         'tags: [project, ai]',
-        'aliases: [Ultron Mind]',
+        'aliases: [Octavo]',
         '---',
         '# Title',
         'Links to [[Other Note]] and [[Folder/Deep#Section|alias]] and ![[Embed]].',
@@ -23,7 +23,7 @@ describe('parseNote', () => {
       ].join('\n'),
     );
     assert.deepEqual(p.tags, ['ai', 'inline-tag', 'nested/tag', 'project']);
-    assert.deepEqual(p.aliases, ['Ultron Mind']);
+    assert.deepEqual(p.aliases, ['Octavo']);
     assert.deepEqual(
       p.links.map((l) => [l.target, l.heading, l.alias, l.embed, l.kind, l.line]),
       [
@@ -39,7 +39,7 @@ describe('parseNote', () => {
 
 describe('normalizeNotePath', () => {
   test('adds .md and normalizes', () => {
-    assert.equal(normalizeNotePath('Projects/Ultron'), 'Projects/Ultron.md');
+    assert.equal(normalizeNotePath('Projects/Octavo'), 'Projects/Octavo.md');
     assert.equal(normalizeNotePath('./a//b.md'), 'a/b.md');
   });
   test('rejects escapes and hidden paths', () => {
@@ -55,14 +55,14 @@ describe('Vault', () => {
   let vault: Vault;
 
   before(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-test-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-test-'));
     await fs.mkdir(path.join(dir, 'Projects'));
-    await fs.writeFile(path.join(dir, 'Home.md'), '# Home\nSee [[Ultron]] and [[Missing]].\n#hub');
+    await fs.writeFile(path.join(dir, 'Home.md'), '# Home\nSee [[Octavo]] and [[Missing]].\n#hub');
     await fs.writeFile(
-      path.join(dir, 'Projects', 'Ultron.md'),
-      '---\ntags: project\n---\n# Ultron\nLinks back to [[Home]]. Built with [[TypeScript]].\n',
+      path.join(dir, 'Projects', 'Octavo.md'),
+      '---\ntags: project\n---\n# Octavo\nLinks back to [[Home]]. Built with [[TypeScript]].\n',
     );
-    await fs.writeFile(path.join(dir, 'TypeScript.md'), 'A language. #project\nSee [ultron](Projects/Ultron.md).');
+    await fs.writeFile(path.join(dir, 'TypeScript.md'), 'A language. #project\nSee [octavo](Projects/Octavo.md).');
     vault = await Vault.open(dir, { watch: false });
   });
 
@@ -73,13 +73,13 @@ describe('Vault', () => {
 
   test('indexes notes and resolves links by name', () => {
     assert.equal(vault.list().length, 3);
-    assert.equal(vault.resolve('ultron'), 'Projects/Ultron.md');
-    assert.equal(vault.resolve('Projects/Ultron.md'), 'Projects/Ultron.md');
+    assert.equal(vault.resolve('octavo'), 'Projects/Octavo.md');
+    assert.equal(vault.resolve('Projects/Octavo.md'), 'Projects/Octavo.md');
     assert.equal(vault.resolve('Nope'), null);
   });
 
   test('backlinks include wiki and markdown links', () => {
-    const bl = vault.backlinks('Ultron').map((b) => b.path);
+    const bl = vault.backlinks('Octavo').map((b) => b.path);
     assert.deepEqual(bl, ['Home.md', 'TypeScript.md']);
   });
 
@@ -88,29 +88,29 @@ describe('Vault', () => {
     assert.deepEqual(
       d.links.map((l) => [l.target, l.path]),
       [
-        ['Ultron', 'Projects/Ultron.md'],
+        ['Octavo', 'Projects/Octavo.md'],
         ['Missing', null],
       ],
     );
   });
 
   test('search ranks title matches and supports tag filters', () => {
-    const r = vault.search('ultron');
-    assert.equal(r[0].path, 'Projects/Ultron.md');
+    const r = vault.search('octavo');
+    assert.equal(r[0].path, 'Projects/Octavo.md');
     const tagged = vault.search('tag:project').map((x) => x.path).sort();
-    assert.deepEqual(tagged, ['Projects/Ultron.md', 'TypeScript.md']);
-    assert.equal(vault.search('ultron zebra').length, 0);
+    assert.deepEqual(tagged, ['Projects/Octavo.md', 'TypeScript.md']);
+    assert.equal(vault.search('octavo zebra').length, 0);
   });
 
   test('graph includes unresolved nodes', () => {
     const g = vault.graph();
     assert.ok(g.nodes.some((n) => n.unresolved && n.name === 'Missing'));
-    assert.ok(g.links.some((l) => l.source === 'Home.md' && l.target === 'Projects/Ultron.md'));
+    assert.ok(g.links.some((l) => l.source === 'Home.md' && l.target === 'Projects/Octavo.md'));
   });
 
   test('tags and related', () => {
     assert.deepEqual(vault.tags().find((t) => t.tag === 'project'), { tag: 'project', count: 2 });
-    const rel = vault.related('Ultron').map((r) => r.path);
+    const rel = vault.related('Octavo').map((r) => r.path);
     assert.ok(rel.includes('Home.md'));
     assert.ok(rel.includes('TypeScript.md'));
   });
@@ -135,15 +135,15 @@ describe('Vault', () => {
   });
 
   test('rename rewrites wiki and markdown links', async () => {
-    const res = await vault.rename('Ultron', 'Archive/Ultron Mind');
-    assert.equal(res.to, 'Archive/Ultron Mind.md');
+    const res = await vault.rename('Octavo', 'Archive/Octavo Notes');
+    assert.equal(res.to, 'Archive/Octavo Notes.md');
     assert.equal(res.updatedLinks, 2);
     const home = (await vault.read('Home')).content;
-    assert.ok(home.includes('[[Ultron Mind]]'), home);
+    assert.ok(home.includes('[[Octavo Notes]]'), home);
     const ts = (await vault.read('TypeScript')).content;
-    assert.ok(ts.includes('[ultron](Archive/Ultron%20Mind.md)'), ts);
+    assert.ok(ts.includes('[octavo](Archive/Octavo%20Notes.md)'), ts);
     assert.deepEqual(
-      vault.backlinks('Ultron Mind').map((b) => b.path),
+      vault.backlinks('Octavo Notes').map((b) => b.path),
       ['Home.md', 'TypeScript.md'],
     );
   });

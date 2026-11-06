@@ -6,13 +6,13 @@ import path from 'node:path';
 import { Vault, EncryptedNoteError, isEncryptedContent } from '../src/index.js';
 
 const LOCKED = `---
-ultron-encrypted: v1
+octavo-encrypted: v1
 ---
 # 🔒 Locked note
 
-This note is encrypted. Unlock it in Ultron to read it. #secret [[Should Not Count]]
+This note is encrypted. Unlock it in Octavo to read it. #secret [[Should Not Count]]
 
-\`\`\`ultron-encrypted
+\`\`\`octavo-encrypted
 {"v":1,"ct":"AAAA"}
 \`\`\`
 `;
@@ -22,7 +22,7 @@ describe('locked (encrypted) notes', () => {
   let vault: Vault;
 
   before(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ultron-enc-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-enc-'));
     await fs.writeFile(path.join(dir, 'Diary.md'), '# Diary\nMy secret plans. #private\n- [ ] hidden task\n');
     await fs.writeFile(path.join(dir, 'Other.md'), '# Other\nLinks to [[Diary]] and mentions Vault.\n');
     vault = await Vault.open(dir, { watch: false });
@@ -34,6 +34,7 @@ describe('locked (encrypted) notes', () => {
 
   test('detects the envelope', () => {
     assert.equal(isEncryptedContent(LOCKED), true);
+    assert.equal(isEncryptedContent(LOCKED.replace('octavo-encrypted: v1', 'ultron-encrypted: v1')), true, 'legacy marker');
     assert.equal(isEncryptedContent('# plain'), false);
   });
 

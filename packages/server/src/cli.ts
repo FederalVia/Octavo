@@ -3,26 +3,26 @@ import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Vault } from '@ultron/core';
+import { Vault } from '@octavo/core';
 import { startServer } from './index.js';
 import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
 import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
 import { lanAddresses, loadOrCreateToken, phoneUrl, qrTerminal } from './phone.js';
 
-const HELP = `Ultron Mind: a Markdown knowledge base that doubles as Claude's memory.
+const HELP = `Octavo: a Markdown knowledge base that doubles as Claude's memory.
 
 Usage:
-  ultron serve [options]   Run the web app, REST API and MCP endpoint (/mcp)
-  ultron mcp   [options]   Run an MCP server over stdio (for Claude Desktop / Claude Code)
-  ultron qr <address>      Print a QR code that opens Ultron at <address> on your phone
-                           (uses --token or ULTRON_TOKEN), e.g. ultron qr https://ultron.tail1234.ts.net
+  octavo serve [options]   Run the web app, REST API and MCP endpoint (/mcp)
+  octavo mcp   [options]   Run an MCP server over stdio (for Claude Desktop / Claude Code)
+  octavo qr <address>      Print a QR code that opens Octavo at <address> on your phone
+                           (uses --token or OCTAVO_TOKEN), e.g. octavo qr https://octavo.tail1234.ts.net
 
 Options:
-  --vault <dir>     Vault folder (env ULTRON_VAULT, default ~/UltronMind)
+  --vault <dir>     Vault folder (env OCTAVO_VAULT, default ~/Octavo)
   --port <n>        HTTP port for "serve" (env PORT, default 4321)
-  --host <addr>     Bind address for "serve" (env ULTRON_HOST, default 127.0.0.1)
-  --token <secret>  Require this bearer token for /api and /mcp (env ULTRON_TOKEN)
+  --host <addr>     Bind address for "serve" (env OCTAVO_HOST, default 127.0.0.1)
+  --token <secret>  Require this bearer token for /api and /mcp (env OCTAVO_TOKEN)
   --phone           Open to your Wi-Fi with an access key and show a QR code to scan
   --read-only       Expose only read tools over MCP
   --daily <folder>  Folder for daily journal notes (default Journal)
@@ -63,14 +63,14 @@ async function main() {
     process.exit(values.help ? 0 : 1);
   }
 
-  const vaultPath = path.resolve(expandHome(values.vault ?? process.env.ULTRON_VAULT ?? '~/UltronMind'));
-  const token = values.token ?? process.env.ULTRON_TOKEN ?? undefined;
+  const vaultPath = path.resolve(expandHome(values.vault ?? process.env.OCTAVO_VAULT ?? '~/Octavo'));
+  const token = values.token ?? process.env.OCTAVO_TOKEN ?? undefined;
   const seed = !values['no-seed'];
 
   if (command === 'qr') {
     const base = positionals[1];
     if (!base || !/^https?:\/\/\S+$/.test(base)) {
-      console.error('Usage: ultron qr <address>   e.g. ultron qr https://ultron.tail1234.ts.net');
+      console.error('Usage: octavo qr <address>   e.g. octavo qr https://octavo.tail1234.ts.net');
       process.exit(1);
     }
     const url = new URL(base);
@@ -82,7 +82,7 @@ async function main() {
     console.log(`  ${url.toString()}`);
     console.log('');
     if (token) console.log('  Treat this like a password. Anyone with it can read and edit your notes.');
-    else console.log('  No access key set (ULTRON_TOKEN), so the link has no key.');
+    else console.log('  No access key set (OCTAVO_TOKEN), so the link has no key.');
     console.log('');
     return;
   }
@@ -105,7 +105,7 @@ async function main() {
     if (seed) await seedIfEmpty(vault);
     const server = createMcpServer(vault, { readOnly: values['read-only'] });
     await server.connect(new StdioServerTransport());
-    console.error(`[ultron] MCP server (stdio) ready. Vault: ${vaultPath}`);
+    console.error(`[octavo] MCP server (stdio) ready. Vault: ${vaultPath}`);
     const shutdown = () => {
       vault.close();
       process.exit(0);
@@ -116,13 +116,13 @@ async function main() {
   }
 
   const phone = values.phone;
-  const host = values.host ?? process.env.ULTRON_HOST ?? (phone ? '0.0.0.0' : '127.0.0.1');
+  const host = values.host ?? process.env.OCTAVO_HOST ?? (phone ? '0.0.0.0' : '127.0.0.1');
   const port = Number(values.port ?? process.env.PORT ?? 4321);
   // Phone mode always uses an access key: a saved one (so the phone's bookmark keeps working) unless --token is given.
   const serveToken = token ?? (phone ? loadOrCreateToken() : undefined);
   if (!serveToken && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
     console.warn(
-      `[ultron] WARNING: listening on ${host} without --token. Anyone who can reach this port can read and edit your vault.`,
+      `[octavo] WARNING: listening on ${host} without --token. Anyone who can reach this port can read and edit your vault.`,
     );
   }
   const running = await startServer({
@@ -134,13 +134,13 @@ async function main() {
     mcpReadOnly: values['read-only'],
   });
   if (seed) await seedIfEmpty(running.vault);
-  console.log(`[ultron] Vault:  ${vaultPath} (${running.vault.list().length} notes)`);
-  console.log(`[ultron] App:    ${running.url}`);
-  console.log(`[ultron] MCP:    ${running.url}/mcp${serveToken ? ' (bearer token required)' : ''}`);
+  console.log(`[octavo] Vault:  ${vaultPath} (${running.vault.list().length} notes)`);
+  console.log(`[octavo] App:    ${running.url}`);
+  console.log(`[octavo] MCP:    ${running.url}/mcp${serveToken ? ' (bearer token required)' : ''}`);
   if (phone && serveToken) {
     const addrs = lanAddresses();
     if (!addrs.length) {
-      console.log('[ultron] Phone:  no Wi-Fi/LAN address found. Is this computer connected to a network?');
+      console.log('[octavo] Phone:  no Wi-Fi/LAN address found. Is this computer connected to a network?');
     } else {
       const url = phoneUrl(addrs[0], running.port, serveToken);
       console.log('');
@@ -164,6 +164,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[ultron] fatal:', err instanceof Error ? err.message : err);
+  console.error('[octavo] fatal:', err instanceof Error ? err.message : err);
   process.exit(1);
 });

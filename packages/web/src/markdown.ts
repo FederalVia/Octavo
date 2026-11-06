@@ -111,7 +111,7 @@ export interface RenderContext {
   interactive?: boolean;
 }
 
-/** Build a Markdown -> sanitized HTML renderer with all Ultron/Obsidian extensions. */
+/** Build a Markdown -> sanitized HTML renderer with all Octavo/Obsidian extensions. */
 export function createRenderer(ctxBase: RenderContext) {
   let ctx = ctxBase;
   let taskIndex = 0;

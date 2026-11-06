@@ -4,7 +4,7 @@ status: active
 ---
 # Home Lab
 
-A small server for self-hosting [[Ultron Mind]] so Claude can reach it from anywhere.
+A small server for self-hosting [[Octavo]] so Claude can reach it from anywhere.
 
 - Runs the Docker image behind a reverse proxy with HTTPS.
 - Token-protected MCP endpoint.

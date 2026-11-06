@@ -13,11 +13,11 @@
  * File format (still a valid Markdown note, so other tools show a placeholder):
  *
  *   ---
- *   ultron-encrypted: v1
+ *   octavo-encrypted: v1
  *   ---
  *   # 🔒 Locked note
  *   …explanation…
- *   ```ultron-encrypted
+ *   ```octavo-encrypted
  *   {"v":1,"alg":"AES-256-GCM","kdf":"PBKDF2-SHA256","iter":600000,"salt":"…","iv":"…","ct":"…"}
  *   ```
  */
@@ -119,10 +119,11 @@ export async function decryptText(env: Envelope, nk: NoteKey): Promise<string> {
   }
 }
 
-const FENCE = /```ultron-encrypted\s*\n([\s\S]*?)\n```/;
+// "ultron-encrypted" is the marker from before the rename to Octavo; still readable.
+const FENCE = /```(?:octavo|ultron)-encrypted\s*\n([\s\S]*?)\n```/;
 
 export function isLocked(content: string): boolean {
-  return /^---\r?\n[\s\S]*?^ultron-encrypted:/m.test(content.slice(0, 500)) && FENCE.test(content);
+  return /^---\r?\n[\s\S]*?^(?:octavo|ultron)-encrypted:/m.test(content.slice(0, 500)) && FENCE.test(content);
 }
 
 export function parseEnvelope(content: string): Envelope | null {
@@ -141,14 +142,14 @@ export function parseEnvelope(content: string): Envelope | null {
 export function serializeLocked(env: Envelope): string {
   return [
     '---',
-    'ultron-encrypted: v1',
+    'octavo-encrypted: v1',
     '---',
     '# 🔒 Locked note',
     '',
-    'This note is encrypted. Open it in Ultron and enter its password to read it.',
+    'This note is encrypted. Open it in Octavo and enter its password to read it.',
     'Editing this file elsewhere will make it impossible to unlock.',
     '',
-    '```ultron-encrypted',
+    '```octavo-encrypted',
     JSON.stringify(env),
     '```',
     '',

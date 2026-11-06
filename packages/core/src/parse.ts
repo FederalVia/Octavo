@@ -1,7 +1,7 @@
 import YAML from 'yaml';
 
 export interface ParsedLink {
-  /** Link target as written, without heading/alias (e.g. "Projects/Ultron"). */
+  /** Link target as written, without heading/alias (e.g. "Projects/Octavo"). */
   target: string;
   /** Heading or block reference after `#`, if any. */
   heading?: string;
@@ -107,16 +107,18 @@ function lineAt(text: string, index: number, offset: number): number {
 }
 
 /**
- * Locked notes keep `ultron-encrypted: v1` in their frontmatter and the
- * ciphertext in an `ultron-encrypted` code block. Encryption and decryption
+ * Locked notes keep `octavo-encrypted: v1` in their frontmatter and the
+ * ciphertext in an `octavo-encrypted` code block. Encryption and decryption
  * happen in the user's browser; the server only ever stores the envelope.
  */
-export const ENCRYPTED_KEY = 'ultron-encrypted';
+export const ENCRYPTED_KEY = 'octavo-encrypted';
+/** Marker used before the app was renamed to Octavo; still recognised. */
+const LEGACY_ENCRYPTED_KEY = 'ultron-encrypted';
 
 export function isEncryptedContent(content: string): boolean {
   if (!content.startsWith('---')) return false;
   const { frontmatter } = splitFrontmatter(content);
-  return frontmatter[ENCRYPTED_KEY] != null;
+  return frontmatter[ENCRYPTED_KEY] != null || frontmatter[LEGACY_ENCRYPTED_KEY] != null;
 }
 
 /** A reference to a non-Markdown file (image, PDF, audio…) rather than a note. */

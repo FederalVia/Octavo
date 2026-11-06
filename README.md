@@ -1,8 +1,8 @@
-# Ultron Mind
+# Octavo
 
 **A knowledge base you see as a brain, and that Claude uses as its long-term memory. Completely free: no accounts, no subscriptions, no paid tiers.**
 
-Ultron Mind is an Obsidian-like note app built on plain Markdown files. Your notes appear as points in a 3D brain you can rotate, grouped into anatomical regions: projects in the frontal lobe, people in the temporal lobe, daily notes in the cerebellum, and so on. Click any point to read or edit that note.
+Octavo is an Obsidian-like note app built on plain Markdown files. Your notes appear as points in a 3D brain you can rotate, grouped into anatomical regions: projects in the frontal lobe, people in the temporal lobe, daily notes in the cerebellum, and so on. Click any point to read or edit that note.
 
 It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can search, read and write the same notes. Claude remembers things between conversations, and you can watch it think: the notes it touches light up live.
 
@@ -34,7 +34,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 - **Optional note locking**: turn it on in ⚙ Settings to password-protect individual notes with end-to-end encryption. It's off by default, and notes are never encrypted unless you lock them.
 - **Safety net**: version history for every note (compare with the current version and restore), deletes go to a recoverable trash, and you get a conflict warning instead of losing your edits.
 - **Claude memory over MCP**: 15 tools (search, read, write, append, edit, tasks, journal, link graph…) over stdio or HTTP. Notes Claude touches light up in the brain.
-- **CLI**: `ultron new / read / append / search / daily / task / tasks / move / history …`
+- **CLI**: `octavo new / read / append / search / daily / task / tasks / move / history …`
 - **Runs anywhere**: in the browser (installable on phones), as a desktop app (Electron), or self-hosted with Docker.
 
 See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what's planned.
@@ -56,7 +56,7 @@ Open **http://127.0.0.1:4321** in your browser and click around the brain.
 To use your own notes:
 
 ```bash
-npm start -- --vault ~/UltronMind    # any folder; it's created if missing
+npm start -- --vault ~/Octavo    # any folder; it's created if missing
 ```
 
 Prefer an app window? Run `npm run desktop`. To run it as an always-on server on your PC, reachable from your phone anywhere, see **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
@@ -70,7 +70,7 @@ Prefer an app window? Run `npm run desktop`. To run it as an always-on server on
 With the app built, add the vault to Claude Code:
 
 ```bash
-claude mcp add ultron-mind --scope user -- node "$(pwd)/packages/server/dist/cli.js" mcp --vault ~/UltronMind
+claude mcp add octavo --scope user -- node "$(pwd)/packages/server/dist/cli.js" mcp --vault ~/Octavo
 ```
 
 For Claude Desktop, remote servers and the full tool list, see **[docs/CONNECT_CLAUDE.md](docs/CONNECT_CLAUDE.md)**.
@@ -97,7 +97,7 @@ Numbered folders such as `00 - Current Projects` work too. More in the [user gui
 | [Installation](docs/INSTALL.md) | Requirements, installing on macOS/Windows/Linux, desktop app, Docker, running as a service, HTTPS, updating, troubleshooting |
 | [User guide](docs/USER_GUIDE.md) | The interface, views, writing syntax, links, search, templates, bookmarks, history, shortcuts |
 | [Features](docs/FEATURES.md) | Every feature with its status: done, partly done, or planned |
-| [Self-hosting](docs/SELF_HOSTING.md) | Run Ultron on your PC with Docker and reach it from your phone anywhere (Tailscale or your own domain) |
+| [Self-hosting](docs/SELF_HOSTING.md) | Run Octavo on your PC with Docker and reach it from your phone anywhere (Tailscale or your own domain) |
 | [Connecting Claude](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, remote access, tool reference, tips |
 | [Architecture](docs/ARCHITECTURE.md) | How it's built, REST API, live events, file handling, security |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, project layout |
@@ -107,7 +107,7 @@ Numbered folders such as `00 - Current Projects` work too. More in the [user gui
 ```
 packages/
   core/      Vault engine: parsing, link index, backlinks, search, rename, file watching
-  server/    REST API, web hosting, MCP server (HTTP + stdio), `ultron` CLI
+  server/    REST API, web hosting, MCP server (HTTP + stdio), `octavo` CLI
   web/       React + CodeMirror front end (atlas, network, editor)
   desktop/   Electron wrapper
 examples/
@@ -117,4 +117,4 @@ docs/          Guides and screenshots
 
 ## Status
 
-Ultron Mind is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. In particular, packaged desktop installers (`.dmg`/`.exe`) aren't available yet, so the desktop app runs from source.
+Octavo is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. In particular, packaged desktop installers (`.dmg`/`.exe`) aren't available yet, so the desktop app runs from source.

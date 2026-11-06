@@ -2,7 +2,7 @@
 tags: [project, ai]
 status: active
 ---
-# Ultron Mind
+# Octavo
 
 An Obsidian-like app that doubles as Claude's memory.
 

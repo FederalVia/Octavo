@@ -1,7 +1,7 @@
 import type { Heading, ParsedLink } from './parse.js';
 
 export interface IndexedNote {
-  /** Vault-relative POSIX path, e.g. "Projects/Ultron.md". */
+  /** Vault-relative POSIX path, e.g. "Projects/Octavo.md". */
   path: string;
   /** File name without extension, used as the note title and link name. */
   name: string;

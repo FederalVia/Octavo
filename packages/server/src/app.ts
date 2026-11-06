@@ -12,7 +12,7 @@ import {
   VaultPathError,
   type Vault,
   type VaultEvent,
-} from '@ultron/core';
+} from '@octavo/core';
 import { createMcpServer } from './mcp.js';
 
 export interface AppOptions {
@@ -81,7 +81,7 @@ export function createApp(opts: AppOptions): express.Express {
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
-      console.error('[ultron] MCP request failed:', err);
+      console.error('[octavo] MCP request failed:', err);
       if (!res.headersSent) {
         res.status(500).json({ jsonrpc: '2.0', error: { code: -32603, message: 'Internal server error' }, id: null });
       }
@@ -346,7 +346,7 @@ export function createApp(opts: AppOptions): express.Express {
     app.get('/', (_req, res) => {
       res
         .type('text/plain')
-        .send('Ultron Mind server is running. Build the web UI with `npm run build` to use the app here.\nMCP endpoint: /mcp');
+        .send('Octavo server is running. Build the web UI with `npm run build` to use the app here.\nMCP endpoint: /mcp');
     });
   }
 
@@ -363,7 +363,7 @@ export function createApp(opts: AppOptions): express.Express {
     } else if (err instanceof VaultPathError || err instanceof EditMatchError) {
       res.status(400).json({ error: err.message });
     } else {
-      console.error('[ultron] request failed:', err);
+      console.error('[octavo] request failed:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

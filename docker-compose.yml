@@ -1,18 +1,18 @@
-# Ultron on this computer (and your home Wi-Fi).
-#   1. Copy .env.example to .env and set ULTRON_TOKEN.
+# Octavo on this computer (and your home Wi-Fi).
+#   1. Copy .env.example to .env and set OCTAVO_TOKEN.
 #   2. docker compose up -d
 #   3. Open http://localhost:4321
 # To reach it from your phone away from home, use docker-compose.tailscale.yml
 # instead. See docs/SELF_HOSTING.md.
 services:
-  ultron-mind:
+  octavo:
     build: .
-    image: ultron-mind
+    image: octavo
     restart: unless-stopped
     ports:
       - "4321:4321"
     environment:
-      ULTRON_TOKEN: ${ULTRON_TOKEN:?Set ULTRON_TOKEN in .env (see docs/SELF_HOSTING.md)}
+      OCTAVO_TOKEN: ${OCTAVO_TOKEN:?Set OCTAVO_TOKEN in .env (see docs/SELF_HOSTING.md)}
     volumes:
       # Your notes, as plain Markdown files in this folder on your computer.
-      - ${ULTRON_VAULT_DIR:-./vault}:/vault
+      - ${OCTAVO_VAULT_DIR:-./vault}:/vault

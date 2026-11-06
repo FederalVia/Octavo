@@ -22,7 +22,7 @@ npm run dev:server    # API + MCP on :4321, watching packages/server; vault in .
 npm run dev:web       # Vite on http://localhost:5173, proxying /api and /mcp to :4321
 ```
 
-`packages/core` is consumed from its built output. After changing it, run `npm run build -w @ultron/core`, or keep `npx tsc -w -p packages/core` running.
+`packages/core` is consumed from its built output. After changing it, run `npm run build -w @octavo/core`, or keep `npx tsc -w -p packages/core` running.
 
 To work on the desktop app: `npm run desktop`.
 

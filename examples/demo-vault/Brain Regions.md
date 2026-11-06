@@ -15,4 +15,4 @@ Notes are placed in the brain by folder (or tag, or a `region:` frontmatter valu
 | Cerebellum | Daily notes and logs | `Journal/` |
 | Brain stem | Index and routing notes | [[Home]], [[Inbox]] |
 
-See also [[Tour of Ultron Mind]].
+See also [[Tour of Octavo]].

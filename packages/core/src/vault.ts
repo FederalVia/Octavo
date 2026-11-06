@@ -44,7 +44,7 @@ export class NoteExistsError extends Error {
 
 export class EncryptedNoteError extends Error {
   constructor(public readonly notePath: string) {
-    super(`${notePath} is a locked (encrypted) note. It can only be read or changed after unlocking it in the Ultron app.`);
+    super(`${notePath} is a locked (encrypted) note. It can only be read or changed after unlocking it in the Octavo app.`);
     this.name = 'EncryptedNoteError';
   }
 }
@@ -132,6 +132,12 @@ export class Vault extends EventEmitter {
   static async open(root: string, opts: VaultOptions = {}): Promise<Vault> {
     const vault = new Vault(root, opts);
     await fsp.mkdir(vault.root, { recursive: true });
+    // Settings, bookmarks and history used to live in `.ultron/` (before the rename to Octavo).
+    const legacy = path.join(vault.root, '.ultron');
+    const current = path.join(vault.root, '.octavo');
+    if ((await fsp.stat(legacy).catch(() => null)) && !(await fsp.stat(current).catch(() => null))) {
+      await fsp.rename(legacy, current).catch(() => {});
+    }
     await vault.rescan(false);
     if (opts.watch !== false) vault.startWatching();
     return vault;
@@ -280,10 +286,10 @@ export class Vault extends EventEmitter {
         else this.scheduleRescan();
       });
       this.watcher.on('error', (err) => {
-        console.error('[ultron] file watcher error:', err);
+        console.error('[octavo] file watcher error:', err);
       });
     } catch (err) {
-      console.error('[ultron] could not watch vault folder; external edits will not be detected live:', err);
+      console.error('[octavo] could not watch vault folder; external edits will not be detected live:', err);
     }
   }
 
@@ -294,7 +300,7 @@ export class Vault extends EventEmitter {
       rel,
       setTimeout(() => {
         this.pending.delete(rel);
-        this.refreshFile(rel, true).catch((err) => console.error('[ultron] refresh failed:', err));
+        this.refreshFile(rel, true).catch((err) => console.error('[octavo] refresh failed:', err));
       }, 75),
     );
   }
@@ -303,7 +309,7 @@ export class Vault extends EventEmitter {
     if (this.rescanTimer) clearTimeout(this.rescanTimer);
     this.rescanTimer = setTimeout(() => {
       this.rescanTimer = null;
-      this.rescan(true).catch((err) => console.error('[ultron] rescan failed:', err));
+      this.rescan(true).catch((err) => console.error('[octavo] rescan failed:', err));
     }, 250);
   }
 
@@ -349,7 +355,7 @@ export class Vault extends EventEmitter {
     return candidates[0];
   }
 
-  /** Resolve a bare name/path typed by a user or agent ("Ultron", "Projects/Ultron.md"). */
+  /** Resolve a bare name/path typed by a user or agent ("Octavo", "Projects/Octavo.md"). */
   resolve(nameOrPath: string): string | null {
     try {
       const normalized = normalizeNotePath(nameOrPath);
@@ -849,7 +855,7 @@ export class Vault extends EventEmitter {
   // ---------------------------------------------------------------- history
 
   private historyDir(rel: string): string {
-    return path.join(this.root, '.ultron', 'history', ...rel.split('/'));
+    return path.join(this.root, '.octavo', 'history', ...rel.split('/'));
   }
 
   /**
@@ -880,7 +886,7 @@ export class Vault extends EventEmitter {
       const all = (await fsp.readdir(dir)).filter((f) => /^\d+\.md$/.test(f)).sort();
       for (const old of all.slice(0, Math.max(0, all.length - 50))) await fsp.rm(path.join(dir, old), { force: true });
     } catch (err) {
-      console.error('[ultron] could not save history snapshot:', err);
+      console.error('[octavo] could not save history snapshot:', err);
     }
   }
 
@@ -1005,11 +1011,11 @@ export class Vault extends EventEmitter {
 
   // ---------------------------------------------------------------- settings
 
-  /** Small JSON documents stored in the vault's hidden `.ultron/` folder (bookmarks, etc.). */
+  /** Small JSON documents stored in the vault's hidden `.octavo/` folder (bookmarks, etc.). */
   async getConfig<T = unknown>(name: string, fallback: T): Promise<T> {
     if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new VaultPathError('Invalid config name');
     try {
-      return JSON.parse(await fsp.readFile(path.join(this.root, '.ultron', `${name}.json`), 'utf8')) as T;
+      return JSON.parse(await fsp.readFile(path.join(this.root, '.octavo', `${name}.json`), 'utf8')) as T;
     } catch {
       return fallback;
     }
@@ -1017,7 +1023,7 @@ export class Vault extends EventEmitter {
 
   async setConfig(name: string, value: unknown): Promise<void> {
     if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new VaultPathError('Invalid config name');
-    const dir = path.join(this.root, '.ultron');
+    const dir = path.join(this.root, '.octavo');
     await fsp.mkdir(dir, { recursive: true });
     await fsp.writeFile(path.join(dir, `${name}.json`), JSON.stringify(value, null, 2), 'utf8');
   }
