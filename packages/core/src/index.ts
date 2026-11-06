@@ -5,3 +5,4 @@ export * from './search.js';
 export * from './vault.js';
 export * from './regions.js';
 export * from './query.js';
+export * from './canvas.js';

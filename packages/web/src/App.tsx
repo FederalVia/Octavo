@@ -14,6 +14,7 @@ import { HotkeysDialog } from './components/HotkeysDialog';
 import { PublishDialog } from './components/PublishDialog';
 import { AudioRecorder } from './components/AudioRecorder';
 import { WebViewer } from './components/WebViewer';
+import { CanvasView } from './components/CanvasView';
 import { comboFromEvent, formatCombo, type Hotkeys } from './hotkeys';
 import { applySnippets } from './appearance';
 import { Presentation } from './components/Presentation';
@@ -523,6 +524,17 @@ export function App() {
   const [publishOpen, setPublishOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [webUrl, setWebUrl] = useState<string | null>(null);
+  const [canvasPath, setCanvasPath] = useState<string | null>(() => load<string | null>('octavo.canvas', null));
+  useEffect(() => store('octavo.canvas', canvasPath), [canvasPath]);
+  const [canvases, setCanvases] = useState<string[]>([]);
+  const [canvasPick, setCanvasPick] = useState<null | 'open' | ((p: string | null) => void)>(null);
+  const refreshCanvases = useCallback(() => api.canvases().then((r) => setCanvases(r.canvases)).catch(() => {}), []);
+  useEffect(() => {
+    void refreshCanvases();
+    const on = () => void refreshCanvases();
+    window.addEventListener('octavo:vault-change', on);
+    return () => window.removeEventListener('octavo:vault-change', on);
+  }, [refreshCanvases]);
   const [webLinksInApp, setWebLinksInApp] = useState(() => load('octavo.webLinks', false));
   useEffect(() => store('octavo.webLinks', webLinksInApp), [webLinksInApp]);
   const [presenting, setPresenting] = useState(false);
@@ -778,6 +790,12 @@ export function App() {
         return;
       }
       try {
+        if (/\.canvas$/i.test(target)) {
+          const want = target.toLowerCase();
+          const hit = canvases.find((c) => c.toLowerCase() === want || c.toLowerCase().endsWith('/' + want.split('/').pop()));
+          setCanvasPath(hit ?? target);
+          return;
+        }
         const r = await api.resolve(target, loadedPath.current ?? undefined);
         if (r.path) navigate(r.path, { heading, newTab: opts.newTab });
         else if (r.trashed) {
@@ -796,7 +814,7 @@ export function App() {
         handleError(err);
       }
     },
-    [navigate, createNote, handleError, confirm, refreshNotes],
+    [navigate, createNote, handleError, confirm, refreshNotes, canvases],
   );
 
   const renameNote = useCallback(
@@ -1325,6 +1343,23 @@ export function App() {
     { id: 'record-audio', label: 'Record audio note', keywords: 'audio voice microphone record memo dictate', run: () => setRecording(true) },
     { id: 'web-open', label: 'Open web page…', keywords: 'browser web viewer url link reader clip', run: async () => { const u = await prompt('Open web page', '', { placeholder: 'example.com/article', confirmLabel: 'Open' }); if (u) setWebUrl(u); } },
     { id: 'web-links', label: webLinksInApp ? 'Open web links in your browser (not the web viewer)' : 'Open web links in Octavo’s web viewer', keywords: 'browser web viewer links reader', run: () => setWebLinksInApp((v: boolean) => !v) },
+    {
+      id: 'canvas-new',
+      label: 'New canvas…',
+      keywords: 'canvas board whiteboard cards diagram mind map',
+      run: async () => {
+        const name = await prompt('New canvas', '', { placeholder: 'Canvas name', confirmLabel: 'Create' });
+        if (!name) return;
+        try {
+          const r = await api.saveCanvas(name, { nodes: [], edges: [] }, undefined, true);
+          await refreshCanvases();
+          setCanvasPath(r.path);
+        } catch (err) {
+          handleError(err);
+        }
+      },
+    },
+    ...(canvases.length ? [{ id: 'canvas-open', label: 'Open canvas…', keywords: 'canvas board whiteboard', run: () => setCanvasPick('open') }] : []),
     { id: 'publish-site', label: 'Publish as a website…', keywords: 'publish site static html export web share host pages', run: () => setPublishOpen(true) },
     ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
     { id: 'workspace-save', label: 'Save workspace (layout)…', keywords: 'layout tabs save', run: saveWorkspace },
@@ -1531,6 +1566,8 @@ export function App() {
           </div>
           {leftTab === 'files' && (
             <FileTree
+              canvases={canvases}
+              onOpenCanvas={(p) => setCanvasPath(p)}
               notes={notes}
               currentPath={currentPath}
               onOpen={(p, o) => navigate(p, { newTab: o?.newTab })}
@@ -1987,6 +2024,39 @@ export function App() {
       )}
       {presenting && detail && (
         <Presentation content={draft} path={detail.path} exists={exists} namesKey={namesKey} onClose={() => setPresenting(false)} />
+      )}
+      {canvasPath && (
+        <CanvasView
+          key={canvasPath}
+          path={canvasPath}
+          notes={notes}
+          onClose={() => setCanvasPath(null)}
+          onOpenNote={(p) => {
+            setCanvasPath(null);
+            navigate(p);
+          }}
+          onOpenUrl={(u) => setWebUrl(u)}
+          pickNote={() => new Promise((resolve) => setCanvasPick(() => resolve))}
+          prompt={prompt}
+        />
+      )}
+      {canvasPick && (
+        <QuickSwitcher
+          notes={
+            canvasPick === 'open'
+              ? canvases.map((c) => ({ path: c, name: c.replace(/\.canvas$/i, '').split('/').pop()!, folder: c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : '', tags: [], mtime: 0, ctime: 0, size: 0 }))
+              : notes
+          }
+          placeholder={canvasPick === 'open' ? 'Open canvas…' : 'Add a note to the canvas…'}
+          onOpen={(p) => {
+            if (canvasPick === 'open') setCanvasPath(p);
+            else canvasPick(p);
+          }}
+          onClose={() => {
+            if (typeof canvasPick === 'function') canvasPick(null);
+            setCanvasPick(null);
+          }}
+        />
       )}
       {webUrl && (
         <WebViewer

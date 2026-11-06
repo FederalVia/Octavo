@@ -2334,3 +2334,55 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); tex
 .tab-spine-name { writing-mode: vertical-rl; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: calc(100% - 40px); }
 .tab-spine-close { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; opacity: 0.6; cursor: pointer; }
 .tab-spine-close:hover { opacity: 1; background: var(--bg-hover); }
+
+/* Canvas */
+.canvas-view { position: fixed; inset: 0; z-index: 40; background: var(--bg); --cv-edge: rgba(200, 196, 188, 0.75); --cv-color: var(--border); }
+.cv-stage { position: absolute; inset: 0; overflow: hidden; outline: none; touch-action: none; cursor: default;
+  background-image: radial-gradient(circle, rgba(127,127,127,0.22) 1px, transparent 1.2px); }
+.cv-stage.panning { cursor: grabbing; }
+.cv-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.cv-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.cv-edge { fill: none; stroke-width: 2; }
+.cv-edge.temp { stroke: var(--accent); stroke-dasharray: 6 5; }
+.cv-edge-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accent)); }
+.cv-edge-label { display: inline-block; position: relative; left: 50%; transform: translateX(-50%); background: var(--bg); color: var(--text-muted); font-size: 13px; padding: 2px 8px; border-radius: 6px; white-space: nowrap; border: 1px solid var(--border); }
+.cv-node { position: absolute; box-sizing: border-box; border-radius: 12px; border: 2px solid var(--cv-color); background: var(--bg-elevated); display: flex; flex-direction: column; overflow: visible; touch-action: none; }
+.cv-node.selected { box-shadow: 0 0 0 2px var(--accent), 0 10px 30px rgba(0,0,0,0.35); }
+.cv-node.cv-group { background: color-mix(in srgb, var(--cv-color) 7%, transparent); border-style: dashed; border-width: 2px; }
+.cv-group-label { position: absolute; top: -30px; left: 0; font-weight: 600; font-size: 15px; color: var(--text-muted); white-space: nowrap; padding: 2px 4px; cursor: grab; }
+.cv-card-body { flex: 1; overflow: auto; padding: 12px 16px; font-size: 15px; line-height: 1.55; border-radius: 10px; min-height: 0; overscroll-behavior: contain; }
+.cv-card-body.markdown > :first-child { margin-top: 0; }
+.cv-card-body.markdown > :last-child { margin-bottom: 0; }
+.cv-card-title { padding: 8px 14px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); cursor: pointer; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.cv-card-title:hover { text-decoration: underline; }
+.cv-image { width: 100%; height: 100%; object-fit: contain; border-radius: 10px; pointer-events: none; user-select: none; }
+.cv-link-card { display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+.cv-link-host { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); }
+.cv-link-card button.link { text-align: left; word-break: break-all; }
+.cv-edit { flex: 1; width: 100%; box-sizing: border-box; resize: none; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 15px; line-height: 1.55; padding: 12px 16px; border-radius: 10px; }
+.cv-handle { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); border: 2px solid var(--bg); cursor: crosshair; z-index: 2; }
+.cv-handle-top { top: -8px; left: calc(50% - 7px); }
+.cv-handle-bottom { bottom: -8px; left: calc(50% - 7px); }
+.cv-handle-left { left: -8px; top: calc(50% - 7px); }
+.cv-handle-right { right: -8px; top: calc(50% - 7px); }
+.cv-resize { position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; cursor: nwse-resize; z-index: 2; background: linear-gradient(135deg, transparent 50%, var(--accent) 50%); border-radius: 0 0 8px 0; }
+.cv-marquee { position: absolute; border: 1px dashed var(--accent); background: var(--accent-soft); opacity: 0.4; pointer-events: none; }
+.cv-toolbar { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px; border-radius: 12px; background: var(--glass, var(--bg-elevated)); border: 1px solid var(--glass-border, var(--border)); backdrop-filter: blur(12px); box-shadow: 0 8px 30px rgba(0,0,0,0.3); z-index: 3; }
+.cv-toolbar button { min-height: 32px; padding: 0 10px; border-radius: 8px; font-size: 13px; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+.cv-toolbar button:hover { background: var(--bg-hover); }
+.cv-stage.dragging, .cv-stage.dragging * { user-select: none; -webkit-user-select: none; }
+.cv-node:not(.editing) { -webkit-user-select: none; user-select: none; }
+.cv-node.selected:not(.editing) .cv-card-body { -webkit-user-select: text; user-select: text; }
+.cv-title { font-weight: 600; padding: 0 8px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.cv-spacer { flex: 1; }
+.cv-zoom { min-width: 56px; font-variant-numeric: tabular-nums; }
+.cv-status { font-size: 12px; color: var(--text-faint); padding: 0 6px; }
+.cv-swatches { display: inline-flex; gap: 4px; align-items: center; }
+.cv-toolbar .cv-swatch { width: 20px; height: 20px; min-height: 0; padding: 0; border-radius: 50%; border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--border); cursor: pointer; }
+.cv-swatch.none { background: linear-gradient(135deg, transparent 45%, var(--danger, #f66) 45%, var(--danger, #f66) 55%, transparent 55%), var(--bg); }
+.cv-empty { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; max-width: 420px; padding: 0 16px; pointer-events: none; }
+.cv-empty p { margin: 0 0 6px; }
+.tree-item.canvas .canvas-mark { color: var(--text-faint); }
+@media (max-width: 600px) { .cv-title { max-width: 120px; } .cv-spacer { display: none; } }

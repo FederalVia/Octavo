@@ -1,3 +1,4 @@
+import { CanvasFormatError, normalizeCanvasPath, serializeCanvas, validateCanvas, type CanvasData } from './canvas.js';
 import { parseNoteQuery, runQuery, type QueryResult } from './query.js';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
@@ -1095,6 +1096,52 @@ export class Vault extends EventEmitter {
     this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
     this.emitEvent({ type: 'rescan' });
     return rel;
+  }
+
+  // ---------------------------------------------------------------- canvases
+
+  /** Every .canvas file in the vault. */
+  canvases(): string[] {
+    const out: string[] = [];
+    for (const set of this.attachments.values()) for (const rel of set) if (rel.toLowerCase().endsWith('.canvas')) out.push(rel);
+    return out.sort((a, b) => a.localeCompare(b));
+  }
+
+  async readCanvas(input: string): Promise<{ path: string; data: CanvasData; mtime: number }> {
+    const rel = this.resolveAttachment(input.toLowerCase().endsWith('.canvas') ? input : `${input}.canvas`) ?? normalizeCanvasPath(input);
+    let text: string;
+    let mtime: number;
+    try {
+      [text, mtime] = await Promise.all([fsp.readFile(this.abs(rel), 'utf8'), fsp.stat(this.abs(rel)).then((s) => s.mtimeMs)]);
+    } catch {
+      throw new NoteNotFoundError(rel);
+    }
+    let parsed: unknown;
+    try {
+      parsed = text.trim() ? JSON.parse(text) : { nodes: [], edges: [] };
+    } catch {
+      throw new CanvasFormatError(`${rel} isn't valid JSON`);
+    }
+    return { path: rel, data: validateCanvas(parsed), mtime };
+  }
+
+  /** Save a canvas (created if needed). With `expectedMtime`, refuses to overwrite a newer copy. */
+  async writeCanvas(input: string, data: unknown, opts: { expectedMtime?: number; createOnly?: boolean } = {}): Promise<{ path: string; mtime: number }> {
+    const rel = normalizeCanvasPath(input);
+    const clean = validateCanvas(data);
+    const abs = this.abs(rel);
+    const stat = await fsp.stat(abs).catch(() => null);
+    if (stat && opts.createOnly) throw new NoteExistsError(rel);
+    if (stat && opts.expectedMtime !== undefined && Math.abs(stat.mtimeMs - opts.expectedMtime) > 1) {
+      throw new NoteConflictError(rel, stat.mtimeMs);
+    }
+    await fsp.mkdir(path.dirname(abs), { recursive: true });
+    await fsp.writeFile(abs, serializeCanvas(clean));
+    if (!stat) {
+      this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
+      this.emitEvent({ type: 'rescan' });
+    }
+    return { path: rel, mtime: (await fsp.stat(abs)).mtimeMs };
   }
 
   // ---------------------------------------------------------------- history

@@ -70,7 +70,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Unique note creator (timestamp titles) | ✅ | Command palette → *New unique note* |
 | Properties / metadata | ✅ | Shown as a properties table and used for tags, aliases and region. **Edit** (or *Edit properties* in the command palette) gives typed fields: text, list, number, checkbox, date |
 | Bases (database views) | ✅ | ` ```query `, ` ```dataview ` or ` ```base ` blocks: live tables, lists or cards of notes filtered by folder, tag, links and properties. Click a column to sort, click a cell to edit that property. See [Queries](USER_GUIDE.md#queries-bases) |
-| Canvas | 🚧 | |
+| Canvas | ✅ | `.canvas` boards in the open JSON Canvas format: text cards (Markdown), live note cards, images, web links and groups; drag from a card’s edge dots to draw arrows (or drop on empty space to grow a new card), labels, six colours, undo/redo, pinch and wheel zoom, paste and drag-and-drop. Claude can read and add to canvases (`read_canvas`, `add_to_canvas`) |
 | Workspaces (saved layouts) | ✅ | Command palette → *Save workspace* / *Open workspace*: open tabs, split view, sidebar and brain view, saved with the vault |
 | Note composer (split / merge) | ✅ | *Extract selection to new note*, and *Merge this note into another…* (links are updated; Claude can use `merge_notes`) |
 | File recovery snapshots | ✅ | ⟲ on each note: diff against the current version, restore. Kept in `.octavo/history/` |
@@ -112,7 +112,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query notes, set properties | ✅ | `octavo query 'TABLE status FROM #project'`, `octavo set <note> <key> [value]` |
 | CLI: install plugins/themes, terminal UI | 🚧 | |
-| AI access | ✅ | MCP server with 24 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
+| AI access | ✅ | MCP server with 26 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)

@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { VERSION } from './version.js';
-import { formatDate, formatQueryResult, REGION_INFO, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
+import { formatDate, formatQueryResult, REGION_INFO, type CanvasData, type CanvasNode, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
 
 export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
 
@@ -214,6 +214,38 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   server.registerTool(
+    'read_canvas',
+    {
+      title: 'Read a canvas',
+      description:
+        'Read a .canvas board (JSON Canvas format): its cards (text, notes, links, groups) with ids, and the arrows between them. Without a path, lists the canvases in the vault.',
+      inputSchema: { path: z.string().optional().describe('Canvas path or name, e.g. "Ideas board"') },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ path: p }) => {
+      if (!p) {
+        const list = vault.canvases();
+        return text(list.length ? `Canvases (${list.length}):\n${list.map((c) => `- ${c}`).join('\n')}` : 'No canvases yet. add_to_canvas creates one.');
+      }
+      const { path: rel, data } = await vault.readCanvas(p);
+      const label = (n: (typeof data.nodes)[number]) =>
+        n.type === 'text' ? JSON.stringify(n.text.length > 120 ? n.text.slice(0, 120) + '…' : n.text) : n.type === 'file' ? `[[${n.file.replace(/\.md$/, '')}]]` : n.type === 'link' ? n.url : `group "${n.label ?? ''}"`;
+      const byId = new Map(data.nodes.map((n) => [n.id, n]));
+      const lines = [`Canvas ${rel}: ${data.nodes.length} card(s), ${data.edges.length} arrow(s)`, '', 'Cards:'];
+      for (const n of data.nodes) lines.push(`- ${n.id} (${n.type}${n.color ? `, colour ${n.color}` : ''}) ${label(n)}`);
+      if (data.edges.length) {
+        lines.push('', 'Arrows:');
+        for (const e of data.edges) {
+          const a = byId.get(e.fromNode);
+          const b = byId.get(e.toNode);
+          lines.push(`- ${e.fromNode} → ${e.toNode}${e.label ? ` "${e.label}"` : ''}${a && b ? `  (${label(a).slice(0, 40)} → ${label(b).slice(0, 40)})` : ''}`);
+        }
+      }
+      return text(lines.join('\n'));
+    }),
+  );
+
+  server.registerTool(
     'get_note_region',
     {
       title: 'Brain region of a note',
@@ -344,6 +376,108 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   if (opts.readOnly) return server;
+
+  server.registerTool(
+    'add_to_canvas',
+    {
+      title: 'Add cards and arrows to a canvas',
+      description:
+        'Add cards to a .canvas board (created if it doesn\'t exist) and connect them with arrows. Each card is one of: text (Markdown), note (a note path, shown live), url (a web link). Give cards a "key" so connections can refer to them; connections can also use ids from read_canvas. Cards are laid out automatically in a new column to the right unless x/y are given. Optionally wrap the new cards in a labelled group. Colours: "1" red, "2" orange, "3" yellow, "4" green, "5" cyan, "6" purple.',
+      inputSchema: {
+        canvas: z.string().describe('Canvas path or name'),
+        cards: z
+          .array(
+            z.object({
+              key: z.string().optional().describe('Your name for this card, for connections'),
+              text: z.string().optional(),
+              note: z.string().optional(),
+              url: z.string().optional(),
+              color: z.string().optional(),
+              x: z.number().optional(),
+              y: z.number().optional(),
+              width: z.number().optional(),
+              height: z.number().optional(),
+            }),
+          )
+          .max(200)
+          .optional(),
+        connections: z
+          .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional(), color: z.string().optional() }))
+          .max(400)
+          .optional(),
+        group: z.string().optional().describe('Put the new cards in a group with this label'),
+      },
+    },
+    safe(async ({ canvas, cards = [], connections = [], group }) => {
+      let rel: string;
+      let data: CanvasData;
+      try {
+        const r = await vault.readCanvas(canvas);
+        rel = r.path;
+        data = r.data;
+      } catch (err) {
+        if (!(err instanceof Error) || err.name !== 'NoteNotFoundError') throw err;
+        rel = canvas;
+        data = { nodes: [], edges: [] };
+      }
+      const id = () => Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10);
+      const keyToId = new Map<string, string>();
+      const right = data.nodes.length ? Math.max(...data.nodes.map((n) => n.x + n.width)) + 120 : 0;
+      const top = data.nodes.length ? Math.min(...data.nodes.map((n) => n.y)) : 0;
+      let y = top;
+      const added: CanvasNode[] = [];
+      const skipped: string[] = [];
+      for (const c of cards) {
+        const kinds = [c.text !== undefined, !!c.note, !!c.url].filter(Boolean).length;
+        if (kinds !== 1) {
+          skipped.push(`${c.key ?? '(card)'}: give exactly one of text, note or url`);
+          continue;
+        }
+        const width = c.width ?? (c.note ? 400 : c.url ? 360 : 300);
+        const height = c.height ?? (c.note ? 320 : c.url ? 120 : Math.min(480, 80 + Math.ceil((c.text ?? '').length / 38) * 24));
+        const base = { id: id(), x: c.x ?? right, y: c.y ?? y, width, height, ...(c.color ? { color: c.color } : {}) };
+        let node: CanvasNode;
+        if (c.note) {
+          const p = vault.resolve(c.note);
+          if (!p) {
+            skipped.push(`${c.key ?? c.note}: no note called "${c.note}"`);
+            continue;
+          }
+          node = { ...base, type: 'file', file: p };
+        } else if (c.url) node = { ...base, type: 'link', url: c.url };
+        else node = { ...base, type: 'text', text: c.text ?? '' };
+        if (c.y === undefined) y += height + 60;
+        if (c.key) keyToId.set(c.key, node.id);
+        added.push(node);
+      }
+      const nodes = [...data.nodes, ...added];
+      if (group && added.length) {
+        const pad = 40;
+        const minX = Math.min(...added.map((n) => n.x)) - pad;
+        const minY = Math.min(...added.map((n) => n.y)) - pad;
+        const maxX = Math.max(...added.map((n) => n.x + n.width)) + pad;
+        const maxY = Math.max(...added.map((n) => n.y + n.height)) + pad;
+        nodes.unshift({ id: id(), type: 'group', label: group, x: minX, y: minY, width: maxX - minX, height: maxY - minY });
+      }
+      const ids = new Set(nodes.map((n) => n.id));
+      const edges = [...data.edges];
+      for (const c of connections) {
+        const from = keyToId.get(c.from) ?? c.from;
+        const to = keyToId.get(c.to) ?? c.to;
+        if (!ids.has(from) || !ids.has(to)) {
+          skipped.push(`connection ${c.from} → ${c.to}: unknown card`);
+          continue;
+        }
+        edges.push({ id: id(), fromNode: from, toNode: to, toEnd: 'arrow', ...(c.label ? { label: c.label } : {}), ...(c.color ? { color: c.color } : {}) });
+      }
+      const saved = await vault.writeCanvas(rel, { ...data, nodes, edges });
+      const keys = [...keyToId].map(([k, v]) => `${k}=${v}`).join(', ');
+      return text(
+        `${saved.path}: added ${added.length} card(s) and ${edges.length - data.edges.length} arrow(s).${keys ? ` Ids: ${keys}.` : ''}${skipped.length ? `\nSkipped:\n- ${skipped.join('\n- ')}` : ''}`,
+      );
+    }),
+  );
+
 
   server.registerTool(
     'set_property',
