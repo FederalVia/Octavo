@@ -182,6 +182,7 @@ export const api = {
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
   graph: () => request<GraphData>('GET', 'api/graph'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
+  snippets: () => request<{ folder: string; snippets: { name: string; css: string }[] }>('GET', 'api/snippets'),
   periodic: (period: 'day' | 'week' | 'month', date?: string) =>
     request<NoteSummary>('POST', `api/periodic/${period}${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   upload: async (file: File, folder = 'attachments'): Promise<{ path: string }> => {

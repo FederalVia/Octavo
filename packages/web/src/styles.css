@@ -2100,3 +2100,78 @@ form.setting-row { cursor: default; }
 /* Split view: a second note to the left of the main one */
 .split-panel { position: absolute; top: 0; bottom: 0; z-index: 14; display: flex; flex-direction: column; min-width: 280px; background: var(--glass); border-left: 1px solid var(--glass-border); backdrop-filter: blur(16px); box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4); }
 .split-panel .preview-scroll { flex: 1; overflow-y: auto; }
+
+/* Hotkeys dialog */
+.hotkeys-dialog { width: min(560px, calc(100vw - 32px)); max-height: min(720px, calc(100dvh - 48px)); display: flex; flex-direction: column; gap: 8px; }
+.hotkey-list { overflow-y: auto; min-height: 0; flex: 1; }
+.hotkey-row { cursor: default; padding: 4px 0; }
+.hotkey-btn { min-width: 110px; border: 1px solid var(--border); background: var(--bg-hover); color: var(--text-muted); font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-family: var(--font-mono); }
+.hotkey-btn.custom { color: var(--text); border-color: var(--accent-soft); }
+.hotkey-btn.recording { color: var(--on-accent); background: var(--accent); }
+.hotkey-warning { color: var(--warn); margin: 0; }
+
+/* ---------------------------------------------------------------- light theme */
+:root[data-theme='light'] {
+  --bg: #f6f4ef;
+  --bg-sidebar: rgba(250, 248, 244, 0.94);
+  --bg-elevated: #ffffff;
+  --glass: rgba(251, 250, 247, 0.94);
+  --glass-border: rgba(60, 50, 30, 0.14);
+  --bg-hover: rgba(60, 50, 30, 0.07);
+  --border: rgba(60, 50, 30, 0.13);
+  --text: #23211c;
+  --text-muted: #5f5a50;
+  --text-faint: #958f83;
+  --on-accent: #ffffff;
+  --active-line: rgba(0, 0, 0, 0.03);
+  --code: #8a5a14;
+  --code-bg: #efece5;
+  --tag-bg: rgba(90, 110, 60, 0.12);
+  --tag-text: #4d5e33;
+  --danger: #c43c3c;
+  --ok: #2f8a4a;
+  --warn: #a86a00;
+  color-scheme: light;
+}
+/* The brain views keep the dark "space" look in every theme. */
+:root[data-theme='light'] .atlas,
+:root[data-theme='light'] .brain,
+:root[data-theme='light'] .home-space,
+:root[data-theme='light'] .toolbar {
+  --bg: #141317;
+  --bg-sidebar: rgba(22, 21, 26, 0.9);
+  --bg-elevated: #1f1e24;
+  --glass: rgba(20, 19, 24, 0.88);
+  --glass-border: rgba(220, 205, 170, 0.14);
+  --bg-hover: rgba(220, 205, 170, 0.09);
+  --border: rgba(220, 205, 170, 0.12);
+  --text: #e9e5dc;
+  --text-muted: #a8a397;
+  --text-faint: #6e6a62;
+  --accent: var(--space-accent, #dcca9f);
+  --accent-soft: var(--space-accent-soft, rgba(220, 202, 159, 0.4));
+  --on-accent: #17161a;
+  color: var(--text);
+}
+:root[data-theme='light'] .atlas,
+:root[data-theme='light'] .brain {
+  background: #141317;
+}
+:root[data-theme='light'] .markdown pre code .tok-keyword { color: #7c3aed; }
+:root[data-theme='light'] .markdown pre code .tok-string, :root[data-theme='light'] .markdown pre code .tok-string2 { color: #2f7d32; }
+:root[data-theme='light'] .markdown pre code .tok-number, :root[data-theme='light'] .markdown pre code .tok-bool, :root[data-theme='light'] .markdown pre code .tok-atom { color: #c2410c; }
+:root[data-theme='light'] .markdown pre code .tok-propertyName, :root[data-theme='light'] .markdown pre code .tok-variableName2 { color: #1d4ed8; }
+:root[data-theme='light'] .markdown pre code .tok-typeName, :root[data-theme='light'] .markdown pre code .tok-className { color: #a16207; }
+.accent-swatches { display: flex; gap: 6px; }
+.accent-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.accent-swatch.on { border-color: var(--text); }
+.snippets-row { cursor: default; }
+
+/* Presentation (slides) */
+.presentation { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: flex; align-items: center; justify-content: center; cursor: default; }
+.presentation .slide { width: min(1100px, 92vw); max-height: 86vh; overflow: hidden; }
+.presentation .preview-scroll { overflow: visible; }
+.presentation .preview { font-size: clamp(18px, 2.3vw, 30px); padding: 0; max-width: none; }
+.presentation .preview h1 { font-size: 2.1em; }
+.presentation .preview h2 { font-size: 1.6em; }
+.presentation .slide-bar { position: absolute; right: 16px; bottom: 12px; display: flex; gap: 10px; align-items: center; color: var(--text-faint); font-size: 13px; font-family: var(--font-hud); }

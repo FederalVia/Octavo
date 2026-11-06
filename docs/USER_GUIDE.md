@@ -344,6 +344,36 @@ A brain is a separate vault: its own folder, notes, graph and settings. Use them
 - **Remove:** Settings → Brains → Remove. This only takes it off the list; the notes stay in their folder.
 - **Claude:** each brain is a separate connection (`octavo`, `octavo-work`, …). See [Separate brains](CONNECT_CLAUDE.md#separate-brains).
 
+## Tabs, split view and windows
+
+- **Tabs:** opening a note replaces the current tab. **Ctrl/Cmd+click** or **middle-click** a link (or a note in the file tree) opens it in a new tab, and **＋** in the tab bar opens any note in one. Middle-click a tab to close it. In the desktop app, **Ctrl+T**, **Ctrl+W** and **Ctrl+Tab** work like a browser. Open tabs are remembered.
+- **Split view:** command palette → *Show another note alongside*, right-click a tab, or right-click a note in the file tree → *Show alongside*. The second note is shown in reading view; **⇄** swaps it into the main pane to edit it.
+- **New window:** command palette → *Open this note in a new window*.
+- **Workspaces:** command palette → *Save workspace* stores the open tabs, split view, sidebar and brain view under a name; *Open workspace* brings it back.
+
+## Editing with live preview
+
+While you edit, Markdown is shown formatted: `**bold**` looks bold, `[[links]]` look like links, and `- [ ]` is a real checkbox. The symbols reappear on the line your cursor is on, so you can change them. Click a link to open it. To always see the raw Markdown, turn off **Settings → Editor → Live preview** (or command palette → *Show raw Markdown while editing*).
+
+## Calendar
+
+The **Calendar** tab (▦) in the sidebar shows a month. Days with a journal note are highlighted, and a dot means a task is due that day (red if it's overdue). Click a day to open or create its note, a week number for that week's note, or the month name for the month's note.
+
+## Slides, PDF and printing
+
+- **Slides:** command palette → *Start presentation*. Each part of the note between `---` lines is a slide. Use the arrow keys, space, or click (left third goes back). Esc leaves.
+- **PDF:** command palette → *Export to PDF*. The desktop app asks where to save the PDF. In a browser or on your phone, the print dialog opens: choose *Save as PDF* (on iPhone: Share → Print, then pinch out on the preview to get a PDF).
+
+## Appearance and hotkeys
+
+- **Settings → Appearance:** dark, light or match system, and an accent colour. These are saved on each device. The brain view always stays dark.
+- **CSS snippets:** put `.css` files in the brain's `.octavo/snippets` folder, then switch them on in **Settings → Appearance**. They apply to the whole app and are saved with the brain.
+- **Hotkeys:** **Settings → Editor → Hotkeys → Customize** (or command palette → *Customize hotkeys…*). Click a shortcut and press the keys you want; Backspace removes it. Hotkeys are saved with the brain, so they apply on every device.
+
+## Opening Markdown files (desktop)
+
+**File → Brains → Open Markdown File…** opens any `.md` file. You can also right-click a `.md` file in Explorer or Finder and choose *Open with → Octavo*. If the file isn't in one of your brains, Octavo asks to add its folder as a brain (nothing is moved or changed) so links between the notes in it work.
+
 ## Using it alongside Obsidian, git and other editors
 
 - The vault is just a folder of `.md` files. Octavo ignores hidden folders such as `.obsidian`, `.git` and `.trash`.

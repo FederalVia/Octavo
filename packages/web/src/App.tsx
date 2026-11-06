@@ -10,6 +10,11 @@ import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HistoryDialog } from './components/HistoryDialog';
 import { applyTemplate } from './templates';
 import { SplitPane } from './components/SplitPane';
+import { HotkeysDialog } from './components/HotkeysDialog';
+import { comboFromEvent, formatCombo, type Hotkeys } from './hotkeys';
+import { applySnippets } from './appearance';
+import { Presentation } from './components/Presentation';
+import { currentNoteBody, noteHtml, printHtml } from './exportNote';
 import { DEFAULT_SETTINGS, SettingsDialog, useDesktopUpdate, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { BookmarksPanel, CalendarPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
@@ -501,6 +506,106 @@ export function App() {
   useEffect(() => store('octavo.split', split), [split]);
   const [splitPick, setSplitPick] = useState(false);
   const [newTabPick, setNewTabPick] = useState(false);
+  // Custom keyboard shortcuts, saved with the vault.
+  const [hotkeys, setHotkeys] = useState<Hotkeys>({});
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const [presenting, setPresenting] = useState(false);
+  // Workspaces: named layouts (tabs, split, sidebar, view), saved with the vault.
+  type Workspace = { tabs: string[]; active: string | null; split: string | null; showLeft: boolean; leftTab: DrawerTab; viewMode: 'atlas' | 'network'; panelWide: boolean; mode: Mode };
+  const [workspaces, setWorkspaces] = useState<Record<string, Workspace>>({});
+  const [workspacePick, setWorkspacePick] = useState(false);
+  useEffect(() => {
+    api
+      .getConfig<Record<string, Workspace>>('workspaces')
+      .then((r) => setWorkspaces(r.value && typeof r.value === 'object' ? r.value : {}))
+      .catch(() => {});
+  }, []);
+  const saveWorkspace = useCallback(async () => {
+    const name = await prompt('Save workspace', '', { confirmLabel: 'Save', message: 'Saves the open tabs, split view, sidebar and brain view. Using an existing name replaces it.' });
+    if (!name?.trim()) return;
+    const next = {
+      ...workspaces,
+      [name.trim()]: { tabs, active: route.view === 'note' ? route.path : null, split, showLeft, leftTab, viewMode, panelWide, mode },
+    };
+    setWorkspaces(next);
+    api.setConfig('workspaces', next).catch(() => {});
+  }, [prompt, workspaces, tabs, route, split, showLeft, leftTab, viewMode, panelWide, mode]);
+  const loadWorkspace = useCallback(
+    (name: string) => {
+      const w = workspaces[name];
+      if (!w) return;
+      const have = new Set(notesRef.current.map((n) => n.path));
+      const keep = (w.tabs ?? []).filter((t) => have.has(t));
+      activeTab.current = null;
+      setTabs(keep);
+      setSplit(w.split && have.has(w.split) ? w.split : null);
+      setShowLeft(!!w.showLeft && !narrow());
+      if (w.leftTab) setLeftTab(w.leftTab);
+      if (w.viewMode) setViewMode(w.viewMode);
+      setPanelWide(!!w.panelWide);
+      if (w.mode) setMode(w.mode);
+      const active = w.active && have.has(w.active) ? w.active : keep[0];
+      if (active) {
+        activeTab.current = active;
+        navigate(active);
+      } else closePanelRef.current();
+    },
+    [workspaces, navigate],
+  );
+  const deleteWorkspace = useCallback(
+    (name: string) => {
+      const next = { ...workspaces };
+      delete next[name];
+      setWorkspaces(next);
+      api.setConfig('workspaces', next).catch(() => {});
+    },
+    [workspaces],
+  );
+  /** Print or export the current note as a PDF (from its reading view). */
+  const exportNote = useCallback(
+    async (kind: 'pdf' | 'print') => {
+      if (mode === 'edit') {
+        setMode('preview');
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      const body = currentNoteBody();
+      if (!body || route.view !== 'note') return;
+      const title = route.path.replace(/\.md$/, '').split('/').pop() ?? 'Note';
+      const html = noteHtml(title, body);
+      if (kind === 'pdf' && window.octavoDesktop?.exportPdf) await window.octavoDesktop.exportPdf(html, title);
+      else printHtml(html);
+    },
+    [mode, route],
+  );
+  const commandsRef = useRef<{ id: string; run: () => void }[]>([]);
+  useEffect(() => {
+    api
+      .getConfig<Hotkeys>('hotkeys')
+      .then((r) => setHotkeys(r.value && typeof r.value === 'object' ? r.value : {}))
+      .catch(() => {});
+  }, []);
+  // CSS snippets switched on for this vault.
+  const [snippetsOn, setSnippetsOn] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const on = (await api.getConfig<string[]>('snippets')).value;
+        const names = Array.isArray(on) ? on : [];
+        setSnippetsOn(names);
+        if (names.length) applySnippets((await api.snippets()).snippets.filter((x) => names.includes(x.name)));
+      } catch {
+        /* none */
+      }
+    })();
+  }, []);
+  const saveSnippetsOn = useCallback((names: string[]) => {
+    setSnippetsOn(names);
+    api.setConfig('snippets', names).catch(() => {});
+  }, []);
+  const saveHotkeys = useCallback((h: Hotkeys) => {
+    setHotkeys(h);
+    api.setConfig('hotkeys', h).catch(() => {});
+  }, []);
   /** Open a note in its own window (desktop: an app window; browser: a new window). */
   const popOut = useCallback((p: string) => {
     if (window.octavoDesktop?.popOut) window.octavoDesktop.popOut(p);
@@ -1085,11 +1190,23 @@ export function App() {
   // ---------------------------------------------------------------- shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A dialog or picker already handled this key (e.g. Escape closing it).
+      if (e.defaultPrevented) return;
+      if (!dialog && !hotkeysOpen && !palette && !switcher && !newTabPick && !splitPick && !mergeFrom) {
+        const combo = comboFromEvent(e);
+        const id = combo && Object.keys(hotkeys).find((k) => hotkeys[k] === combo);
+        const cmd = id && commandsRef.current.find((c) => c.id === id);
+        if (cmd) {
+          e.preventDefault();
+          cmd.run();
+          return;
+        }
+      }
       if (e.key === 'Escape' && settingsOpen && !dialog) {
         setSettingsOpen(false);
         return;
       }
-      if (e.key === 'Escape' && !dialog && !switcher && !palette && !historyOpen && !settingsOpen) {
+      if (e.key === 'Escape' && !dialog && !switcher && !palette && !historyOpen && !settingsOpen && !hotkeysOpen && !newTabPick && !splitPick && !mergeFrom) {
         const inEditor = (e.target as HTMLElement | null)?.closest?.('.cm-editor, input, textarea');
         if (!inEditor) {
           if (showLeft && narrow()) setShowLeft(false);
@@ -1140,7 +1257,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, switcher, palette, historyOpen, settingsOpen, showLeft, showSearch, closePanel, openDaily, newNote, save, route, closeTab, cycleTab]);
+  }, [dialog, switcher, palette, historyOpen, settingsOpen, showLeft, showSearch, closePanel, openDaily, newNote, save, route, closeTab, cycleTab, hotkeys, hotkeysOpen, newTabPick, splitPick, mergeFrom]);
 
   // ---------------------------------------------------------------- render
   const counts = useMemo(() => wordCount(draft), [draft]);
@@ -1155,6 +1272,14 @@ export function App() {
     { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
     { id: 'random', label: 'Open random note', run: openRandom },
     ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
+    { id: 'workspace-save', label: 'Save workspace (layout)…', keywords: 'layout tabs save', run: saveWorkspace },
+    ...(Object.keys(workspaces).length
+      ? [
+          { id: 'workspace-load', label: 'Open workspace…', keywords: 'layout tabs load switch', run: () => setTimeout(() => setWorkspacePick(true), 0) },
+          ...Object.keys(workspaces).map((n) => ({ id: `workspace-del:${n}`, label: `Delete workspace “${n}”`, keywords: 'layout remove', run: () => deleteWorkspace(n) })),
+        ]
+      : []),
+    { id: 'hotkeys', label: 'Customize hotkeys…', keywords: 'keyboard shortcuts bindings keys', run: () => setHotkeysOpen(true) },
     { id: 'settings', label: 'Open settings', keywords: 'preferences options encryption', run: () => setSettingsOpen(true) },
     { id: 'search', label: 'Search all notes', hint: `${mod}+Shift+F`, run: () => showSearch() },
     { id: 'tasks', label: 'Show all tasks', keywords: 'todo checkbox', run: () => openDrawer('tasks') },
@@ -1198,6 +1323,9 @@ export function App() {
             : []),
           { id: 'split', label: 'Show another note alongside (split view)…', keywords: 'pane side by side compare', run: () => setSplitPick(true) },
           ...(split ? [{ id: 'split-close', label: 'Close split view', keywords: 'pane', run: () => setSplit(null) }] : []),
+          { id: 'export-pdf', label: window.octavoDesktop ? 'Export to PDF…' : 'Export to PDF / print…', keywords: 'pdf save share print', run: () => exportNote('pdf') },
+          ...(window.octavoDesktop ? [{ id: 'print', label: 'Print…', keywords: 'printer paper', run: () => exportNote('print') }] : []),
+          { id: 'present', label: 'Start presentation (slides)', keywords: 'slides present deck fullscreen', run: () => setPresenting(true) },
           { id: 'popout', label: 'Open this note in a new window', keywords: 'pop out window detach', run: () => route.view === 'note' && popOut(route.path) },
           { id: 'merge', label: 'Merge this note into another…', keywords: 'combine composer duplicate join', run: () => setMergeFrom(route.path) },
           { id: 'copy', label: 'Copy link to this note', run: copyLink },
@@ -1210,6 +1338,7 @@ export function App() {
         ]
       : []),
   ];
+  commandsRef.current = commandItems;
   if (fatal) {
     return (
       <div className="fatal">
@@ -1665,7 +1794,7 @@ export function App() {
         <CommandPalette
           placeholder="Type a command…"
           onClose={() => setPalette(null)}
-          items={commandItems}
+          items={commandItems.map((c) => (hotkeys[c.id] ? { ...c, hint: formatCombo(hotkeys[c.id]) } : c))}
         />
       )}
       {(palette === 'templates' || palette === 'new-from-template') && (
@@ -1683,6 +1812,12 @@ export function App() {
       )}
       {settingsOpen && (
         <SettingsDialog
+          onOpenHotkeys={() => {
+            setSettingsOpen(false);
+            setHotkeysOpen(true);
+          }}
+          snippetsOn={snippetsOn}
+          setSnippetsOn={saveSnippetsOn}
           settings={settings}
           onChange={saveSettings}
           vimMode={vimMode}
@@ -1724,6 +1859,22 @@ export function App() {
       {switcher && (
         <QuickSwitcher notes={notes} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} onClose={() => setSwitcher(false)} />
       )}
+      {workspacePick && (
+        <CommandPalette
+          placeholder="Open workspace…"
+          onClose={() => setWorkspacePick(false)}
+          items={Object.keys(workspaces).map((n) => ({
+            id: `ws:${n}`,
+            label: n,
+            hint: `${workspaces[n].tabs?.length ?? 0} tab${workspaces[n].tabs?.length === 1 ? '' : 's'}`,
+            run: () => loadWorkspace(n),
+          }))}
+        />
+      )}
+      {presenting && detail && (
+        <Presentation content={draft} path={detail.path} exists={exists} namesKey={namesKey} onClose={() => setPresenting(false)} />
+      )}
+      {hotkeysOpen && <HotkeysDialog commands={commandItems} hotkeys={hotkeys} onChange={saveHotkeys} onClose={() => setHotkeysOpen(false)} />}
       {newTabPick && (
         <QuickSwitcher
           notes={notes}

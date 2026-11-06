@@ -14,3 +14,13 @@ test('template variables', () => {
   assert.equal(t('{{weekday}}, week {{week}} of {{month}} {{year}}'), 'Friday, week 45 of November 2026');
   assert.equal(t('{{unknown}} stays'), '{{unknown}} stays');
 });
+
+import { splitSlides } from '../src/components/Presentation.tsx';
+test('slides split at --- outside code and frontmatter', () => {
+  const md = '---\ntitle: x\n---\n# One\n\ntext\n\n---\n\n# Two\n\n```\n---\n```\n---\n# Three\n';
+  const s = splitSlides(md);
+  assert.equal(s.length, 3);
+  assert.match(s[0], /^# One/);
+  assert.match(s[1], /# Two[\s\S]*```\n---\n```/);
+  assert.match(s[2], /# Three/);
+});
