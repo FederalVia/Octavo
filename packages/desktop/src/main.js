@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
 import updaterPkg from 'electron-updater';
 import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose } from '@octavo/server';
 
@@ -144,8 +145,52 @@ async function checkForUpdates() {
   return updateState;
 }
 
-function installUpdate() {
+/**
+ * Process IDs of the Octavo copies Claude Desktop runs in the background as its
+ * memory (MCP) server. They keep Octavo.exe in use, so Windows can't replace it.
+ */
+function claudeCopies() {
+  if (process.platform !== 'win32') return Promise.resolve([]);
+  const exe = process.execPath.replace(/'/g, "''");
+  const ps =
+    `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq '${exe}' -and ` +
+    `$_.CommandLine -like '*cli.mjs*' -and $_.ProcessId -ne ${process.pid} } | ForEach-Object { $_.ProcessId }`;
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { timeout: 20_000, windowsHide: true }, (err, stdout) =>
+      resolve(err ? [] : String(stdout).split(/\s+/).filter(Boolean).map(Number).filter(Number.isInteger)),
+    );
+  });
+}
+
+function killProcesses(pids) {
+  for (const pid of pids) {
+    try {
+      process.kill(pid);
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
+async function installUpdate() {
   if (updateState.status === 'ready') {
+    const copies = await claudeCopies();
+    if (copies.length) {
+      const { response } = await dialog.showMessageBox(win ?? undefined, {
+        type: 'info',
+        title: 'Update Octavo',
+        message: 'Claude is using Octavo right now',
+        detail:
+          'Claude Desktop runs Octavo in the background as its memory. To update, Octavo will close that connection.\n\n' +
+          'When the update is done, quit Claude (right-click its icon next to the clock → Quit) and open it again so it reconnects.',
+        buttons: ['Update now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (response !== 0) return updateState;
+      killProcesses(copies);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
     // Closes Octavo, installs the new version and starts it again.
     setImmediate(() => autoUpdater.quitAndInstall(false, true));
   } else if (updateState.status === 'available' && updateState.version) {
@@ -722,7 +767,17 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform !== 'darwin') app.quit();
   });
 
+  let checkedClaudeOnQuit = false;
   app.on('before-quit', async (e) => {
+    // A downloaded update normally installs when Octavo quits. If Claude is using Octavo,
+    // that would fail (or cut Claude off without warning), so keep it for the restart prompt.
+    if (!checkedClaudeOnQuit && process.platform === 'win32' && updateState.status === 'ready' && autoUpdater.autoInstallOnAppQuit) {
+      e.preventDefault();
+      checkedClaudeOnQuit = true;
+      if ((await claudeCopies()).length) autoUpdater.autoInstallOnAppQuit = false;
+      app.quit();
+      return;
+    }
     if (remote) {
       // Close the router ports before quitting.
       e.preventDefault();
