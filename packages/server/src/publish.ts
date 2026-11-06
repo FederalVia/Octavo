@@ -487,7 +487,7 @@ function page(p: { title: string; site: string; url: string; main: string; descr
 <title>${esc(p.title === p.site ? p.site : `${p.title} · ${p.site}`)}</title>
 ${p.description ? `<meta name="description" content="${esc(p.description)}">\n` : ''}<meta name="generator" content="Octavo ${VERSION}">
 <link rel="stylesheet" href="${root('assets/site.css')}">
-${hasMath ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">\n' : ''}</head>
+${hasMath ? '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.18.10/dist/katex.min.css">\n' : ''}</head>
 <body data-root="${esc(root('index.html').replace(/index\.html$/, ''))}">
 <header class="top">
   <a class="site" href="${root('index.html')}">${esc(p.site)}</a>
