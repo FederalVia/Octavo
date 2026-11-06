@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('octavoDesktop', {
   toggleRemote: () => ipcRenderer.invoke('octavo:toggle-remote'),
   togglePhone: () => ipcRenderer.invoke('octavo:toggle-phone'),
   showQr: () => ipcRenderer.invoke('octavo:show-qr'),
+  retryRemote: () => ipcRenderer.invoke('octavo:retry-remote'),
+  openRemoteLog: () => ipcRenderer.invoke('octavo:remote-log'),
   // Updates
   getUpdate: () => ipcRenderer.invoke('octavo:update-state'),
   checkForUpdates: () => ipcRenderer.invoke('octavo:check-updates'),

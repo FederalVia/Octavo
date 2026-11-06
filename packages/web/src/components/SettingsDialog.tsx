@@ -153,6 +153,9 @@ export interface DesktopBridge {
   toggleRemote(): Promise<DesktopState>;
   togglePhone(): Promise<DesktopState>;
   showQr(): Promise<DesktopState>;
+  /** Added in 0.5.2; older desktop apps don't have them. */
+  retryRemote?(): Promise<DesktopState>;
+  openRemoteLog?(): Promise<void>;
   getUpdate(): Promise<UpdateState | null>;
   checkForUpdates(): Promise<UpdateState | null>;
   installUpdate(): Promise<UpdateState | null>;
@@ -415,6 +418,40 @@ function PhoneSection() {
           {state?.remote ? 'Turn off' : 'Turn on'}
         </button>
       </div>
+      {state?.remote && rs?.state === 'error' && (
+        <div className="setting-row remote-problem">
+          <div>
+            <b>⚠ {rs.step}</b>
+            {rs.advice && <span className="small">{rs.advice}</span>}
+          </div>
+          <div className="remote-actions">
+            {desktop.retryRemote && (
+              <button className="btn primary" disabled={busy} onClick={() => run(desktop.retryRemote!)}>
+                Try again
+              </button>
+            )}
+            {desktop.openRemoteLog && (
+              <button className="btn" disabled={busy} onClick={() => void desktop.openRemoteLog!()}>
+                Show log
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {state?.remote && rs?.state === 'ready' && (
+        <p className="muted small remote-note">
+          Address: {rs.url}. On your home Wi-Fi this address may not open (many routers can’t loop back to their own internet address); test it on mobile data,
+          or turn on Home Wi-Fi only for use at home.
+          {desktop.openRemoteLog && (
+            <>
+              {' '}
+              <button className="link" onClick={() => void desktop.openRemoteLog!()}>
+                Show log
+              </button>
+            </>
+          )}
+        </p>
+      )}
       <div className="setting-row">
         <div>
           <b>Home Wi-Fi only</b>
