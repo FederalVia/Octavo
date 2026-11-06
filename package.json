@@ -13,6 +13,7 @@
   "scripts": {
     "build": "npm run build -w @ultron/core && npm run build -w @ultron/server && npm run build -w @ultron/web",
     "start": "node packages/server/dist/cli.js serve",
+    "demo": "node packages/server/dist/cli.js serve --vault examples/demo-vault",
     "mcp": "node packages/server/dist/cli.js mcp",
     "dev:server": "npm run dev -w @ultron/server",
     "dev:web": "npm run dev -w @ultron/web",
