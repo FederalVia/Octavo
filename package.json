@@ -1,6 +1,6 @@
 {
   "name": "octavo",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "description": "An Obsidian-like Markdown knowledge base that doubles as Claude's long-term memory via MCP.",
   "type": "module",
