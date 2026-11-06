@@ -217,6 +217,8 @@ export function App() {
   // Graph refreshes are coalesced: one request in flight, at most one queued behind it (every caller asking
   // meanwhile shares it), at least GRAPH_GAP_MS apart, and an unchanged graph isn't parsed or re-rendered.
   // A burst of edits by Claude then costs a handful of refreshes instead of one per edit.
+  /** Ids in the graph last fetched: tells a note that's new to the brain from one it already shows. */
+  const graphIds = useRef(new Set<string>());
   const graphJob = useRef({ text: '', last: 0, running: null as Promise<void> | null, queued: null as Promise<void> | null });
   const refreshGraph = useCallback((): Promise<void> => {
     const job = graphJob.current;
@@ -228,7 +230,9 @@ export function App() {
       const text = await api.graphText();
       if (text === job.text) return;
       job.text = text;
-      setGraph(JSON.parse(text) as GraphData);
+      const next = JSON.parse(text) as GraphData;
+      graphIds.current = new Set(next.nodes.map((n) => n.id));
+      setGraph(next);
     };
     const queued: Promise<void> = (job.running ?? Promise.resolve())
       .catch(() => {})
@@ -727,7 +731,14 @@ export function App() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let firstPending = 0;
-    const toFire = new Set<string>();
+    // Each changed note lights up the moment its event arrives, so a burst of edits glows all at once; only the
+    // refreshes below are batched. A note the brain doesn't have yet (just created) lights up when it appears.
+    const lightUp = (path: string) => {
+      (brain.current?.visit ?? brain.current?.fire)?.(path);
+      if (!graphIds.current.has(path)) fresh.add(path);
+    };
+    // New notes, lit up again once the refresh has added them (the atlas also does this itself; it ignores the repeat).
+    const fresh = new Set<string>();
     let needNotes = false;
     let needGraph = false;
     const unsub = subscribe(
@@ -742,14 +753,14 @@ export function App() {
           // Our own autosave: nothing to light up, and the graph only needs refreshing if links/tags changed.
           const saved = ownSaves.current.get(e.path);
           const own = saved !== undefined && Date.now() - saved < 5000;
-          if (!own) toFire.add(e.path);
+          if (!own) lightUp(e.path);
           if (e.graphChanged !== false) needGraph = needNotes = true;
           else if (!own) needNotes = true;
         } else {
           needGraph = needNotes = true;
         }
         if (e.type === 'rename') {
-          toFire.add(e.to);
+          lightUp(e.to);
           setTabs((ts) => ts.map((t) => (t === e.from ? e.to : t)));
           setSplit((sp) => (sp === e.from ? e.to : sp));
         }
@@ -764,12 +775,11 @@ export function App() {
           timer = null;
           firstPending = 0;
           if (needNotes) refreshNotes().catch(() => {});
-          // Light up the thoughts that just changed once the graph includes them.
-          const fire = [...toFire];
-          toFire.clear();
-          const lightUp = () => setTimeout(() => fire.forEach((p) => (brain.current?.visit ?? brain.current?.fire)?.(p)), 60);
-          if (needGraph) refreshGraph().then(lightUp).catch(() => {});
-          else if (fire.length) lightUp();
+          const added = [...fresh];
+          fresh.clear();
+          const lightAdded = () =>
+            setTimeout(() => added.forEach((p) => graphIds.current.has(p) && (brain.current?.visit ?? brain.current?.fire)?.(p)), 60);
+          if (needGraph) refreshGraph().then(lightAdded).catch(() => {});
           needNotes = needGraph = false;
           refreshCurrentRef.current();
           setRefreshKey((k) => k + 1);

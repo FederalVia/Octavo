@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GraphData } from '../api';
 import { REGIONS, REGION_BY_KEY, classify, type RegionKey } from '../regions';
 import type { BrainHandle } from './BrainView';
@@ -28,6 +28,8 @@ interface ANode {
   z: number;
   phase: number;
   firedAt: number;
+  /** Unresolved only: the note it floats beside. */
+  anchor?: string;
   // Per-frame projection.
   sx: number;
   sy: number;
@@ -162,15 +164,20 @@ function makeDust(R: number): [number, number, number][] {
   return dust;
 }
 
-/** A fixed pseudo-random rank per link, so the sample drawn in crowded vaults doesn't reshuffle on every edit. */
-function linkRank(a: string, b: string): number {
+/** A fixed hash of a note id (FNV-1a). */
+function idHash(id: string): number {
   let h = 2166136261;
-  for (let i = 0; i < a.length; i++) h = Math.imul(h ^ a.charCodeAt(i), 16777619);
-  h = Math.imul(h ^ 0, 16777619);
-  for (let i = 0; i < b.length; i++) h = Math.imul(h ^ b.charCodeAt(i), 16777619);
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x85ebca6b);
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/** A fixed pseudo-random rank per link, from its notes' id hashes, so the sample drawn in crowded vaults doesn't
+ *  reshuffle on every edit. */
+function linkRank(a: number, b: number): number {
+  let h = Math.imul(a ^ Math.imul(b, 0x9e3779b1), 0x85ebca6b);
   h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
   return h >>> 0;
 }
 
@@ -266,7 +273,8 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
     if (!anchor) continue;
     const old = prev?.byId.get(n.id);
     let pos: { x: number; y: number; z: number; phase: number };
-    if (reuse && old?.unresolved) pos = old;
+    // Kept while the same note still anchors it; otherwise it moves next to its new anchor.
+    if (reuse && old?.unresolved && old.anchor === source) pos = old;
     else {
       const rnd = seeded(n.id);
       pos = {
@@ -288,6 +296,7 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
       z: pos.z,
       phase: pos.phase,
       firedAt: old?.firedAt ?? -1e9,
+      anchor: source,
     };
     nodes.push(node);
     byId.set(n.id, node);
@@ -296,33 +305,53 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
   const links: ALink[] = [];
   const neighbors = new Map<string, Set<string>>();
   const adjacency = new Map<string, ALink[]>();
+  const connect = (x: ANode, y: ANode, link: ALink) => {
+    let near = neighbors.get(x.id);
+    if (!near) neighbors.set(x.id, (near = new Set()));
+    near.add(y.id);
+    let adj = adjacency.get(x.id);
+    if (!adj) adjacency.set(x.id, (adj = []));
+    adj.push(link);
+  };
+  const hash = new Map<ANode, number>();
+  const hashOf = (n: ANode) => {
+    let h = hash.get(n);
+    if (h === undefined) hash.set(n, (h = idHash(n.id)));
+    return h;
+  };
+  const ranks: number[] = [];
   for (const l of data.links) {
     const a = byId.get(l.source);
     const b = byId.get(l.target);
     if (!a || !b) continue;
     const link: ALink = { a, b, mega: a.degree >= megaCut || b.degree >= megaCut, surprise: surprising.has(a.id) || surprising.has(b.id) };
     links.push(link);
-    for (const [x, y] of [
-      [a, b],
-      [b, a],
-    ]) {
-      if (!neighbors.has(x.id)) neighbors.set(x.id, new Set());
-      neighbors.get(x.id)!.add(y.id);
-      if (!adjacency.has(x.id)) adjacency.set(x.id, []);
-      adjacency.get(x.id)!.push(link);
-    }
+    ranks.push(linkRank(hashOf(a), hashOf(b)));
+    connect(a, b, link);
+    connect(b, a, link);
   }
 
   const dust = reuse ? reuse.dust : makeDust(R);
 
   // A random but stable order: an edit adds or drops its own links without reshuffling the rest of the sample.
-  const ranks = new Float64Array(links.length);
-  for (let i = 0; i < links.length; i++) ranks[i] = linkRank(links[i].a.id, links[i].b.id);
-  const order = Array.from(links.keys()).sort((i, j) => ranks[i] - ranks[j]);
-  const sampled = order.map((i) => links[i]);
+  // Each key packs the link's rank above its index, so a plain numeric sort (no comparator) orders them.
+  let sampled: ALink[];
+  if (links.length < 2 ** 21) {
+    const keys = new Float64Array(links.length);
+    for (let i = 0; i < links.length; i++) keys[i] = ranks[i] * 2 ** 21 + i;
+    keys.sort();
+    sampled = Array.from(keys, (k) => links[k % 2 ** 21]);
+  } else {
+    sampled = Array.from(links.keys())
+      .sort((i, j) => ranks[i] - ranks[j])
+      .map((i) => links[i]);
+  }
   const topHubCut = degrees[Math.min(degrees.length - 1, 7)] ?? Infinity;
   return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled, topHubCut, geo, drift };
 }
+
+/** How long a note that isn't laid out yet stays waiting to light up. */
+const PENDING_FIRE_MS = 15_000;
 
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
 
@@ -389,6 +418,8 @@ function addToTrail(id: string) {
   const now = Date.now();
   trail = trail.filter((x) => now - x.t < TRAIL_MS);
   const last = trail[trail.length - 1];
+  // The same note reported again moments later (a new note, by its event and once the graph has it): one step.
+  if (last?.id !== id && trail.some((x) => x.id === id && now - x.t < 3000)) return;
   if (last?.id === id) last.t = now;
   else trail.push({ id, t: now });
   if (trail.length > 300) trail = trail.slice(-300);
@@ -418,15 +449,17 @@ export function AtlasView(props: Props) {
     }
   }, [labels, hidden, showTrail, bridges]);
 
-  // Each update builds on the last layout, so existing notes keep their place and only changes cost anything.
-  const lastLayout = useRef<Layout | null>(null);
-  const layout = useMemo(() => {
-    if (!props.data) return null;
-    return (lastLayout.current = buildLayout(props.data, lastLayout.current));
-  }, [props.data]);
+  // The layout on screen (for the legend's counts and flying to the selection). Built from props.data below.
+  const [layout, setLayout] = useState<Layout | null>(null);
 
   const st = useRef({
     layout: null as Layout | null,
+    /** Newer graph data waiting for the drag to end. */
+    pending: null as GraphData | null,
+    /** Notes asked to light up before the layout has them (a note Claude just created or renamed: its event
+     *  arrives before the graph refresh that adds it). Fired as soon as a layout with them is swapped in. */
+    pendingFires: [] as { id: string; t: number }[],
+    fire: (_id: string) => {},
     cam: { yaw: -Math.PI / 2 + 0.38, pitch: 0.16, zoom: 1, tx: 0, ty: 0, tz: 0 },
     camGoal: null as null | { zoom: number; tx: number; ty: number; tz: number },
     lastInteract: 0,
@@ -458,22 +491,29 @@ export function AtlasView(props: Props) {
   st.current.hidden = hidden;
   st.current.filter = filter.trim().toLowerCase();
 
-  // Swap in a new layout, carrying over firing state. Not mid-drag: that would hitch the rotation, so a layout
-  // that arrives while dragging waits for the pointer to be released (a newer one replaces it meanwhile).
+  // Lay out new graph data, building on the layout on screen so existing notes keep their place (and their
+  // firing state). Not mid-drag: even a cheap update would hitch the rotation, and a full re-layout would move
+  // notes under the pointer. Data that arrives while dragging waits for the release, and newer data replaces it.
   useEffect(() => {
     const s = st.current;
-    if (!layout) return;
+    const data = props.data;
+    if (!data) return;
     const apply = () => {
-      if (s.layout) {
-        for (const n of layout.nodes) {
-          const old = s.layout.byId.get(n.id);
-          if (old) n.firedAt = old.firedAt;
-        }
-      }
-      s.layout = layout;
-      s.rings = s.rings.filter((r) => layout.byId.has(r.node.id)).map((r) => ({ ...r, node: layout.byId.get(r.node.id)! }));
+      const next = buildLayout(data, s.layout);
+      s.layout = next;
+      s.pending = null;
+      s.rings = s.rings.filter((r) => next.byId.has(r.node.id)).map((r) => ({ ...r, node: next.byId.get(r.node.id)! }));
       s.pulses = [];
-      if (s.hover) s.hover = layout.byId.get(s.hover.id) ?? null;
+      if (s.hover) s.hover = next.byId.get(s.hover.id) ?? null;
+      // Light up waiting notes the new layout has; keep the rest a while (the graph may not include them yet).
+      const now = performance.now();
+      const waiting = s.pendingFires;
+      s.pendingFires = [];
+      for (const f of waiting) {
+        if (next.byId.has(f.id)) s.fire(f.id);
+        else if (now - f.t < PENDING_FIRE_MS) s.pendingFires.push(f);
+      }
+      setLayout(next);
       s.kick();
     };
     const busy = () => !!s.drag || s.pointers.size > 0;
@@ -481,25 +521,30 @@ export function AtlasView(props: Props) {
       apply();
       return;
     }
+    s.pending = data;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // The canvas's own pointerup handler runs first (the event bubbles here), then this checks it ended the drag.
-    const onUp = () => {
+    const stop = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => {
-        if (busy()) return;
-        window.removeEventListener('pointerup', onUp);
-        window.removeEventListener('pointercancel', onUp);
-        apply();
-      });
-    };
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      clearTimeout(timer);
+      clearInterval(poll);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
     };
-  }, [layout]);
+    const tryApply = () => {
+      if (busy()) return;
+      stop();
+      apply();
+    };
+    // The canvas's own pointerup handler runs first (the event bubbles here), then this checks it ended the drag.
+    const onUp = () => {
+      clearTimeout(timer);
+      timer = setTimeout(tryApply);
+    };
+    // In case a pointer's release never reaches us (lost capture, window switch): check now and then too.
+    const poll = setInterval(tryApply, 1000);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return stop;
+  }, [props.data]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -575,7 +620,15 @@ export function AtlasView(props: Props) {
 
     const fire = (id: string) => {
       const n = s.layout?.byId.get(id);
-      if (!n) return;
+      if (!n) {
+        // Not laid out yet (a new note): light it up as soon as a layout has it.
+        const t = performance.now();
+        s.pendingFires = s.pendingFires.filter((f) => f.id !== id && t - f.t < PENDING_FIRE_MS).slice(-299);
+        s.pendingFires.push({ id, t });
+        return;
+      }
+      // Asked twice at once (a new note, by its own event and again once the graph has it): one ripple is enough.
+      if (performance.now() - n.firedAt < 300) return;
       n.firedAt = performance.now();
       s.lastFire = n.firedAt;
       kick();
@@ -602,6 +655,7 @@ export function AtlasView(props: Props) {
       addToTrail(id);
       fire(id);
     };
+    s.fire = fire;
     propsRef.current.onReady?.({ fire, focus, visit });
 
     const tmp = [0, 0, 0, 0];
