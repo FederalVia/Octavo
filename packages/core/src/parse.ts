@@ -106,6 +106,11 @@ function lineAt(text: string, index: number, offset: number): number {
   return line + offset;
 }
 
+/** A reference to a non-Markdown file (image, PDF, audio…) rather than a note. */
+export function isAttachmentRef(target: string): boolean {
+  return /\.[a-z0-9]{2,5}$/i.test(target) && !/\.md$/i.test(target);
+}
+
 export function parseNote(content: string): ParsedNote {
   const { frontmatter, body, lineOffset } = splitFrontmatter(content);
   const masked = maskCode(body);
@@ -132,6 +137,8 @@ export function parseNote(content: string): ParsedNote {
   for (const m of masked.matchAll(WIKILINK_RE)) {
     const { target, heading, alias } = parseWikiInner(m[2]);
     if (!target && !heading) continue;
+    // ![[photo.png]], [[report.pdf]]: attachments, not links to notes.
+    if (isAttachmentRef(target)) continue;
     links.push({
       target,
       heading,

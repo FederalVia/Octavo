@@ -115,11 +115,13 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `get_backlinks` | Notes linking to a note, with the linking lines | |
 | `get_related` | Related notes via links, backlinks, shared tags and two-step links | |
 | `list_tags` | All tags with counts | |
+| `list_tasks` | Tasks (`- [ ] …`) across the vault, or in one note, with line numbers | |
 | `write_note` | Create a note or replace its content (`create_only` to never overwrite) | ✓ |
 | `append_to_note` | Append to the end, or under a heading (created if missing) | ✓ |
 | `edit_note` | Replace an exact snippet of text | ✓ |
 | `rename_note` | Rename or move; updates every link to it | ✓ |
 | `delete_note` | Move to `.trash` (recoverable) | ✓ |
+| `update_task` | Tick, untick or set a task's status (`x`, `-`, `?`…) by note and line | ✓ |
 | `log_to_journal` | Add a timestamped entry to today's journal note | ✓ |
 
 Note paths are relative to the vault (`Projects/Ultron.md`). The `.md` extension is optional, and a bare name like `Ultron` resolves the same way a wikilink does.

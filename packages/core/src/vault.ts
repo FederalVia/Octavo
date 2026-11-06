@@ -98,6 +98,9 @@ export class Vault extends EventEmitter {
   readonly root: string;
   readonly dailyFolder: string;
   private notes = new Map<string, IndexedNote>();
+  /** Non-Markdown files (attachments): lower-cased basename -> vault paths. */
+  private attachments = new Map<string, Set<string>>();
+  private lastSnapshot = new Map<string, number>();
   private byName = new Map<string, Set<string>>();
   private byAlias = new Map<string, Set<string>>();
   private watcher: fs.FSWatcher | null = null;
@@ -208,7 +211,7 @@ export class Vault extends EventEmitter {
     return true;
   }
 
-  private async walk(dirRel: string, out: string[]): Promise<void> {
+  private async walk(dirRel: string, out: string[], other?: string[]): Promise<void> {
     let entries: fs.Dirent[];
     try {
       entries = await fsp.readdir(this.abs(dirRel || '.'), { withFileTypes: true });
@@ -218,15 +221,19 @@ export class Vault extends EventEmitter {
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name === 'node_modules') continue;
       const rel = dirRel ? `${dirRel}/${e.name}` : e.name;
-      if (e.isDirectory()) await this.walk(rel, out);
+      if (e.isDirectory()) await this.walk(rel, out, other);
       else if (e.isFile() && e.name.toLowerCase().endsWith('.md')) out.push(rel);
+      else if (e.isFile()) other?.push(rel);
     }
   }
 
   /** Full rescan of the vault folder, reconciling the index with disk. */
   async rescan(emit = true): Promise<void> {
     const files: string[] = [];
-    await this.walk('', files);
+    const other: string[] = [];
+    await this.walk('', files, other);
+    this.attachments = new Map();
+    for (const rel of other) this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
     const seen = new Set(files);
     let changed = false;
     for (const rel of files) {
@@ -573,6 +580,7 @@ export class Vault extends EventEmitter {
     if (stat && opts.expectedMtime != null && Math.abs(stat.mtimeMs - opts.expectedMtime) > 1) {
       throw new NoteConflictError(rel, stat.mtimeMs);
     }
+    if (stat) await this.snapshot(rel, content);
     const newStat = await this.atomicWrite(rel, content);
     const note = this.buildIndexed(rel, content, newStat);
     this.setIndexed(note);
@@ -760,6 +768,210 @@ export class Vault extends EventEmitter {
       updatedNotes.push(target);
     }
     return { from, to, updatedNotes, updatedLinks };
+  }
+
+
+  // ---------------------------------------------------------------- attachments
+
+  /** Resolve an attachment reference (path or bare file name, like Obsidian) to a vault path. */
+  resolveAttachment(ref: string, fromPath?: string): string | null {
+    const clean = ref.trim().replace(/\\/g, '/').replace(/^\.?\/+/, '');
+    if (!clean) return null;
+    if (fromPath) {
+      const rel = path.posix.normalize(path.posix.join(noteFolder(fromPath), clean));
+      if (!rel.startsWith('..') && [...this.attachments.values()].some((set) => set.has(rel))) return rel;
+    }
+    for (const set of this.attachments.values()) if (set.has(clean)) return clean;
+    const byName = [...(this.attachments.get(path.posix.basename(clean).toLowerCase()) ?? [])];
+    if (byName.length === 0) return null;
+    return byName.sort((a, b) => a.length - b.length)[0];
+  }
+
+  /** Absolute path of an attachment or note, for streaming it to a client. */
+  filePath(rel: string): string {
+    const clean = rel.replace(/\\/g, '/');
+    if (clean.split('/').some((seg) => seg === '..' || seg.startsWith('.'))) throw new VaultPathError(`Invalid path: ${rel}`);
+    return this.abs(clean);
+  }
+
+  /** Save an uploaded file into the attachments folder, picking a free name. */
+  async saveAttachment(name: string, data: Buffer, folder = 'attachments'): Promise<string> {
+    const base = path.posix.basename(name.replace(/\\/g, '/')).replace(/[^\p{L}\p{N}._ -]/gu, '_') || 'file';
+    if (base.startsWith('.')) throw new VaultPathError('Invalid file name');
+    const dir = normalizeFolderPath(folder);
+    const ext = path.posix.extname(base);
+    const stem = base.slice(0, base.length - ext.length);
+    let rel = dir ? `${dir}/${base}` : base;
+    for (let i = 1; await fsp.stat(this.abs(rel)).catch(() => null); i++) rel = `${dir ? dir + '/' : ''}${stem} ${i}${ext}`;
+    await fsp.mkdir(path.dirname(this.abs(rel)), { recursive: true });
+    await fsp.writeFile(this.abs(rel), data);
+    this.addToMap(this.attachments, path.posix.basename(rel).toLowerCase(), rel);
+    this.emitEvent({ type: 'rescan' });
+    return rel;
+  }
+
+  // ---------------------------------------------------------------- history
+
+  private historyDir(rel: string): string {
+    return path.join(this.root, '.ultron', 'history', ...rel.split('/'));
+  }
+
+  /**
+   * Keep a copy of a note's previous content before it is overwritten.
+   * At most one snapshot per note every 5 minutes, and the newest 50 are kept.
+   */
+  private async snapshot(rel: string, nextContent: string): Promise<void> {
+    const prev = this.notes.get(rel)?.content ?? (await fsp.readFile(this.abs(rel), 'utf8').catch(() => null));
+    if (prev == null || prev === nextContent || prev.trim() === '') return;
+    const now = Date.now();
+    if (now - (this.lastSnapshot.get(rel) ?? 0) < 5 * 60 * 1000) return;
+    this.lastSnapshot.set(rel, now);
+    const dir = this.historyDir(rel);
+    try {
+      await fsp.mkdir(dir, { recursive: true });
+      await fsp.writeFile(path.join(dir, `${now}.md`), prev, 'utf8');
+      const all = (await fsp.readdir(dir)).filter((f) => /^\d+\.md$/.test(f)).sort();
+      for (const old of all.slice(0, Math.max(0, all.length - 50))) await fsp.rm(path.join(dir, old), { force: true });
+    } catch (err) {
+      console.error('[ultron] could not save history snapshot:', err);
+    }
+  }
+
+  /** Saved versions of a note, newest first. */
+  async history(nameOrPath: string): Promise<{ id: string; time: number; size: number }[]> {
+    const rel = this.resolve(nameOrPath) ?? normalizeNotePath(nameOrPath);
+    const dir = this.historyDir(rel);
+    const files = await fsp.readdir(dir).catch(() => [] as string[]);
+    const out: { id: string; time: number; size: number }[] = [];
+    for (const f of files) {
+      const m = /^(\d+)\.md$/.exec(f);
+      if (!m) continue;
+      const st = await fsp.stat(path.join(dir, f));
+      out.push({ id: m[1], time: Number(m[1]), size: st.size });
+    }
+    return out.sort((a, b) => b.time - a.time);
+  }
+
+  async readVersion(nameOrPath: string, id: string): Promise<string> {
+    if (!/^\d+$/.test(id)) throw new VaultPathError('Invalid version id');
+    const rel = this.resolve(nameOrPath) ?? normalizeNotePath(nameOrPath);
+    try {
+      return await fsp.readFile(path.join(this.historyDir(rel), `${id}.md`), 'utf8');
+    } catch {
+      throw new NoteNotFoundError(`${rel} (version ${id})`);
+    }
+  }
+
+  /** Restore an old version (the current content is snapshotted first, so this can be undone). */
+  async restoreVersion(nameOrPath: string, id: string): Promise<NoteSummary> {
+    const content = await this.readVersion(nameOrPath, id);
+    const rel = this.resolve(nameOrPath) ?? normalizeNotePath(nameOrPath);
+    this.lastSnapshot.delete(rel);
+    return this.write(rel, content);
+  }
+
+  // ---------------------------------------------------------------- insights
+
+  /** Notes that mention this note's name (or aliases) in plain text without linking to it. */
+  unlinkedMentions(nameOrPath: string): Backlink[] {
+    const target = this.requireNote(nameOrPath);
+    const names = [target.name, ...target.aliases].filter((n) => n.length >= 3);
+    if (!names.length) return [];
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(^|[^\\p{L}\\p{N}_\\[])(${names.map(esc).join('|')})(?=$|[^\\p{L}\\p{N}_\\]])`, 'iu');
+    const out: Backlink[] = [];
+    for (const n of this.notes.values()) {
+      if (n.path === target.path) continue;
+      if (n.links.some((l) => this.resolveLink(l, n.path) === target.path)) continue;
+      const { body } = splitFrontmatter(n.content);
+      const offset = n.content.slice(0, n.content.length - body.length).split('\n').length - 1;
+      const lines = maskCode(body).split('\n');
+      const orig = body.split('\n');
+      const context: { line: number; text: string }[] = [];
+      lines.forEach((line, i) => {
+        // Ignore text inside [[...]] so links to other notes don't count.
+        if (context.length < 3 && re.test(line.replace(/\[\[[^\]]*\]\]/g, (m) => ' '.repeat(m.length)))) {
+          context.push({ line: i + 1 + offset, text: orig[i].trim() });
+        }
+      });
+      if (context.length) out.push({ path: n.path, name: n.name, context });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Orphans (nothing links in), dead ends (link nowhere) and links to missing notes. */
+  insights(): { orphans: NoteSummary[]; deadEnds: NoteSummary[]; unresolved: { target: string; from: string[] }[] } {
+    const incoming = new Set<string>();
+    const outgoing = new Set<string>();
+    for (const n of this.notes.values()) {
+      for (const l of n.links) {
+        if (!l.target) continue;
+        outgoing.add(n.path);
+        const p = this.resolveLink(l, n.path);
+        if (p && p !== n.path) incoming.add(p);
+      }
+    }
+    // Templates are meant to stand alone, so they're not reported.
+    const all = [...this.notes.values()]
+      .filter((n) => !/^templates?\//i.test(n.path))
+      .sort((a, b) => a.path.localeCompare(b.path));
+    return {
+      orphans: all.filter((n) => !incoming.has(n.path)).map(summarize),
+      deadEnds: all.filter((n) => !outgoing.has(n.path)).map(summarize),
+      unresolved: this.unresolvedLinks().sort((a, b) => b.from.length - a.from.length),
+    };
+  }
+
+  // ---------------------------------------------------------------- tasks
+
+  /** Every Markdown task (`- [ ] ...`) in the vault. Status is the character between the brackets. */
+  tasks(opts: { includeDone?: boolean } = {}): { path: string; name: string; line: number; status: string; text: string }[] {
+    const out: { path: string; name: string; line: number; status: string; text: string }[] = [];
+    for (const n of [...this.notes.values()].sort((a, b) => a.path.localeCompare(b.path))) {
+      const lines = n.content.split('\n');
+      const masked = maskCode(n.content).split('\n');
+      masked.forEach((line, i) => {
+        const m = /^\s*(?:[-*+]|\d+[.)])\s+\[(.)\]\s+(.*)$/.exec(line);
+        if (!m) return;
+        const done = m[1] === 'x' || m[1] === 'X' || m[1] === '-';
+        if (done && !opts.includeDone) return;
+        out.push({ path: n.path, name: n.name, line: i + 1, status: m[1], text: lines[i].replace(/^\s*(?:[-*+]|\d+[.)])\s+\[.\]\s+/, '').trim() });
+      });
+    }
+    return out;
+  }
+
+  /** Set a task's status (default: toggle between open and done). */
+  async setTask(nameOrPath: string, line: number, status?: string): Promise<NoteSummary> {
+    const note = this.requireNote(nameOrPath);
+    await this.refreshFile(note.path, true);
+    const lines = this.notes.get(note.path)!.content.split('\n');
+    const current = lines[line - 1];
+    const m = current == null ? null : /^(\s*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(current);
+    if (!m) throw new EditMatchError(`Line ${line} of ${note.path} is not a task`);
+    const next = status ?? (m[2] === ' ' ? 'x' : ' ');
+    if ([...next].length !== 1) throw new EditMatchError('Task status must be a single character');
+    lines[line - 1] = m[1] + next + m[3];
+    return this.write(note.path, lines.join('\n'));
+  }
+
+  // ---------------------------------------------------------------- settings
+
+  /** Small JSON documents stored in the vault's hidden `.ultron/` folder (bookmarks, etc.). */
+  async getConfig<T = unknown>(name: string, fallback: T): Promise<T> {
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new VaultPathError('Invalid config name');
+    try {
+      return JSON.parse(await fsp.readFile(path.join(this.root, '.ultron', `${name}.json`), 'utf8')) as T;
+    } catch {
+      return fallback;
+    }
+  }
+
+  async setConfig(name: string, value: unknown): Promise<void> {
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new VaultPathError('Invalid config name');
+    const dir = path.join(this.root, '.ultron');
+    await fsp.mkdir(dir, { recursive: true });
+    await fsp.writeFile(path.join(dir, `${name}.json`), JSON.stringify(value, null, 2), 'utf8');
   }
 
   // ---------------------------------------------------------------- journal

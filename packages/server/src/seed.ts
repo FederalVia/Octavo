@@ -25,6 +25,7 @@ tags: [meta]
 
 | Shortcut | Action |
 | --- | --- |
+| Ctrl/Cmd + P | Command palette (every action) |
 | Ctrl/Cmd + O | Quick switcher (open or create a note) |
 | Ctrl/Cmd + Shift + F | Search all notes |
 | Ctrl/Cmd + E | Toggle edit / preview |

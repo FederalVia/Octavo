@@ -27,11 +27,38 @@ import {
   type CompletionResult,
 } from '@codemirror/autocomplete';
 import { tags as t } from '@lezer/highlight';
+import { vim } from '@replit/codemirror-vim';
 import { parseWikiInner } from '../markdown';
 
 export interface EditorHandle {
   scrollToLine(line: number): void;
   focus(): void;
+  /** Insert text at the cursor. With `snippet`, a `|` in the text marks where the cursor ends up. */
+  insert(text: string, snippet?: boolean): void;
+  getSelection(): string;
+  replaceSelection(text: string): void;
+}
+
+interface SlashCommand {
+  label: string;
+  detail: string;
+  /** Snippet; `|` marks the cursor. A function gets the editor for custom behaviour. */
+  insert: string | ((v: EditorView, from: number, to: number) => void);
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+/** Insert a snippet, placing the cursor at the `|` marker. */
+function insertSnippet(v: EditorView, from: number, to: number, snippet: string) {
+  const at = snippet.indexOf('|');
+  const text = at === -1 ? snippet : snippet.slice(0, at) + snippet.slice(at + 1);
+  v.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + (at === -1 ? text.length : at) },
+    userEvent: 'input.complete',
+  });
 }
 
 interface Props {
@@ -46,6 +73,11 @@ interface Props {
   onOpenLink: (target: string, heading?: string) => void;
   onReady?: (handle: EditorHandle) => void;
   showLineNumbers?: boolean;
+  vimMode?: boolean;
+  /** Upload a pasted/dropped file; resolves to the saved vault path. */
+  onUpload?: (file: File) => Promise<string>;
+  /** Slash commands that need the app (e.g. picking a template). */
+  onSlashCommand?: (command: 'template') => void;
 }
 
 const externalUpdate = Annotation.define<boolean>();
@@ -88,11 +120,20 @@ const theme = EditorView.theme({
   '.cm-tooltip': { backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: '8px' },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--accent)', color: 'var(--on-accent)' },
   '.cm-placeholder': { color: 'var(--text-faint)' },
+  '.cm-highlight': { backgroundColor: 'rgba(250, 204, 21, 0.25)', borderRadius: '3px' },
+  '.cm-comment': { color: 'var(--text-faint)', fontStyle: 'italic' },
+  '.cm-tooltip-autocomplete .cm-completionDetail': { color: 'var(--text-faint)', marginLeft: '10px', fontStyle: 'normal' },
+  '.cm-fat-cursor': { background: 'var(--accent) !important', color: 'var(--on-accent) !important' },
+  '&:not(.cm-focused) .cm-fat-cursor': { background: 'none !important', outline: '1px solid var(--accent)' },
+  '.cm-panels': { backgroundColor: 'var(--bg-elevated)', color: 'var(--text)' },
 });
 
 const linkDecorator = new MatchDecorator({
-  regexp: /!?\[\[[^\[\]\n]+?\]\]|(?<=^|[\s(])#[\p{L}\p{N}_\-/]*[\p{L}_\-][\p{L}\p{N}_\-/]*/gu,
-  decoration: (m) => Decoration.mark({ class: m[0].startsWith('#') ? 'cm-hashtag' : 'cm-wikilink' }),
+  regexp: /!?\[\[[^\[\]\n]+?\]\]|(?<=^|[\s(])#[\p{L}\p{N}_\-/]*[\p{L}_\-][\p{L}\p{N}_\-/]*|==[^=\n]+==|%%[^%\n]*%%/gu,
+  decoration: (m) =>
+    Decoration.mark({
+      class: m[0].startsWith('#') ? 'cm-hashtag' : m[0].startsWith('==') ? 'cm-highlight' : m[0].startsWith('%%') ? 'cm-comment' : 'cm-wikilink',
+    }),
 });
 
 const linkHighlighter = ViewPlugin.fromClass(
@@ -127,6 +168,7 @@ export function Editor(props: Props) {
   const propsRef = useRef(props);
   propsRef.current = props;
   const gutter = useRef(new Compartment());
+  const vimC = useRef(new Compartment());
   const extensions = useRef<Extension[]>([]);
   const lastDocKey = useRef(props.docKey);
 
@@ -154,6 +196,75 @@ export function Editor(props: Props) {
           })),
         };
       }
+      const slash = ctx.matchBefore(/(?<=^|\s)\/[\w-]*/);
+      if (slash) {
+        const now = new Date();
+        const commands: SlashCommand[] = [
+          { label: 'Heading 1', detail: '#', insert: '# |' },
+          { label: 'Heading 2', detail: '##', insert: '## |' },
+          { label: 'Heading 3', detail: '###', insert: '### |' },
+          { label: 'Task', detail: '- [ ]', insert: '- [ ] |' },
+          { label: 'Bullet list', detail: '-', insert: '- |' },
+          { label: 'Numbered list', detail: '1.', insert: '1. |' },
+          { label: 'Quote', detail: '>', insert: '> |' },
+          { label: 'Callout: note', detail: '[!note]', insert: '> [!note] |\n> ' },
+          { label: 'Callout: tip', detail: '[!tip]', insert: '> [!tip] |\n> ' },
+          { label: 'Callout: warning', detail: '[!warning]', insert: '> [!warning] |\n> ' },
+          { label: 'Callout: foldable', detail: '[!info]-', insert: '> [!info]- |\n> ' },
+          { label: 'Table', detail: '| |', insert: '| Column | Column |\n| --- | --- |\n| | |\n' },
+          { label: 'Code block', detail: '```', insert: '```|\n\n```' },
+          { label: 'Math block', detail: '$$', insert: '$$\n|\n$$' },
+          { label: 'Inline math', detail: '$', insert: '$|$' },
+          { label: 'Mermaid diagram', detail: 'mermaid', insert: '```mermaid\ngraph TD\n  A[|Start] --> B[Finish]\n```' },
+          { label: 'Divider', detail: '---', insert: '---\n|' },
+          { label: 'Highlight', detail: '==', insert: '==|==' },
+          { label: 'Comment', detail: '%%', insert: '%%|%%' },
+          { label: 'Link to note', detail: '[[ ]]', insert: '[[|' },
+          { label: 'Embed note', detail: '![[ ]]', insert: '![[|' },
+          {
+            label: 'Footnote',
+            detail: '[^1]',
+            insert: (v, from, to) => {
+              const doc = v.state.doc.toString();
+              let n = 1;
+              while (doc.includes(`[^${n}]`)) n++;
+              const tail = `\n\n[^${n}]: `;
+              v.dispatch({
+                changes: [
+                  { from, to, insert: `[^${n}]` },
+                  { from: v.state.doc.length, insert: tail },
+                ],
+                selection: { anchor: v.state.doc.length - (to - from) + `[^${n}]`.length + tail.length },
+                scrollIntoView: true,
+              });
+            },
+          },
+          { label: 'Date', detail: 'today', insert: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}|` },
+          { label: 'Time', detail: 'now', insert: `${pad2(now.getHours())}:${pad2(now.getMinutes())}|` },
+          {
+            label: 'Template…',
+            detail: 'insert',
+            insert: (v, from, to) => {
+              v.dispatch({ changes: { from, to, insert: '' } });
+              propsRef.current.onSlashCommand?.('template');
+            },
+          },
+        ];
+        return {
+          from: slash.from,
+          filter: false,
+          options: commands
+            .filter((c) => c.label.toLowerCase().replace(/[^a-z0-9]/g, '').includes(slash.text.slice(1).toLowerCase().replace(/[^a-z0-9]/g, '')))
+            .map((c, i) => ({
+              label: c.label,
+              detail: c.detail,
+              boost: -i,
+              type: 'keyword',
+              apply: (v: EditorView, _c: unknown, from: number, to: number) =>
+                typeof c.insert === 'string' ? insertSnippet(v, from, to, c.insert) : c.insert(v, from, to),
+            })),
+        };
+      }
       const tag = ctx.matchBefore(/(?<=^|[\s(])#[\p{L}\p{N}_\-/]*/u);
       if (tag && (tag.text.length > 1 || ctx.explicit)) {
         return {
@@ -164,7 +275,27 @@ export function Editor(props: Props) {
       return null;
     };
 
+    const uploadFiles = (v: EditorView, files: File[], pos: number) => {
+      const upload = propsRef.current.onUpload;
+      if (!upload) return;
+      (async () => {
+        let at = pos;
+        for (const f of files) {
+          try {
+            const saved = await upload(f);
+            const name = saved.split('/').pop()!;
+            const text = `![[${name}]]\n`;
+            v.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length }, userEvent: 'input.paste' });
+            at += text.length;
+          } catch (err) {
+            console.error('upload failed', err);
+          }
+        }
+      })();
+    };
+
     extensions.current = [
+        vimC.current.of(props.vimMode ? vim() : []),
         gutter.current.of(props.showLineNumbers ? lineNumbers() : []),
         history(),
         drawSelection(),
@@ -186,6 +317,21 @@ export function Editor(props: Props) {
           }
         }),
         EditorView.domEventHandlers({
+          paste(e, v) {
+            const files = [...(e.clipboardData?.files ?? [])];
+            if (!files.length || !propsRef.current.onUpload) return false;
+            e.preventDefault();
+            uploadFiles(v, files, v.state.selection.main.head);
+            return true;
+          },
+          drop(e, v) {
+            const files = [...(e.dataTransfer?.files ?? [])];
+            if (!files.length || !propsRef.current.onUpload) return false;
+            e.preventDefault();
+            const pos = v.posAtCoords({ x: e.clientX, y: e.clientY }) ?? v.state.selection.main.head;
+            uploadFiles(v, files, pos);
+            return true;
+          },
           mousedown(e, v) {
             if (!(e.metaKey || e.ctrlKey)) return false;
             const pos = v.posAtCoords({ x: e.clientX, y: e.clientY });
@@ -210,6 +356,23 @@ export function Editor(props: Props) {
       focus() {
         v.focus();
       },
+      insert(text: string, snippet = false) {
+        const cur = view.current ?? v;
+        const { from, to } = cur.state.selection.main;
+        if (snippet) insertSnippet(cur, from, to, text);
+        else cur.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, scrollIntoView: true });
+        cur.focus();
+      },
+      getSelection() {
+        const cur = view.current ?? v;
+        const { from, to } = cur.state.selection.main;
+        return cur.state.sliceDoc(from, to);
+      },
+      replaceSelection(text: string) {
+        const cur = view.current ?? v;
+        cur.dispatch(cur.state.replaceSelection(text));
+        cur.focus();
+      },
     });
     return () => v.destroy();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,7 +385,12 @@ export function Editor(props: Props) {
     if (lastDocKey.current !== props.docKey) {
       lastDocKey.current = props.docKey;
       v.setState(EditorState.create({ doc: props.value, extensions: extensions.current }));
-      v.dispatch({ effects: gutter.current.reconfigure(propsRef.current.showLineNumbers ? lineNumbers() : []) });
+      v.dispatch({
+        effects: [
+          gutter.current.reconfigure(propsRef.current.showLineNumbers ? lineNumbers() : []),
+          vimC.current.reconfigure(propsRef.current.vimMode ? vim() : []),
+        ],
+      });
       v.scrollDOM.scrollTop = 0;
       return;
     }
@@ -237,6 +405,10 @@ export function Editor(props: Props) {
   useEffect(() => {
     view.current?.dispatch({ effects: gutter.current.reconfigure(props.showLineNumbers ? lineNumbers() : []) });
   }, [props.showLineNumbers]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: vimC.current.reconfigure(props.vimMode ? vim() : []) });
+  }, [props.vimMode]);
 
   return <div className="editor" ref={host} />;
 }

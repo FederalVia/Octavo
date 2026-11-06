@@ -7,6 +7,7 @@ import { Vault } from '@ultron/core';
 import { startServer } from './index.js';
 import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
+import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
 
 const HELP = `Ultron Mind: a Markdown knowledge base that doubles as Claude's memory.
 
@@ -23,6 +24,8 @@ Options:
   --daily <folder>  Folder for daily journal notes (default Journal)
   --no-seed         Don't create starter notes in an empty vault
   -h, --help        Show this help
+
+${NOTE_COMMANDS_HELP}
 `;
 
 function expandHome(p: string): string {
@@ -41,11 +44,16 @@ async function main() {
       daily: { type: 'string' },
       'no-seed': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
+      content: { type: 'string' },
+      heading: { type: 'string' },
+      limit: { type: 'string' },
+      done: { type: 'boolean', default: false },
+      json: { type: 'boolean', default: false },
     },
   });
 
   const command = positionals[0] ?? 'serve';
-  if (values.help || !['serve', 'mcp'].includes(command)) {
+  if (values.help || !['serve', 'mcp', ...NOTE_COMMANDS].includes(command)) {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
@@ -53,6 +61,18 @@ async function main() {
   const vaultPath = path.resolve(expandHome(values.vault ?? process.env.ULTRON_VAULT ?? '~/UltronMind'));
   const token = values.token ?? process.env.ULTRON_TOKEN ?? undefined;
   const seed = !values['no-seed'];
+
+  if (NOTE_COMMANDS.has(command)) {
+    await runNoteCommand(vaultPath, command, positionals.slice(1), {
+      content: values.content,
+      heading: values.heading,
+      limit: values.limit,
+      done: values.done,
+      json: values.json,
+      daily: values.daily,
+    });
+    return;
+  }
 
   if (command === 'mcp') {
     // stdout is the MCP channel: log to stderr only.
