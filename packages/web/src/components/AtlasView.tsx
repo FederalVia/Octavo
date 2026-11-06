@@ -11,6 +11,8 @@ interface Props {
   onSelectUnresolved: (name: string) => void;
   onBackground: () => void;
   onReady?: (handle: BrainHandle) => void;
+  /** Covered by a full-screen panel (phones): stop drawing. */
+  paused?: boolean;
 }
 
 interface ANode {
@@ -49,6 +51,8 @@ interface Layout {
   /** Brain radius in world units. */
   R: number;
   dust: [number, number, number][];
+  /** Links in a stable random order: drawing the first N gives an even sample when there are too many. */
+  sampled: ALink[];
 }
 
 /** Deterministic pseudo-random numbers from a string, so layouts are stable across reloads. */
@@ -172,12 +176,27 @@ function buildLayout(data: GraphData): Layout {
     dust.push([s * Math.cos(th) * d * R * 0.95, y, s * Math.sin(th) * d * R * 1.3 - R * 0.05]);
   }
 
-  return { nodes, links, byId, neighbors, adjacency, counts, R, dust };
+  const shuffle = seeded('links');
+  const sampled = [...links];
+  for (let i = sampled.length - 1; i > 0; i--) {
+    const j = Math.floor(shuffle() * (i + 1));
+    [sampled[i], sampled[j]] = [sampled[j], sampled[i]];
+  }
+  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled };
 }
 
 const MONO = 'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace';
 
 const glints = new Map<string, HTMLCanvasElement>();
+const lightColors = new Map<string, string>();
+/** A region colour, slightly brightened, as a CSS string (cached: no allocation per frame). */
+function lightColor(rgb: [number, number, number]): string {
+  const key = rgb.join(',');
+  let c = lightColors.get(key);
+  if (!c) lightColors.set(key, (c = `rgb(${rgb.map((v) => Math.min(255, v + 25)).join(',')})`));
+  return c;
+}
+
 function softDot(rgb: [number, number, number]): HTMLCanvasElement {
   const key = rgb.join(',');
   let c = glints.get(key);
@@ -257,6 +276,8 @@ export function AtlasView(props: Props) {
     cam: { yaw: -Math.PI / 2 + 0.38, pitch: 0.16, zoom: 1, tx: 0, ty: 0, tz: 0 },
     camGoal: null as null | { zoom: number; tx: number; ty: number; tz: number },
     lastInteract: 0,
+    lastFire: 0,
+    kick: () => {},
     drag: null as null | { x: number; y: number; yaw: number; pitch: number; pan: boolean; tx: number; ty: number; tz: number },
     pointers: new Map<number, { x: number; y: number }>(),
     pinch: null as null | { d: number; zoom: number },
@@ -271,6 +292,7 @@ export function AtlasView(props: Props) {
     W: 0,
     H: 0,
     baseZoom: 1,
+    dpr: 1,
   });
   st.current.labels = labels;
   st.current.showTrail = showTrail;
@@ -298,18 +320,38 @@ export function AtlasView(props: Props) {
     const ctx = canvas.getContext('2d')!;
     const s = st.current;
     let raf = 0;
+    let scheduled = false;
     let last = performance.now();
+    // Draw only when something changes; animations keep asking for the next frame.
+    const kick = () => {
+      if (scheduled || document.hidden || propsRef.current.paused) return;
+      scheduled = true;
+      last = Math.max(last, performance.now() - 50);
+      raf = requestAnimationFrame((t) => frame(t)); // frame is defined below
+    };
+    s.kick = kick;
+    const coarse = matchMedia('(pointer: coarse)').matches;
+    /** 2 = full, 1 = reduced, 0 = minimal. Lowered automatically when frames get slow. */
+    let quality = coarse ? 1 : 2;
+    let maxQuality = quality;
+    let frameMs = 0;
+    let slowFrames = 0;
+    let fastFrames = 0;
+    let bg: CanvasGradient | null = null;
+    let bgKey = '';
 
     const resize = () => {
       const r = wrap.getBoundingClientRect();
       s.W = r.width;
       s.H = r.height;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      s.dpr = dpr;
       canvas.width = Math.round(r.width * dpr);
       canvas.height = Math.round(r.height * dpr);
       canvas.style.width = `${r.width}px`;
       canvas.style.height = `${r.height}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      kick();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
@@ -349,6 +391,8 @@ export function AtlasView(props: Props) {
       const n = s.layout?.byId.get(id);
       if (!n) return;
       n.firedAt = performance.now();
+      s.lastFire = n.firedAt;
+      kick();
       s.rings.push({ node: n, start: n.firedAt });
       for (const l of s.layout!.adjacency.get(id) ?? []) if (s.pulses.length < 300) s.pulses.push({ link: l, from: n, t: 0 });
     };
@@ -365,13 +409,19 @@ export function AtlasView(props: Props) {
 
     const tmp = [0, 0, 0, 0];
 
-    const frame = (now: number) => {
-      raf = requestAnimationFrame(frame);
+    const draw = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const { W, H } = s;
       const L = s.layout;
       if (!W || !H) return;
+      // Big vaults start at reduced quality; it only goes up if frames stay fast.
+      const n = L?.nodes.length ?? 0;
+      maxQuality = coarse ? (n > 400 ? 1 : 2) : n > 1500 ? 1 : 2;
+      if (quality > maxQuality) quality = maxQuality;
+      const busy = !!s.drag || !!s.camGoal;
+      const autoRotate = !coarse && n <= 800;
+      const wobble = quality === 2 && n <= 600;
       const R = L?.R ?? 300;
       s.baseZoom = (Math.min(W * (1 - propsRef.current.rightInset), H) * 0.4) / (R * 1.25);
 
@@ -387,20 +437,27 @@ export function AtlasView(props: Props) {
           s.camGoal = null;
         }
       }
-      if (!s.drag && !propsRef.current.selected && now - s.lastInteract > 6000) s.cam.yaw += dt * 0.06;
+      const rotating = autoRotate && !s.drag && !propsRef.current.selected && now - s.lastInteract > 6000;
+      if (rotating) s.cam.yaw += dt * 0.06;
 
       // Background.
       ctx.globalCompositeOperation = 'source-over';
-      const bg = ctx.createRadialGradient(cx(), cy(), 0, cx(), cy(), Math.max(W, H) * 0.75);
-      bg.addColorStop(0, '#1d1c21');
-      bg.addColorStop(1, '#111014');
+      const key = `${cx()},${cy()},${W},${H}`;
+      if (!bg || bgKey !== key) {
+        bg = ctx.createRadialGradient(cx(), cy(), 0, cx(), cy(), Math.max(W, H) * 0.75);
+        bg.addColorStop(0, '#1d1c21');
+        bg.addColorStop(1, '#111014');
+        bgKey = key;
+      }
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
       if (!L) return;
 
       // Dust silhouette.
       ctx.fillStyle = 'rgb(205, 200, 190)';
-      for (const d of L.dust) {
+      const dustCount = quality === 2 ? L.dust.length : quality === 1 ? Math.min(L.dust.length, 300) : 0;
+      for (let di = 0; di < dustCount; di++) {
+        const d = L.dust[di];
         project(d[0], d[1], d[2], tmp);
         const fog = 1 - Math.min(1, Math.max(0, (tmp[2] + R) / (2.4 * R)));
         ctx.globalAlpha = 0.08 + fog * 0.22;
@@ -412,7 +469,7 @@ export function AtlasView(props: Props) {
       for (const n of L.nodes) {
         n.visible = visibleNode(n);
         if (!n.visible) continue;
-        const wob = Math.sin(now / 1000 * 0.5 + n.phase) * 1.2;
+        const wob = wobble ? Math.sin(now / 1000 * 0.5 + n.phase) * 1.2 : 0;
         project(n.x, n.y + wob, n.z, tmp);
         n.sx = tmp[0];
         n.sy = tmp[1];
@@ -428,16 +485,30 @@ export function AtlasView(props: Props) {
       const fogOf = (n: ANode) => 1 - Math.min(1, Math.max(0, (n.depth + R) / (2.4 * R)));
 
       // Connections: one batched path, additive so bundles glow where they overlap.
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.lineWidth = 0.6;
-      ctx.strokeStyle = focusNode || filterOn ? 'rgba(200, 196, 188, 0.025)' : 'rgba(200, 196, 188, 0.07)';
+      // Connections are drawn exactly one device pixel wide in device coordinates: browsers have a fast
+      // path for that (about 15× cheaper than thinner or scaled lines). Additive blending (the glow where
+      // lines overlap) only at full quality; fewer lines at lower quality and while dragging.
+      const linkCap = quality === 2 ? Infinity : quality === 1 ? (busy ? 4000 : 12000) : busy ? 1500 : 5000;
+      const linkList = L.links.length > linkCap ? L.sampled : L.links;
+      const drawn = Math.min(linkList.length, linkCap);
+      const boostAlpha = Math.min(2.5, Math.sqrt(L.links.length / Math.max(1, drawn)));
+      const k = s.dpr;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = quality === 2 ? 'lighter' : 'source-over';
+      ctx.lineWidth = 1;
+      const baseAlpha = (focusNode || filterOn ? 0.025 : 0.07) * (1.15 / Math.max(1, k * 0.6)) * (quality === 2 ? 1 : 0.9 * boostAlpha);
+      ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.5, baseAlpha * Math.max(1, k * 0.6))})`;
       ctx.beginPath();
-      for (const l of L.links) {
+      for (let li = 0; li < drawn; li++) {
+        const l = linkList[li];
         if (!l.a.visible || !l.b.visible) continue;
-        ctx.moveTo(l.a.sx, l.a.sy);
-        ctx.lineTo(l.b.sx, l.b.sy);
+        ctx.moveTo(l.a.sx * k, l.a.sy * k);
+        ctx.lineTo(l.b.sx * k, l.b.sy * k);
       }
       ctx.stroke();
+      ctx.restore();
+      ctx.globalCompositeOperation = 'lighter';
       if (focusNode && focusNode.visible) {
         const rgb = REGION_BY_KEY[focusNode.region].rgb.join(',');
         ctx.strokeStyle = `rgba(${rgb}, 0.6)`;
@@ -505,7 +576,10 @@ export function AtlasView(props: Props) {
       const densityDim = Object.fromEntries(
         REGIONS.map((r) => [r.key, Math.min(0.8, 9 / Math.pow(Math.max(1, L.counts[r.key]), 0.55))]),
       ) as Record<RegionKey, number>;
-      const order = L.nodes.filter((n) => n.visible).sort((a, b) => b.depth - a.depth);
+      const margin = 40;
+      const order = L.nodes
+        .filter((n) => n.visible && n.sx > -margin && n.sy > -margin && n.sx < W + margin && n.sy < H + margin)
+        .sort((a, b) => b.depth - a.depth);
       for (const n of order) {
         const reg = REGION_BY_KEY[n.region];
         const fog = fogOf(n);
@@ -518,16 +592,25 @@ export function AtlasView(props: Props) {
         const boost = fireAge < 1.5 ? 1 - fireAge / 1.5 : 0;
         const r = nodeSize(n) * Math.max(0.55, n.scale / s.baseZoom) * (isFocus ? 1.6 : 1) * (1 + boost);
         const density = densityDim[n.region];
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.min(1, alpha * (n.hub || isFocus || boost > 0 ? 0.9 : density));
-        const glow = r * (n.hub || isFocus ? 6 : 2.6) * (1 + boost * 1.5);
-        ctx.drawImage(softDot(reg.rgb), n.sx - glow, n.sy - glow, glow * 2, glow * 2);
+        // Halos: everything at full quality; at lower quality only notes that matter right now.
+        const important = n.hub || isFocus || boost > 0 || (focusNode !== null && near?.has(n.id));
+        if (quality === 2 || (important && (quality === 1 || isFocus || boost > 0))) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.min(1, alpha * (n.hub || isFocus || boost > 0 ? 0.9 : density));
+          const glow = r * (n.hub || isFocus ? 6 : 2.6) * (1 + boost * 1.5);
+          ctx.drawImage(softDot(reg.rgb), n.sx - glow, n.sy - glow, glow * 2, glow * 2);
+        }
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = Math.min(1, alpha);
-        ctx.fillStyle = isFocus || boost > 0 ? '#ffffff' : `rgb(${reg.rgb.map((c) => Math.min(255, c + 25)).join(',')})`;
-        ctx.beginPath();
-        ctx.arc(n.sx, n.sy, Math.max(0.6, r * 0.62), 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = isFocus || boost > 0 ? '#ffffff' : lightColor(reg.rgb);
+        const dot = Math.max(0.6, r * 0.62);
+        if (dot < 1.4 && quality < 2) {
+          ctx.fillRect(n.sx - dot, n.sy - dot, dot * 2, dot * 2); // tiny dots: a square is much cheaper than a circle
+        } else {
+          ctx.beginPath();
+          ctx.arc(n.sx, n.sy, dot, 0, Math.PI * 2);
+          ctx.fill();
+        }
         if (n.hub || isFocus) {
           // Lens glint: thin cross + halo ring.
           const g = r * 5;
@@ -636,7 +719,37 @@ export function AtlasView(props: Props) {
         ctx.fillText(label, gx + x1 * 58, gy - y2 * 58);
       }
     };
-    raf = requestAnimationFrame(frame);
+    const frame = (now: number) => {
+      scheduled = false;
+      const t0 = performance.now();
+      draw(now);
+      const took = performance.now() - t0;
+      frameMs = frameMs ? frameMs * 0.85 + took * 0.15 : took;
+      // Adapt: slow frames lower the quality; a long run of fast ones raises it again.
+      if (frameMs > 24) {
+        if (++slowFrames > 6 && quality > 0) {
+          quality--;
+          slowFrames = 0;
+          frameMs = 0;
+        }
+      } else slowFrames = 0;
+      if (frameMs < 8 && quality < maxQuality && !s.drag) {
+        if (++fastFrames > 90) {
+          quality++;
+          fastFrames = 0;
+        }
+      } else fastFrames = 0;
+      // Keep animating only while something moves.
+      const L = s.layout;
+      const n = L?.nodes.length ?? 0;
+      const rotating = !coarse && n <= 800 && !s.drag && !propsRef.current.selected && now - s.lastInteract > 6000;
+      const wobble = quality === 2 && n <= 600;
+      const glowing = now - s.lastFire < 1600;
+      if (s.drag || s.camGoal || s.pulses.length || s.rings.length || glowing || rotating || wobble || now - s.lastInteract < 6500) kick();
+    };
+    // The trail fades slowly: refresh it now and then even when idle.
+    const trailTimer = setInterval(kick, 15_000);
+    kick();
 
     // ---------------------------------------------------------------- input
     const hitTest = (x: number, y: number): ANode | null => {
@@ -662,6 +775,7 @@ export function AtlasView(props: Props) {
       canvas.setPointerCapture(e.pointerId);
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       s.lastInteract = performance.now();
+      kick();
       s.camGoal = null;
       if (s.pointers.size === 2) {
         const [a, b] = [...s.pointers.values()];
@@ -694,6 +808,7 @@ export function AtlasView(props: Props) {
         const dy = e.clientY - s.drag.y;
         if (Math.abs(dx) + Math.abs(dy) > 3) s.moved = true;
         s.lastInteract = performance.now();
+      kick();
         if (s.drag.pan) {
           // Pan in screen plane: convert screen delta to world delta (approximate, ignoring perspective).
           const k = s.cam.zoom * s.baseZoom;
@@ -714,6 +829,7 @@ export function AtlasView(props: Props) {
         const n = hitTest(e.clientX, e.clientY);
         if (n !== s.hover) {
           s.hover = n;
+          kick();
           canvas.style.cursor = n ? 'pointer' : 'grab';
         }
       }
@@ -737,18 +853,22 @@ export function AtlasView(props: Props) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       s.lastInteract = performance.now();
+      kick();
       s.camGoal = null;
       s.cam.zoom = Math.min(12, Math.max(0.3, s.cam.zoom * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
     };
     const onLeave = () => {
       s.hover = null;
+      kick();
     };
     const noMenu = (e: Event) => e.preventDefault();
     const onVisibility = () => {
-      if (document.hidden) cancelAnimationFrame(raf);
-      else {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+        scheduled = false;
+      } else {
         last = performance.now();
-        raf = requestAnimationFrame(frame);
+        kick();
       }
     };
 
@@ -762,6 +882,7 @@ export function AtlasView(props: Props) {
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       cancelAnimationFrame(raf);
+      clearInterval(trailTimer);
       ro.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
@@ -779,11 +900,17 @@ export function AtlasView(props: Props) {
     const s = st.current;
     if (!props.selected) {
       if (s.camGoal || s.cam.zoom > 1.05 || s.cam.tx || s.cam.ty || s.cam.tz) s.camGoal = { tx: 0, ty: 0, tz: 0, zoom: 1 };
+      s.kick();
       return;
     }
     const n = layout?.byId.get(props.selected);
     if (n) s.camGoal = { tx: n.x, ty: n.y, tz: n.z, zoom: Math.max(s.cam.zoom, 1.7) };
   }, [props.selected, layout]);
+
+  // Anything that changes the picture needs a redraw (the canvas only draws on demand).
+  useEffect(() => {
+    st.current.kick();
+  }, [props.selected, props.rightInset, props.paused, layout, labels, hidden, filter, showTrail]);
 
   const toggle = (k: RegionKey) =>
     setHidden((h) => {

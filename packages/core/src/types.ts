@@ -92,7 +92,8 @@ export interface TagCount {
 }
 
 export type VaultEvent =
-  | { type: 'change'; path: string }
+  /** graphChanged: its links, tags, region or lock state changed (the graph needs refreshing). */
+  | { type: 'change'; path: string; graphChanged?: boolean }
   | { type: 'delete'; path: string }
   | { type: 'rename'; from: string; to: string }
   | { type: 'rescan' }
