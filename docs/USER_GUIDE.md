@@ -413,9 +413,24 @@ A brain is a separate vault: its own folder, notes, graph and settings. Use them
 - **New window:** command palette → *Open this note in a new window*.
 - **Workspaces:** command palette → *Save workspace* stores the open tabs, split view, sidebar and brain view under a name; *Open workspace* brings it back.
 
+
+**Stacked tabs:** command palette → *Stack tabs*. The open note stays full size and the other tabs fold into narrow spines with their titles running up the side: earlier tabs on the left, later ones on the right. Click a spine to open it, or × to close it. *Show tabs in a row* switches back.
+
 ## Editing with live preview
 
 While you edit, Markdown is shown formatted: `**bold**` looks bold, `[[links]]` look like links, and `- [ ]` is a real checkbox. The symbols reappear on the line your cursor is on, so you can change them. Click a link to open it. To always see the raw Markdown, turn off **Settings → Editor → Live preview** (or command palette → *Show raw Markdown while editing*).
+
+
+### Outlining
+
+Lists work like an outliner while you edit:
+
+| Keys | What it does |
+| --- | --- |
+| Tab / Shift-Tab | Indent or outdent the list item, taking everything nested under it along |
+| Ctrl/Cmd + Shift + ↑ / ↓ | Move the item (and its children) above the previous or below the next item at the same level |
+| Ctrl/Cmd + Enter | Turn the line into a task, then tick and untick it |
+| Ctrl/Cmd + Shift + [ / ] | Fold or unfold the item or section at the cursor (or use the ▾ arrows in the margin) |
 
 ## Calendar
 

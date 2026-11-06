@@ -2325,3 +2325,12 @@ form.setting-row { cursor: default; }
 .wv-toast { position: absolute; bottom: calc(16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
 button.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; min-height: 0; }
 @media (max-width: 600px) { .wv-url { order: 10; flex-basis: 100%; } .wv-wide { display: none; } .wv-close { margin-left: auto; } }
+
+/* Stacked tabs: other open tabs as spines beside the note */
+.note-panel.stacked { box-sizing: border-box; }
+.tab-spine { position: absolute; top: 0; bottom: 0; width: 38px; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 8px 0; box-sizing: border-box; cursor: pointer; background: var(--bg-elevated); border-right: 1px solid var(--border); color: var(--text-muted); transition: background 0.15s, color 0.15s; }
+.tab-spine.right { border-right: 0; border-left: 1px solid var(--border); }
+.tab-spine:hover, .tab-spine:focus-visible { background: var(--bg-hover); color: var(--text); outline: none; }
+.tab-spine-name { writing-mode: vertical-rl; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-height: calc(100% - 40px); }
+.tab-spine-close { border: 0; background: transparent; color: inherit; font-size: 16px; line-height: 1; padding: 2px 6px; border-radius: 6px; opacity: 0.6; cursor: pointer; }
+.tab-spine-close:hover { opacity: 1; background: var(--bg-hover); }

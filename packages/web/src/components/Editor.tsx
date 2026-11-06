@@ -30,6 +30,7 @@ import {
 import { tags as t } from '@lezer/highlight';
 import { vim } from '@replit/codemirror-vim';
 import { parseWikiInner } from '../markdown';
+import { outliner } from '../outliner';
 
 export interface EditorHandle {
   scrollToLine(line: number): void;
@@ -115,6 +116,10 @@ const theme = EditorView.theme({
   '.cm-scroller': { fontFamily: 'var(--font-text)', lineHeight: '1.65', padding: '24px 0 40vh' },
   '.cm-content': { maxWidth: 'var(--line-width)', margin: '0 auto', padding: '0 32px', caretColor: 'var(--accent)' },
   '.cm-gutters': { backgroundColor: 'transparent', border: 'none', color: 'var(--text-faint)' },
+  '.cm-foldGutter .cm-gutterElement': { cursor: 'pointer', opacity: '0', transition: 'opacity 0.15s', padding: '0 4px', fontSize: '0.85em' },
+  '.cm-gutters:hover .cm-foldGutter .cm-gutterElement, .cm-foldGutter .cm-gutterElement:focus-visible': { opacity: '0.75' },
+  '@media (hover: none)': { '.cm-foldGutter .cm-gutterElement': { opacity: '0.45' } },
+  '.cm-foldPlaceholder': { background: 'var(--tag-bg)', border: 'none', color: 'var(--text-muted)', borderRadius: '4px', padding: '0 6px', margin: '0 4px' },
   '.cm-activeLine': { backgroundColor: 'var(--active-line)' },
   '.cm-cursor': { borderLeftColor: 'var(--accent)', borderLeftWidth: '2px' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
@@ -330,6 +335,7 @@ export function Editor(props: Props) {
         linkHighlighter,
         autocompletion({ override: [completeLinks], icons: false }),
         placeholder('Start writing… Use [[ to link notes and # for tags.'),
+        outliner(),
         keymap.of([...closeBracketsKeymap, ...completionKeymap, ...searchKeymap, ...historyKeymap, ...defaultKeymap, indentWithTab]),
         theme,
         EditorView.updateListener.of((u) => {
