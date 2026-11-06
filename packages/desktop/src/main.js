@@ -242,7 +242,7 @@ async function checkNetwork() {
     result = { ok: false, lines: [`✗ ${err instanceof Error ? err.message : err}`] };
   }
   const advice = {
-    'no-router': 'Turn on “UPnP” in your router’s settings (it’s usually on by default), then check again. Or forward ports by hand: see “Forwarding ports by hand” in the Octavo guide.',
+    'no-router': 'Turn on “UPnP” in your router’s settings, restart the router, then check again. Or forward ports by hand: see “Forwarding ports by hand” in the Octavo guide.',
     cgnat: 'Your internet provider shares one public address between many homes (CGNAT), so direct connections from the internet are impossible on this connection. Ask your provider for a “public IPv4 address”.',
     'double-nat': 'Your router is behind another router. Put your provider’s box in “bridge mode”, or enable UPnP on the outer router too.',
     'port-https': 'Your router refused to open a port automatically. Check its UPnP settings.',

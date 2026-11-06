@@ -1,5 +1,4 @@
-import { upnpNat, type Gateway } from '@achingbrain/nat-port-mapper';
-import { lanAddresses } from '../phone.js';
+import { addPortMapping, deletePortMapping, discover, getExternalIp, type DiscoveryResult, type Gateway } from './upnp.js';
 
 /** The parts of a home router Octavo needs: its internet address and port forwarding. */
 export interface Router {
@@ -12,45 +11,48 @@ export interface Router {
   stop(): Promise<void>;
 }
 
-/** Pick this computer's LAN address that's on the same network as the router. */
-function localAddressFor(gatewayHost: string): string | undefined {
-  const prefix = gatewayHost.split('.').slice(0, 3).join('.') + '.';
-  const addrs = lanAddresses();
-  return addrs.find((a) => a.startsWith(prefix)) ?? addrs[0];
-}
+const LEASE_SECONDS = 7200;
 
-function wrap(gw: Gateway): Router {
-  const localIp = localAddressFor(gw.host);
+export function upnpRouter(gw: Gateway): Router {
+  // internalPort -> { externalPort, refresh timer }
+  const mappings = new Map<number, { externalPort: number; timer: NodeJS.Timeout }>();
   return {
-    label: `UPnP router at ${gw.host}`,
-    externalIp: () => gw.externalIp({ signal: AbortSignal.timeout(10_000) }),
+    label: `UPnP router at ${gw.host}${gw.name ? ` (${gw.name})` : ''}`,
+    externalIp: () => getExternalIp(gw),
     async map(internalPort, externalPort, description) {
-      if (!localIp) throw new Error('This computer has no network address on the router’s network');
-      const m = await gw.map(internalPort, localIp, {
-        externalPort,
-        protocol: 'TCP',
-        description,
-        ttl: 7200,
-        autoRefresh: true,
-        signal: AbortSignal.timeout(10_000),
-      });
-      return m.externalPort;
+      const add = () => addPortMapping(gw, { externalPort, internalPort, description, leaseSeconds: LEASE_SECONDS });
+      await add();
+      clearInterval(mappings.get(internalPort)?.timer);
+      // Renew well before the lease runs out.
+      const timer = setInterval(() => add().catch(() => {}), (LEASE_SECONDS / 2) * 1000);
+      timer.unref?.();
+      mappings.set(internalPort, { externalPort, timer });
+      return externalPort;
     },
-    unmap: (internalPort) => gw.unmap(internalPort, { signal: AbortSignal.timeout(10_000) }).catch(() => {}),
-    stop: () => gw.stop().catch(() => {}),
+    async unmap(internalPort) {
+      const m = mappings.get(internalPort);
+      if (!m) return;
+      clearInterval(m.timer);
+      mappings.delete(internalPort);
+      await deletePortMapping(gw, m.externalPort).catch(() => {});
+    },
+    async stop() {
+      for (const m of mappings.values()) clearInterval(m.timer);
+      mappings.clear();
+    },
   };
 }
 
+/** The most recent search, so diagnostics can say what (if anything) answered. */
+export let lastDiscovery: DiscoveryResult | null = null;
+
 /** Find the home router via UPnP. Resolves to null if none answers within the timeout. */
 export async function findRouter(timeoutMs = 8000): Promise<Router | null> {
-  const client = upnpNat({ autoRefresh: true });
-  const signal = AbortSignal.timeout(timeoutMs);
   try {
-    for await (const gw of client.findGateways({ signal })) {
-      if (gw.family === 'IPv4') return wrap(gw);
-    }
+    lastDiscovery = await discover({ timeoutMs });
   } catch {
-    /* timed out or no multicast: no UPnP router */
+    lastDiscovery = null;
+    return null;
   }
-  return null;
+  return lastDiscovery.gateway ? upnpRouter(lastDiscovery.gateway) : null;
 }
