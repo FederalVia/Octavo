@@ -66,7 +66,7 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 
 ![Network view](images/network.png)
 
-A flat, force-directed graph. Zoom with scroll or pinch, drag the background to pan, and drag points to rearrange them. Colours follow the regions: grey for general concepts, yellow for projects, green for people, blue for sources, red for journal entries and white for index notes. Use **Search the mind…** (top left) to highlight notes, and press Enter to open the best match.
+A flat map of your notes. Each region gets its own area (Projects, Knowledge, People, Sources and Journal around the edge, Hubs in the middle), in the same colours as the brain, and only the most important names are labelled until you zoom in. Scroll or pinch to zoom (between your fingers on a phone), drag the background or use one finger to pan, and drag points with a mouse to move them. Hover a point to see its connections; click or tap it to open the note. The dock at the bottom works like the brain's: **Search the mind…** highlights matching notes (Enter opens the best match), and the region pills hide or show a region. The layout settles in a few seconds and then stops moving, so it costs nothing while you read.
 
 ## Brain regions
 
