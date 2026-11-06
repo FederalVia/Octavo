@@ -1,4 +1,4 @@
-import { Vault } from '@octavo/core';
+import { Vault, formatQueryResult } from '@octavo/core';
 import { importEnex, importNotion } from './importers.js';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
@@ -17,12 +17,14 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo history <note>                List saved versions of a note
   octavo restore <note> <version-id>   Restore a saved version
   octavo orphans                       Notes nothing links to, and dead ends
+  octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
+  octavo set <note> <key> [value]      Set a property (no value removes it)
   octavo import notion <folder> [--into F]
                                        Import an unzipped Notion "Markdown & CSV" export
   octavo import evernote <file.enex> [--into F]
                                        Import an Evernote export
 
-Add --json to tasks, search, tags, history or orphans for machine-readable output.`;
+Add --json to tasks, search, tags, history, orphans or query for machine-readable output.`;
 
 export const NOTE_COMMANDS = new Set([
   'new',
@@ -41,6 +43,8 @@ export const NOTE_COMMANDS = new Set([
   'history',
   'restore',
   'orphans',
+  'query',
+  'set',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -168,6 +172,31 @@ export async function runNoteCommand(
         need(args, 2, 'restore <note> <version-id>');
         const s = await vault.restoreVersion(args[0], args[1]);
         console.log(`Restored ${s.path} to version ${args[1]}`);
+        break;
+      }
+      case 'query': {
+        const src = args.join(' ').trim() || (await readStdin());
+        if (!src.trim()) throw new Error('Usage: octavo query <query…>  (or pipe one in)');
+        const r = vault.query(src);
+        out(r, () => formatQueryResult(r, { maxRows: Number(opts.limit) || 1000 }));
+        if (r.errors.length) process.exitCode = 1;
+        break;
+      }
+      case 'set': {
+        need(args, 2, 'set <note> <key> [value]');
+        const raw = args.slice(2).join(' ');
+        let value: unknown = raw === '' ? null : raw;
+        if (/^-?\d+(\.\d+)?$/.test(raw)) value = Number(raw);
+        else if (raw === 'true' || raw === 'false') value = raw === 'true';
+        else if (/^\[.*\]$/.test(raw)) {
+          try {
+            value = JSON.parse(raw);
+          } catch {
+            /* keep as text */
+          }
+        }
+        const s = await vault.setProperty(args[0], args[1], value);
+        console.log(value === null ? `Removed ${args[1]} from ${s.path}` : `Set ${args[1]} on ${s.path}`);
         break;
       }
       case 'orphans': {

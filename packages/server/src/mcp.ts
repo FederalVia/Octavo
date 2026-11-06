@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { VERSION } from './version.js';
-import { formatDate, REGION_INFO, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
+import { formatDate, formatQueryResult, REGION_INFO, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
 
 export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
 
@@ -199,6 +199,21 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   server.registerTool(
+    'query_notes',
+    {
+      title: 'Query notes like a database',
+      description:
+        'Find notes by folder, tag, links and properties, and get a table back. Dataview-style: `TABLE status, due FROM "Projects" AND #active WHERE status != "done" SORT due ASC LIMIT 20`, `LIST FROM [[Octavo]]` (notes linking to it), `TABLE file.mtime FROM #person SORT file.mtime DESC`, `LIST WHERE due < date(today)`, `TABLE status FROM #project GROUP BY status`. Fields are properties (frontmatter) and inline `key:: value` fields, plus file.name, file.path, file.folder, file.tags, file.mtime, file.ctime, file.size, file.links, file.inlinks. Functions: contains, startswith, endswith, length, lower, upper, default, number, round, exists, date(today|yesterday|tomorrow|YYYY-MM-DD), dur(7 days), days(date). A YAML base (from/where/columns/sort/group/limit) also works. Notes can embed the same query live in a ```query block.',
+      inputSchema: {
+        query: z.string().describe('The query'),
+        max_rows: z.number().int().min(1).max(1000).optional().describe('Max rows to return (default 200)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ query, max_rows }) => text(formatQueryResult(vault.query(query), { maxRows: max_rows ?? 200 }))),
+  );
+
+  server.registerTool(
     'get_note_region',
     {
       title: 'Brain region of a note',
@@ -329,6 +344,25 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   if (opts.readOnly) return server;
+
+  server.registerTool(
+    'set_property',
+    {
+      title: 'Set a note property',
+      description:
+        'Set one property (frontmatter field) on a note without rewriting the rest, e.g. status: done or due: 2026-12-01. Lists are fine (["a", "b"]). Pass null to remove the property. Keeps the existing spelling of the key.',
+      inputSchema: {
+        path: z.string().describe('Note path or name'),
+        key: z.string().min(1).max(100).describe('Property name'),
+        value: z.union([z.string(), z.number(), z.boolean(), z.array(z.union([z.string(), z.number()])), z.null()]).describe('New value, or null to remove'),
+      },
+    },
+    safe(async ({ path: p, key, value }) => {
+      const r = await vault.setProperty(p, key, value);
+      return text(value === null ? `Removed "${key}" from ${r.path}` : `Set ${key}: ${JSON.stringify(value)} on ${r.path}`);
+    }),
+  );
+
 
   server.registerTool(
     'write_note',

@@ -1,3 +1,4 @@
+import { parseNoteQuery, runQuery, type QueryResult } from './query.js';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -1288,6 +1289,11 @@ export class Vault extends EventEmitter {
 
   /** Pin a note to a region with `region:` in its properties, or `null` to go back to automatic placement. */
   async setRegion(nameOrPath: string, region: RegionKey | null): Promise<NoteSummary> {
+    return this.setProperty(nameOrPath, 'region', region);
+  }
+
+  /** Set one property (frontmatter field) of a note, or remove it with `null`. */
+  async setProperty(nameOrPath: string, key: string, value: unknown): Promise<NoteSummary> {
     const note = this.requireNote(nameOrPath);
     await this.refreshFile(note.path, true);
     const current = this.notes.get(note.path)!;
@@ -1297,17 +1303,46 @@ export class Vault extends EventEmitter {
     if (m) {
       try {
         const v = YAML.parse(m[1], { logLevel: 'error' });
-        if (v && typeof v === 'object' && !Array.isArray(v)) data = v as Record<string, unknown>;
+        if (v == null) data = {};
+        else if (typeof v === 'object' && !Array.isArray(v)) data = v as Record<string, unknown>;
         else throw new Error();
       } catch {
         throw new EditMatchError(`${note.path} has properties that aren't valid YAML; fix them first`);
       }
     }
-    if (region) data.region = region;
-    else delete data.region;
+    // Keep the existing spelling of the key (e.g. "Status" when asked for "status").
+    const existing = Object.keys(data).find((k) => k.toLowerCase() === key.toLowerCase()) ?? key;
+    if (value === null || value === undefined || value === '') delete data[existing];
+    else data[existing] = value;
     const body = m ? current.content.slice(m[0].length) : current.content;
     const content = Object.keys(data).length ? `---\n${YAML.stringify(data, { lineWidth: 0 }).trimEnd()}\n---\n${body}` : body;
     return this.write(note.path, content);
+  }
+
+  /** Run a note query (Dataview-style or a YAML base); `thisPath` is the note it's written in. */
+  query(src: string, opts: { lang?: 'base' | 'dql'; thisPath?: string } = {}): QueryResult {
+    const notes = [...this.notes.values()];
+    let incoming: Map<string, Set<string>> | undefined;
+    return runQuery(parseNoteQuery(src, opts.lang), {
+      notes,
+      resolve: (target, from) => this.resolveLink({ target }, from),
+      inlinks: (p) => {
+        if (!incoming) {
+          incoming = new Map();
+          for (const n of notes) {
+            for (const l of n.links) {
+              const t = this.resolveLink(l, n.path);
+              if (!t || t === n.path) continue;
+              const set = incoming.get(t) ?? new Set<string>();
+              set.add(n.path);
+              incoming.set(t, set);
+            }
+          }
+        }
+        return [...(incoming.get(p) ?? [])];
+      },
+      thisPath: opts.thisPath ? this.resolve(opts.thisPath) ?? undefined : undefined,
+    });
   }
 
   /** A random note, weighted towards ones that haven't been touched in a while. */

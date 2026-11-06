@@ -658,6 +658,7 @@ export function App() {
           (brain.current?.visit ?? brain.current?.fire)?.(e.path);
           return;
         }
+        window.dispatchEvent(new Event('octavo:vault-change'));
         if (e.type === 'change') {
           // Our own autosave: nothing to light up, and the graph only needs refreshing if links/tags changed.
           const saved = ownSaves.current.get(e.path);
