@@ -25,13 +25,18 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
   - **Atlas**: a 3D brain with notes grouped into six regions, a legend with counts, per-region toggles, and slow auto-rotation.
   - **Network**: a flat force-directed graph, coloured by region.
 - **Markdown notes**: plain `.md` files in a folder you choose. They work with git, Obsidian and any text editor.
-- **Linking**: `[[wikilinks]]`, `#tags`, backlinks, aliases, links to notes that don't exist yet, and automatic link updates when you rename a note.
-- **Editor**: syntax highlighting, autocomplete for links and tags, and a rendered reading view.
-- **Find anything**: quick switcher (Ctrl/Cmd+O), full-text search, a tag browser and a file tree.
-- **Daily journal**: one note per day (Ctrl/Cmd+D).
-- **Claude memory over MCP**: 13 tools (search, read, write, append, edit, link graph, journal…) over stdio or HTTP.
-- **Live sync**: changes from Claude, other windows or other editors appear instantly. You get a conflict warning instead of losing your edits.
-- **Runs anywhere**: in the browser (including phones), as a desktop app (Electron), or self-hosted with Docker.
+- **Rich writing**: callouts (including foldable ones), coloured highlights, task checkboxes with custom marks, footnotes, LaTeX maths, Mermaid diagrams, `%%comments%%`, tables, and embedded images, audio, video and PDFs (paste or drag files straight in).
+- **Linking**:
+  - `[[wikilinks]]` to notes, headings and blocks, and `![[embeds]]` of whole notes or parts of them
+  - hover previews, backlinks, unlinked mentions, aliases and nested `#tags`
+  - automatic link updates when you rename a note
+- **Organise**: file tree, quick switcher (Ctrl/Cmd+O), command palette (Ctrl/Cmd+P), `/` slash commands, full-text search, bookmarks, templates, daily journal, a vault-wide task list, and orphan and dead-end finding.
+- **Safety net**: version history for every note (compare with the current version and restore), deletes go to a recoverable trash, and you get a conflict warning instead of losing your edits.
+- **Claude memory over MCP**: 15 tools (search, read, write, append, edit, tasks, journal, link graph…) over stdio or HTTP. Notes Claude touches light up in the brain.
+- **CLI**: `ultron new / read / append / search / daily / task / tasks / move / history …`
+- **Runs anywhere**: in the browser (installable on phones), as a desktop app (Electron), or self-hosted with Docker.
+
+See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what's planned.
 
 ## Quick start
 
@@ -87,7 +92,8 @@ Numbered folders such as `00 - Current Projects` work too. More in the [user gui
 | Guide | What's in it |
 | --- | --- |
 | [Installation](docs/INSTALL.md) | Requirements, installing on macOS/Windows/Linux, desktop app, Docker, running as a service, HTTPS, updating, troubleshooting |
-| [User guide](docs/USER_GUIDE.md) | The interface, views, editing, links, search, shortcuts, journal, using it alongside Obsidian |
+| [User guide](docs/USER_GUIDE.md) | The interface, views, writing syntax, links, search, templates, bookmarks, history, shortcuts |
+| [Features](docs/FEATURES.md) | Every feature with its status: done, partly done, or planned |
 | [Connecting Claude](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, remote access, tool reference, tips |
 | [Architecture](docs/ARCHITECTURE.md) | How it's built, REST API, live events, file handling, security |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, project layout |
@@ -107,4 +113,4 @@ docs/          Guides and screenshots
 
 ## Status
 
-Ultron Mind is at an early stage (v0.1). It works and has tests, but expect rough edges. Not supported yet: attachments and images inside notes, and packaged desktop installers (`.dmg`/`.exe`). For now the desktop app runs from source.
+Ultron Mind is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. In particular, packaged desktop installers (`.dmg`/`.exe`) aren't available yet, so the desktop app runs from source.

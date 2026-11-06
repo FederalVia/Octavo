@@ -1,16 +1,49 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { api, ApiError, setToken, subscribe, type GraphData, type NoteDetail, type NoteSummary, type VaultEvent } from './api';
+import { api, ApiError, setToken, subscribe, type Backlink, type Bookmark, type GraphData, type NoteDetail, type NoteSummary, type VaultEvent } from './api';
 import { Editor, type EditorHandle } from './components/Editor';
 import { Preview } from './components/Preview';
 import { FileTree } from './components/FileTree';
 import { BrainView, type BrainHandle } from './components/BrainView';
 import { AtlasView } from './components/AtlasView';
 import { QuickSwitcher } from './components/QuickSwitcher';
+import { CommandPalette, type PaletteItem } from './components/CommandPalette';
+import { HistoryDialog } from './components/HistoryDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
-import { SearchPanel, TagsPanel } from './components/Panels';
-import { wordCount } from './markdown';
+import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
+import { taskLines, wordCount } from './markdown';
 
 type Mode = 'edit' | 'preview';
+type DrawerTab = 'files' | 'search' | 'tags' | 'tasks' | 'bookmarks' | 'insights';
+const DRAWER_TABS: { key: DrawerTab; icon: string; label: string }[] = [
+  { key: 'files', icon: '▤', label: 'Files' },
+  { key: 'search', icon: '⌕', label: 'Search' },
+  { key: 'tags', icon: '#', label: 'Tags' },
+  { key: 'tasks', icon: '☑', label: 'Tasks' },
+  { key: 'bookmarks', icon: '☆', label: 'Bookmarks' },
+  { key: 'insights', icon: '◇', label: 'Insights' },
+];
+
+function pad2(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+/** Fill {{date}}, {{time}}, {{title}} and {{date:YYYY-MM-DD HH:mm}} placeholders in a template. */
+export function applyTemplate(text: string, title: string, now = new Date()): string {
+  const fmt = (f: string) =>
+    f
+      .replace(/YYYY/g, String(now.getFullYear()))
+      .replace(/MM/g, pad2(now.getMonth() + 1))
+      .replace(/DD/g, pad2(now.getDate()))
+      .replace(/HH/g, pad2(now.getHours()))
+      .replace(/mm/g, pad2(now.getMinutes()))
+      .replace(/ss/g, pad2(now.getSeconds()));
+  return text
+    .replace(/\{\{\s*title\s*\}\}/gi, title)
+    .replace(/\{\{\s*date\s*:\s*([^}]+)\}\}/gi, (_m, f) => fmt(f.trim()))
+    .replace(/\{\{\s*time\s*:\s*([^}]+)\}\}/gi, (_m, f) => fmt(f.trim()))
+    .replace(/\{\{\s*date\s*\}\}/gi, fmt('YYYY-MM-DD'))
+    .replace(/\{\{\s*time\s*\}\}/gi, fmt('HH:mm'));
+}
 type SaveState = 'saved' | 'dirty' | 'saving' | 'error' | 'conflict';
 type Route = { view: 'note'; path: string } | { view: 'home' };
 
@@ -54,13 +87,20 @@ export function App() {
   const [version, setVersion] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [mode, setMode] = useState<Mode>(() => load('ultron.mode', 'preview'));
-  const [leftTab, setLeftTab] = useState<'files' | 'search' | 'tags'>('files');
+  const [leftTab, setLeftTab] = useState<DrawerTab>('files');
+  const [palette, setPalette] = useState<null | 'commands' | 'templates' | 'new-from-template'>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [mentions, setMentions] = useState<Backlink[]>([]);
+  const [vimMode, setVimMode] = useState<boolean>(() => load('ultron.vim', false));
   const [query, setQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
   const [showLeft, setShowLeft] = useState<boolean>(() => !narrow() && load('ultron.left', false));
   const [panelWide, setPanelWide] = useState<boolean>(() => load('ultron.panelWide', false));
   const [lineNumbers, setLineNumbers] = useState(() => load('ultron.lineNumbers', false));
+  useEffect(() => store('ultron.vim', vimMode), [vimMode]);
   const [switcher, setSwitcher] = useState(false);
   const [dialog, setDialog] = useState<DialogRequest | null>(null);
   const [connected, setConnected] = useState(true);
@@ -577,10 +617,136 @@ export function App() {
     if (location.hash && location.hash !== '#/') location.hash = '#/';
   }, [save]);
 
+  // ---------------------------------------------------------------- bookmarks, mentions, tasks, templates
+  useEffect(() => {
+    api
+      .getConfig<Bookmark[]>('bookmarks')
+      .then((r) => setBookmarks(Array.isArray(r.value) ? r.value : []))
+      .catch(() => {});
+  }, []);
+  const saveBookmarks = useCallback((next: Bookmark[]) => {
+    setBookmarks(next);
+    api.setConfig('bookmarks', next).catch(() => {});
+  }, []);
+  const isBookmarked = !!detail && bookmarks.some((b) => b.type === 'note' && b.path === detail.path && !b.heading);
+  const toggleBookmark = useCallback(() => {
+    if (!detail) return;
+    if (bookmarks.some((b) => b.type === 'note' && b.path === detail.path && !b.heading)) {
+      saveBookmarks(bookmarks.filter((b) => !(b.type === 'note' && b.path === detail.path && !b.heading)));
+    } else saveBookmarks([...bookmarks, { type: 'note', path: detail.path }]);
+  }, [detail, bookmarks, saveBookmarks]);
+
+  const detailPath = detail?.path;
+  useEffect(() => {
+    if (!detailPath) {
+      setMentions([]);
+      return;
+    }
+    api
+      .mentions(detailPath)
+      .then((r) => setMentions(r.mentions))
+      .catch(() => setMentions([]));
+  }, [detailPath, refreshKey]);
+
+  /** Click a checkbox in reading view: flip that task in the source and autosave. */
+  const toggleTask = useCallback(
+    (index: number) => {
+      const lines = draftRef.current.split('\n');
+      const lineNo = taskLines(draftRef.current)[index];
+      if (!lineNo) return;
+      const m = /^(\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[)(.)(\].*)$/.exec(lines[lineNo - 1]);
+      if (!m) return;
+      lines[lineNo - 1] = m[1] + (m[2] === ' ' ? 'x' : ' ') + m[3];
+      onChange(lines.join('\n'));
+    },
+    [onChange],
+  );
+
+  const templates = useMemo(() => notes.filter((n) => /^templates?\//i.test(n.path)), [notes]);
+
+  const insertTemplate = useCallback(
+    async (path: string) => {
+      try {
+        const t = await api.note(path);
+        const text = applyTemplate(t.content.replace(/^---\r?\n[\s\S]*?\r?\n---[ \t]*\r?\n?/, ''), detail?.name ?? '');
+        setMode('edit');
+        setTimeout(() => editor.current?.insert(text), 60);
+      } catch (err) {
+        handleError(err);
+      }
+    },
+    [detail, handleError],
+  );
+
+  const newFromTemplate = useCallback(
+    async (path: string) => {
+      const name = await prompt('New note from template', '', { confirmLabel: 'Create', placeholder: 'Folder/Note name' });
+      if (!name) return;
+      try {
+        const t = await api.note(path);
+        await createNote(name, applyTemplate(t.content, name.split('/').pop()!.replace(/\.md$/i, '')));
+      } catch (err) {
+        handleError(err);
+      }
+    },
+    [prompt, createNote, handleError],
+  );
+
+  const newUniqueNote = useCallback(() => {
+    const d = new Date();
+    let name = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+    if (notesRef.current.some((n) => n.name === name)) name += pad2(d.getSeconds());
+    createNote(name, `# ${name}\n\n`);
+  }, [createNote]);
+
+  const openRandom = useCallback(() => {
+    const list = notesRef.current.filter((n) => n.path !== loadedPath.current);
+    if (list.length) navigate(list[Math.floor(Math.random() * list.length)].path);
+  }, [navigate]);
+
+  const extractSelection = useCallback(async () => {
+    const sel = mode === 'edit' ? editor.current?.getSelection() ?? '' : '';
+    if (!sel.trim()) {
+      await confirm('Select some text first', 'Switch to Edit, select the text you want to move into its own note, then run this again.', {
+        confirmLabel: 'OK',
+      });
+      return;
+    }
+    const firstLine = sel.trim().split('\n')[0].replace(/^#+\s*/, '').slice(0, 60);
+    const name = await prompt('Extract to new note', firstLine, { confirmLabel: 'Extract', message: 'The selection is replaced by a link to the new note.' });
+    if (!name) return;
+    try {
+      const s = await api.create(name, sel.trim() + '\n');
+      editor.current?.replaceSelection(`[[${s.name}]]`);
+      await refreshNotes();
+    } catch (err) {
+      handleError(err);
+    }
+  }, [mode, confirm, prompt, refreshNotes, handleError]);
+
+  const copyLink = useCallback(() => {
+    if (!detail) return;
+    const url = `${location.href.split('#')[0]}${noteHash(detail.path)}`;
+    navigator.clipboard?.writeText(url).catch(() => {});
+  }, [detail]);
+
+  const addUrlBookmark = useCallback(async () => {
+    const url = await prompt('Bookmark a web link', 'https://', { confirmLabel: 'Add' });
+    if (!url || !/^https?:\/\/\S+$/.test(url)) return;
+    const title = await prompt('Name (optional)', url.replace(/^https?:\/\//, ''), { confirmLabel: 'Save' });
+    saveBookmarks([...bookmarks, { type: 'url', url, title: title || undefined }]);
+  }, [prompt, bookmarks, saveBookmarks]);
+
+  const openDrawer = useCallback((tab: DrawerTab) => {
+    setLeftTab(tab);
+    setShowLeft(true);
+    if (tab === 'search') setSearchFocus((k) => k + 1);
+  }, []);
+
   // ---------------------------------------------------------------- shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !dialog && !switcher) {
+      if (e.key === 'Escape' && !dialog && !switcher && !palette && !historyOpen) {
         const inEditor = (e.target as HTMLElement | null)?.closest?.('.cm-editor, input, textarea');
         if (!inEditor) {
           if (showLeft && narrow()) setShowLeft(false);
@@ -591,7 +757,10 @@ export function App() {
       const m = isMac ? e.metaKey : e.ctrlKey;
       if (!m || dialog) return;
       const k = e.key.toLowerCase();
-      if (k === 'o' || (k === 'p' && !e.shiftKey)) {
+      if (k === 'p') {
+        e.preventDefault();
+        setPalette('commands');
+      } else if (k === 'o') {
         e.preventDefault();
         setSwitcher(true);
       } else if (k === 'f' && e.shiftKey) {
@@ -619,10 +788,40 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, switcher, showLeft, showSearch, closePanel, openDaily, newNote, save]);
+  }, [dialog, switcher, palette, historyOpen, showLeft, showSearch, closePanel, openDaily, newNote, save]);
 
   // ---------------------------------------------------------------- render
-  const words = useMemo(() => wordCount(draft), [draft]);
+  const counts = useMemo(() => wordCount(draft), [draft]);
+  const hasNote = route.view === 'note' && !!detail;
+  const commandItems: PaletteItem[] = [
+    { id: 'new', label: 'New note', hint: `${mod}+N`, run: () => newNote() },
+    { id: 'unique', label: 'New unique note (timestamp name)', keywords: 'zettelkasten id', run: newUniqueNote },
+    { id: 'new-tpl', label: 'New note from template…', run: () => setTimeout(() => setPalette('new-from-template'), 0) },
+    { id: 'daily', label: 'Open today’s journal', hint: `${mod}+D`, keywords: 'daily note', run: openDaily },
+    { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
+    { id: 'random', label: 'Open random note', run: openRandom },
+    { id: 'search', label: 'Search all notes', hint: `${mod}+Shift+F`, run: () => showSearch() },
+    { id: 'tasks', label: 'Show all tasks', keywords: 'todo checkbox', run: () => openDrawer('tasks') },
+    { id: 'bookmarks', label: 'Show bookmarks', run: () => openDrawer('bookmarks') },
+    { id: 'insights', label: 'Find orphans and dead ends', keywords: 'insights unlinked', run: () => openDrawer('insights') },
+    { id: 'files', label: 'Show file explorer', hint: `${mod}+\\`, run: () => openDrawer('files') },
+    { id: 'view', label: viewMode === 'atlas' ? 'Switch to network view' : 'Switch to atlas view', keywords: 'graph brain', run: () => setViewMode((v) => (v === 'atlas' ? 'network' : 'atlas')) },
+    { id: 'vim', label: vimMode ? 'Turn off Vim keybindings' : 'Turn on Vim keybindings', run: () => setVimMode((v) => !v) },
+    { id: 'lines', label: lineNumbers ? 'Hide line numbers' : 'Show line numbers', run: () => setLineNumbers((v: boolean) => !v) },
+    ...(hasNote
+      ? [
+          { id: 'toggle', label: mode === 'edit' ? 'Switch to reading view' : 'Switch to editing', hint: `${mod}+E`, run: () => setMode((m) => (m === 'edit' ? 'preview' : 'edit')) },
+          { id: 'tpl', label: 'Insert template…', run: () => setTimeout(() => setPalette('templates'), 0) },
+          { id: 'bookmark', label: isBookmarked ? 'Remove bookmark' : 'Bookmark this note', run: toggleBookmark },
+          { id: 'history', label: 'Show version history', keywords: 'recovery restore snapshot', run: () => setHistoryOpen(true) },
+          { id: 'extract', label: 'Extract selection to new note', keywords: 'split composer refactor', run: extractSelection },
+          { id: 'copy', label: 'Copy link to this note', run: copyLink },
+          { id: 'rename', label: 'Rename or move note', run: () => renameNote(detail!.path) },
+          { id: 'delete', label: 'Delete note', run: () => deleteNote(detail!.path) },
+          { id: 'close', label: 'Close note', hint: 'Esc', run: closePanel },
+        ]
+      : []),
+  ];
   if (fatal) {
     return (
       <div className="fatal">
@@ -701,13 +900,15 @@ export function App() {
       {showLeft && (
         <aside className="drawer">
           <div className="tabs">
-            {(['files', 'search', 'tags'] as const).map((t) => (
+            {DRAWER_TABS.map((t) => (
               <button
-                key={t}
-                className={`tab${leftTab === t ? ' active' : ''}`}
-                onClick={() => (t === 'search' ? showSearch() : setLeftTab(t))}
+                key={t.key}
+                className={`tab icon-tab${leftTab === t.key ? ' active' : ''}`}
+                title={t.label}
+                aria-label={t.label}
+                onClick={() => (t.key === 'search' ? showSearch() : setLeftTab(t.key))}
               >
-                {t[0].toUpperCase() + t.slice(1)}
+                {t.icon}
               </button>
             ))}
             <button className="icon-btn" title="Close" onClick={() => setShowLeft(false)}>
@@ -727,6 +928,7 @@ export function App() {
           )}
           {leftTab === 'search' && (
             <SearchPanel
+              onBookmark={(q) => saveBookmarks([...bookmarks.filter((b) => !(b.type === 'search' && b.query === q)), { type: 'search', query: q }])}
               query={query}
               setQuery={setQuery}
               focusKey={searchFocus}
@@ -735,6 +937,17 @@ export function App() {
             />
           )}
           {leftTab === 'tags' && <TagsPanel refreshKey={refreshKey} onSelect={(t) => showSearch(`tag:${t}`)} />}
+          {leftTab === 'tasks' && <TasksPanel refreshKey={refreshKey} onOpen={(p, line) => navigate(p, { line })} />}
+          {leftTab === 'bookmarks' && (
+            <BookmarksPanel
+              bookmarks={bookmarks}
+              onOpenNote={(p, heading) => navigate(p, { heading })}
+              onSearch={(q) => showSearch(q)}
+              onRemove={(i) => saveBookmarks(bookmarks.filter((_, j) => j !== i))}
+              onAddUrl={addUrlBookmark}
+            />
+          )}
+          {leftTab === 'insights' && <InsightsPanel refreshKey={refreshKey} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} />}
         </aside>
       )}
 
@@ -760,6 +973,39 @@ export function App() {
               </button>
               <button className="icon-btn hide-narrow" title={panelWide ? 'Narrower' : 'Wider'} onClick={() => setPanelWide((w) => !w)}>
                 {panelWide ? '⇥' : '⇤'}
+              </button>
+              <button className={`icon-btn${isBookmarked ? ' starred' : ''}`} title={isBookmarked ? 'Remove bookmark' : 'Bookmark this note'} onClick={toggleBookmark}>
+                {isBookmarked ? '★' : '☆'}
+              </button>
+              {detail.headings.length > 0 && (
+                <div className="outline-wrap">
+                  <button className="icon-btn" title="Outline" onClick={() => setOutlineOpen((o) => !o)}>
+                    ≡
+                  </button>
+                  {outlineOpen && (
+                    <>
+                      <div className="menu-backdrop" onMouseDown={() => setOutlineOpen(false)} />
+                      <div className="outline-pop">
+                        {detail.headings.map((h) => (
+                          <button
+                            key={h.line}
+                            style={{ paddingLeft: 10 + (h.level - 1) * 12 }}
+                            onClick={() => {
+                              setOutlineOpen(false);
+                              if (mode === 'edit') editor.current?.scrollToLine(h.line);
+                              else setPendingHeading(h.text);
+                            }}
+                          >
+                            {h.text}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              <button className="icon-btn hide-narrow" title="Version history" onClick={() => setHistoryOpen(true)}>
+                ⟲
               </button>
               <button className="icon-btn" title="Rename / move" onClick={() => renameNote(detail.path)}>
                 ✎
@@ -807,10 +1053,18 @@ export function App() {
               onOpenLink={openLink}
               showLineNumbers={lineNumbers}
               onReady={(h) => (editor.current = h)}
+              vimMode={vimMode}
+              onUpload={async (file) => {
+                const r = await api.upload(file);
+                return r.path;
+              }}
+              onSlashCommand={() => setPalette('templates')}
             />
           </div>
           {mode === 'preview' && detail && (
             <Preview
+              path={detail.path}
+              onToggleTask={toggleTask}
               content={draft}
               exists={exists}
               namesKey={namesKey}
@@ -847,6 +1101,18 @@ export function App() {
                 </button>
               ))}
             </div>
+            {mentions.length > 0 && (
+              <div className="conn-row">
+                <span className="conn-label" title="Notes that mention this note's name without linking to it">
+                  Mentioned in
+                </span>
+                {mentions.map((m) => (
+                  <button key={m.path} className="chip ghost" title={m.context.map((c) => c.text).join('\n')} onClick={() => navigate(m.path, { line: m.context[0]?.line })}>
+                    {m.name}
+                  </button>
+                ))}
+              </div>
+            )}
             {detail.tags.length > 0 && (
               <div className="conn-row">
                 {detail.tags.map((t) => (
@@ -862,7 +1128,10 @@ export function App() {
         {detail && (
           <footer className="statusbar">
             <span className={`save-state ${saveState}`}>{saveLabel[saveState]}</span>
-            <span>{words} words</span>
+            <span>
+              {counts.words} words · {counts.chars} chars
+            </span>
+            {vimMode && mode === 'edit' && <span className="vim-badge">VIM</span>}
             <span className="spacer" />
             <label className="hide-narrow">
               <input type="checkbox" checked={lineNumbers} onChange={(e) => setLineNumbers(e.target.checked)} /> Line numbers
@@ -872,6 +1141,38 @@ export function App() {
       </section>
 
       {isNarrow && showLeft && <div className="sidebar-backdrop" onClick={() => setShowLeft(false)} />}
+
+      {palette === 'commands' && (
+        <CommandPalette
+          placeholder="Type a command…"
+          onClose={() => setPalette(null)}
+          items={commandItems}
+        />
+      )}
+      {(palette === 'templates' || palette === 'new-from-template') && (
+        <CommandPalette
+          placeholder={palette === 'templates' ? 'Insert template…' : 'New note from template…'}
+          emptyText="No templates yet. Create notes in a Templates/ folder. They can use {{title}}, {{date}} and {{time}}."
+          onClose={() => setPalette(null)}
+          items={templates.map((t) => ({
+            id: t.path,
+            label: t.name,
+            hint: t.folder,
+            run: () => (palette === 'templates' ? insertTemplate(t.path) : newFromTemplate(t.path)),
+          }))}
+        />
+      )}
+      {historyOpen && detail && (
+        <HistoryDialog
+          path={detail.path}
+          current={draft}
+          onClose={() => setHistoryOpen(false)}
+          onRestored={() => {
+            dirty.current = false;
+            api.note(detail.path).then((d) => applyDetail(d, true)).catch(handleError);
+          }}
+        />
+      )}
 
       {switcher && (
         <QuickSwitcher notes={notes} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} onClose={() => setSwitcher(false)} />

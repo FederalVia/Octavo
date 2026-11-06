@@ -19,7 +19,7 @@ describe('parseNote', () => {
         '```',
         '[[NotALink]] #notatag',
         '```',
-        'Inline `[[AlsoNot]]` code.',
+        'Inline `[[AlsoNot]]` code. ![[photo.png]] is an attachment.',
       ].join('\n'),
     );
     assert.deepEqual(p.tags, ['ai', 'inline-tag', 'nested/tag', 'project']);

@@ -220,6 +220,30 @@ ultron mcp   [options]   MCP server over stdio (for Claude Desktop / Claude Code
 
 From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <options>` runs `mcp`. You can also call `node packages/server/dist/cli.js <command> <options>` directly.
 
+### Note commands
+
+These work directly on the vault folder, so no server needs to be running:
+
+```bash
+alias ultron="node /path/to/ultron-mind/packages/server/dist/cli.js"   # optional shortcut
+
+ultron new "Projects/Website" --content "# Website"   # or pipe content: echo text | ultron new Inbox/Idea
+ultron read "Website"
+ultron append "Website" "- [ ] Draft homepage" --heading "Tasks"
+ultron search 'tag:project "launch date"'
+ultron daily "Shipped the new homepage"              # timestamped journal entry
+ultron task "Call the printer"                       # adds - [ ] to today's journal
+ultron tasks                                         # open tasks across the vault (--done for all)
+ultron done "Journal/2026-11-06" 4                   # toggle the task on line 4
+ultron tags
+ultron move "Website" "Archive/Website"              # updates every link
+ultron history "Website"                             # saved versions
+ultron restore "Website" 1793928299164
+ultron orphans                                       # unlinked notes and dead ends
+```
+
+All of them take `--vault <dir>` (or use `ULTRON_VAULT`). `search`, `tasks`, `tags`, `history` and `orphans` accept `--json`.
+
 | Option | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
 | `--vault <dir>` | `ULTRON_VAULT` | `~/UltronMind` | Folder containing your notes |
@@ -229,6 +253,10 @@ From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <
 | `--read-only` | | off | Only expose read tools over MCP |
 | `--daily <folder>` | | `Journal` | Folder for daily notes |
 | `--no-seed` | | off | Don't create starter notes in an empty vault |
+
+### Installing on a phone
+
+Open your server's address in Safari (iOS) or Chrome (Android), then choose **Share → Add to Home Screen** (iOS) or **⋮ → Install app** (Android). Ultron then opens full-screen like an app. Your phone needs to be able to reach the server: see [section 6](#6-accessing-it-from-other-devices-https).
 
 ---
 

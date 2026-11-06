@@ -72,6 +72,55 @@ describe('HTTP server', () => {
     assert.equal(res.status, 404);
   });
 
+  test('attachments, tasks, insights, history, config', async () => {
+    // Upload + fetch by bare name
+    let res = await fetch(`${srv.url}/api/attachments?name=${encodeURIComponent('my pic.png')}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'image/png' },
+      body: new Uint8Array([137, 80, 78, 71]),
+    });
+    assert.equal(res.status, 201);
+    assert.equal((await res.json()).path, 'attachments/my pic.png');
+    res = await api(`/api/files/${encodeURIComponent('my pic.png')}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'image/png');
+    assert.equal((await res.arrayBuffer()).byteLength, 4);
+    res = await api('/api/files/missing.png');
+    assert.equal(res.status, 404);
+
+    // Tasks
+    await api('/api/notes/Todo.md', { method: 'PUT', body: JSON.stringify({ content: '# Todo\n- [ ] one\n- [ ] two\n' }) });
+    res = await api('/api/tasks');
+    const tasks = (await res.json()).tasks.filter((t: { path: string }) => t.path === 'Todo.md');
+    assert.equal(tasks.length, 2);
+    res = await api('/api/tasks', { method: 'POST', body: JSON.stringify({ path: 'Todo.md', line: 2 }) });
+    assert.equal(res.status, 200);
+    res = await api('/api/notes/Todo.md');
+    assert.match((await res.json()).content, /- \[x\] one/);
+
+    // Insights + mentions
+    res = await api('/api/insights');
+    const ins = await res.json();
+    assert.ok(Array.isArray(ins.orphans) && Array.isArray(ins.deadEnds));
+    res = await api('/api/mentions/Todo.md');
+    assert.ok(Array.isArray((await res.json()).mentions));
+
+    // History (first overwrite creates a snapshot)
+    res = await api('/api/history/Todo.md');
+    const versions = (await res.json()).versions;
+    assert.equal(versions.length, 1);
+    res = await api(`/api/history/Todo.md?id=${versions[0].id}`);
+    assert.match((await res.json()).content, /- \[ \] one/);
+
+    // Config (whitelisted names only)
+    res = await api('/api/config/bookmarks', { method: 'PUT', body: JSON.stringify({ value: [{ type: 'note', path: 'Todo.md' }] }) });
+    assert.equal(res.status, 200);
+    res = await api('/api/config/bookmarks');
+    assert.deepEqual((await res.json()).value, [{ type: 'note', path: 'Todo.md' }]);
+    res = await api('/api/config/secrets');
+    assert.equal(res.status, 404);
+  });
+
   test('MCP over streamable HTTP', async () => {
     const client = new Client({ name: 'test', version: '1.0.0' });
     const transport = new StreamableHTTPClientTransport(new URL(`${srv.url}/mcp`), {
@@ -82,7 +131,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 

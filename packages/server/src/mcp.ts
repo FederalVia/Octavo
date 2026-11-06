@@ -187,6 +187,25 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     }),
   );
 
+  server.registerTool(
+    'list_tasks',
+    {
+      title: 'List tasks',
+      description: 'List Markdown tasks (`- [ ] ...`) across the vault, with the note path and line number of each. Open tasks only unless include_done is true.',
+      inputSchema: {
+        include_done: z.boolean().optional(),
+        path: z.string().optional().describe('Only tasks from this note'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ include_done, path }) => {
+      const only = path ? vault.resolve(path) : null;
+      const tasks = vault.tasks({ includeDone: include_done }).filter((t) => !path || t.path === only);
+      if (!tasks.length) return text('No tasks found.');
+      return text(tasks.map((t) => `- [${t.status}] ${t.text}  (${t.path}:${t.line})`).join('\n'));
+    }),
+  );
+
   if (opts.readOnly) return server;
 
   server.registerTool(
@@ -272,6 +291,23 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     safe(async ({ path }) => {
       const r = await vault.delete(path);
       return text(`Moved ${r.path} to ${r.trashedTo}`);
+    }),
+  );
+
+  server.registerTool(
+    'update_task',
+    {
+      title: 'Update task',
+      description: 'Set the status of a task by note path and line number (from list_tasks). Status is one character: " " open, "x" done, "-" cancelled, "?" question, etc. Without status the task toggles between open and done.',
+      inputSchema: {
+        path: pathArg,
+        line: z.number().int().min(1),
+        status: z.string().length(1).optional(),
+      },
+    },
+    safe(async ({ path, line, status }) => {
+      const s = await vault.setTask(path, line, status);
+      return text(`Updated task on line ${line} of ${s.path}`);
     }),
   );
 

@@ -142,7 +142,54 @@ export const api = {
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
   graph: () => request<GraphData>('GET', 'api/graph'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
+  upload: async (file: File, folder = 'attachments'): Promise<{ path: string }> => {
+    const headers: Record<string, string> = { 'Content-Type': file.type || 'application/octet-stream' };
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`api/attachments?name=${encodeURIComponent(file.name || 'pasted.png')}&folder=${encodeURIComponent(folder)}`, {
+      method: 'POST',
+      headers,
+      body: file,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText, data);
+    return data as { path: string };
+  },
+  history: (p: string) => request<{ versions: Version[] }>('GET', `api/history/${encodePath(p)}`),
+  version: (p: string, id: string) => request<{ content: string }>('GET', `api/history/${encodePath(p)}?id=${encodeURIComponent(id)}`),
+  restore: (p: string, id: string) => request<NoteSummary>('POST', 'api/restore', { path: p, id }),
+  mentions: (p: string) => request<{ mentions: Backlink[] }>('GET', `api/mentions/${encodePath(p)}`),
+  insights: () => request<Insights>('GET', 'api/insights'),
+  tasks: (done = false) => request<{ tasks: Task[] }>('GET', `api/tasks${done ? '?done=1' : ''}`),
+  setTask: (p: string, line: number, status?: string) => request<NoteSummary>('POST', 'api/tasks', { path: p, line, status }),
+  getConfig: <T,>(name: string) => request<{ value: T | null }>('GET', `api/config/${name}`),
+  setConfig: (name: string, value: unknown) => request<{ ok: boolean }>('PUT', `api/config/${name}`, { value }),
 };
+
+export interface Version {
+  id: string;
+  time: number;
+  size: number;
+}
+
+export interface Insights {
+  orphans: NoteSummary[];
+  deadEnds: NoteSummary[];
+  unresolved: { target: string; from: string[] }[];
+}
+
+export interface Task {
+  path: string;
+  name: string;
+  line: number;
+  status: string;
+  text: string;
+}
+
+export type Bookmark =
+  | { type: 'note'; path: string; heading?: string; title?: string }
+  | { type: 'search'; query: string; title?: string }
+  | { type: 'url'; url: string; title?: string };
 
 /** Subscribe to live vault changes. Reconnects automatically. */
 export function subscribe(onEvent: (e: VaultEvent) => void, onStatus?: (connected: boolean) => void): () => void {

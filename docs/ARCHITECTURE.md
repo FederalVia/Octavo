@@ -30,12 +30,15 @@ The `Vault` class (`src/vault.ts`) holds an in-memory index of every `.md` file 
 - **Writes are atomic**: each write goes to a hidden temp file, which is then renamed over the target. `write()` can take an `expectedMtime` and throws `NoteConflictError` if the file changed since it was read.
 - **Rename** rewrites every wiki and Markdown link pointing to the note, using the pre-rename index to decide which links match. Links made through an alias are left alone, since they still resolve.
 - **Delete** moves the file into `.trash/`.
+- **History**: before a note is overwritten, its previous content is saved to `.ultron/history/<path>/<timestamp>.md`. This happens at most once every 5 minutes per note, and the newest 50 versions are kept.
+- **Attachments**: non-Markdown files are indexed by name, so `![[photo.png]]` resolves anywhere in the vault. `[[file.pdf]]`-style references aren't counted as links between notes.
+- **Tasks**: `- [ ]`-style items (any single-character status) are found outside code blocks and can be toggled by line.
 - **Watching**: a recursive `fs.watch` with debounced per-file refreshes, plus a full rescan for directory-level changes. Refreshes compare mtime and size, so the vault's own writes don't cause duplicate events. Every change is emitted as a `VaultEvent` (`change`, `delete`, `rename`, `rescan`).
 
 ## packages/server
 
-- `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, and `src/cli.ts` is the `ultron` command.
-- **MCP** (`src/mcp.ts`) registers 13 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `ultron mcp` connects one server to stdin/stdout and logs to stderr.
+- `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, `src/cli.ts` is the `ultron` command, and `src/commands.ts` holds its note commands.
+- **MCP** (`src/mcp.ts`) registers 15 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `ultron mcp` connects one server to stdin/stdout and logs to stderr.
 - **Starter notes** (`src/seed.ts`) are written into an empty vault on first run.
 
 ### REST API
@@ -57,6 +60,14 @@ All endpoints are under `/api` and need `Authorization: Bearer <token>` (or `?to
 | GET | `/api/graph` | `{ nodes, links }`. Nodes include `degree`, `tags`, `unresolved`, `region` |
 | GET | `/api/related/<path>` | Related notes with reasons |
 | POST | `/api/daily` | Create (if needed) and return today's journal note |
+| GET | `/api/files/<path-or-name>?from=` | Stream an attachment (resolved by path or bare file name, like `![[photo.png]]`) |
+| POST | `/api/attachments?name=&folder=` | Upload raw bytes; saved under `attachments/` with a free name |
+| GET | `/api/history/<path>` / `?id=` | List saved versions / read one |
+| POST | `/api/restore` | Body `{ path, id }`. Restore a version (the current content is snapshotted first) |
+| GET | `/api/mentions/<path>` | Unlinked mentions of a note |
+| GET | `/api/insights` | `{ orphans, deadEnds, unresolved }` |
+| GET / POST | `/api/tasks` | List tasks (`?done=1` for all) / body `{ path, line, status? }` to set one |
+| GET / PUT | `/api/config/bookmarks` | Bookmarks, stored in `.ultron/bookmarks.json` |
 | GET | `/api/events` | Server-Sent Events stream of `VaultEvent`s |
 
 Errors are JSON `{ error }` with status `400` (bad path or edit), `401`, `403` (host), `404`, `409` (conflict or exists) or `500`.
@@ -73,7 +84,9 @@ A Vite + React single-page app, served by the server (or by Vite in development,
 - `components/BrainView.tsx` is the Network view: d3-force simulation on a canvas, with a pre-settled initial layout, pinch and wheel zoom, and node dragging.
 - `regions.ts` holds the region definitions and the `classify()` rules shared by both views.
 - `components/Editor.tsx` is CodeMirror 6 with Markdown, wikilink and tag decorations, `[[` and `#` autocomplete, and Ctrl/Cmd-click to follow links.
-- `markdown.ts` renders the reading view with marked (plus wikilink and hashtag extensions), sanitised with DOMPurify.
+- `markdown.ts` renders the reading view with marked plus extensions for wikilinks and embeds, `#tags`, `==highlights==`, callouts, custom task marks, `%%comments%%`, `^block` anchors, footnotes (marked-footnote) and maths (KaTeX). Output is sanitised with DOMPurify.
+- `components/Preview.tsx` hydrates the rendered HTML: it transcludes embedded notes (up to 3 levels), renders Mermaid diagrams (loaded on demand), shows hover previews, and maps checkbox clicks back to source lines.
+- `components/CommandPalette.tsx`, `HistoryDialog.tsx` and the drawer panels in `Panels.tsx` provide the palette, version history, bookmarks, tasks and insights.
 
 ## packages/desktop
 

@@ -5,9 +5,17 @@
 - [Network view](#network-view)
 - [Brain regions](#brain-regions)
 - [Reading and editing notes](#reading-and-editing-notes)
+- [Writing syntax](#writing-syntax)
+- [Images and attachments](#images-and-attachments)
 - [Links, tags and properties](#links-tags-and-properties)
 - [Finding things](#finding-things)
 - [Organising notes](#organising-notes)
+- [Command palette and slash commands](#command-palette-and-slash-commands)
+- [Templates](#templates)
+- [Bookmarks](#bookmarks)
+- [Tasks](#tasks)
+- [Insights: orphans, dead ends, unlinked mentions](#insights-orphans-dead-ends-unlinked-mentions)
+- [Version history](#version-history)
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -21,7 +29,7 @@
 
 - **The brain** fills the window. Every note is a point, and every link between notes is a line.
 - **The toolbar** (top left) has these buttons, from left to right:
-  - ☰ opens the drawer with files, search and tags.
+  - ☰ opens the drawer. Its tabs are Files ▤, Search ⌕, Tags #, Tasks ☑, Bookmarks ☆ and Insights ◇.
   - The green dot shows live sync is connected.
   - The title shows the vault name, the current view and the note count.
   - ⋰ / ◎ switches between the atlas and network views.
@@ -90,15 +98,54 @@ Click a point, or pick a note from the drawer or the quick switcher, to open it 
 - **Read / Edit** (or **Ctrl/Cmd+E**) switches between the rendered note and the Markdown editor.
 - **Changes save automatically** shortly after you stop typing. The status bar shows *Editing… → Saving… → Saved*. **Ctrl/Cmd+S** saves immediately.
 - **⇤ / ⇥** makes the panel wider or narrower.
+- **☆ / ★** bookmarks the note.
+- **≡** shows the outline (headings). Click one to jump to it.
+- **⟲** opens the [version history](#version-history).
 - **✎** renames or moves the note. You can also double-click the title.
 - **🗑** deletes the note. It goes to the vault's `.trash` folder, so you can recover it.
-- **Under the note**, *Linked from* shows notes that link here (backlinks), and *Links to* shows notes this one links to. Click any of them to jump there. The brain flies to the new note.
+- **Under the note**:
+  - *Linked from* shows notes that link here (backlinks).
+  - *Links to* shows notes this one links to.
+  - *Mentioned in* shows notes that use this note's name without linking to it.
+
+  Click any of them to jump there. The brain flies to the new note.
+- **Hover over a link** in reading view to preview the linked note.
+- **Click a task checkbox** in reading view to tick it. The note is updated and saved.
+- The status bar shows word and character counts.
 
 **Editor features:**
-- Type `[[` to get note-name suggestions, and `#` for tag suggestions.
+- Type `[[` to get note-name suggestions, `#` for tag suggestions, and `/` for [slash commands](#command-palette-and-slash-commands).
+- Paste or drag images and other files in to [upload them](#images-and-attachments).
+- Vim keybindings: command palette → *Turn on Vim keybindings*.
 - **Ctrl/Cmd+click** a `[[link]]` to follow it.
 - Code blocks are highlighted for most languages.
 - Standard editing keys work, including undo/redo and Ctrl/Cmd+F to find in the note.
+
+## Writing syntax
+
+Ultron reads standard Markdown plus these extras. The demo vault's **Formatting Showcase** note shows all of them.
+
+| Write | Get |
+| --- | --- |
+| `**bold**`, `*italic*`, `~~strike~~`, `` `code` `` | Basic formatting |
+| `==highlight==`, `=={green}highlight==` | Highlights in yellow (default), red, orange, green, blue or purple |
+| `- [ ] task`, `- [x] done` | Task checkboxes. Any single character works as a status: `[-]` cancelled, `[?]` question, `[!]` important… |
+| `> [!note] Title` | A callout. Types: note, info, tip, success, question, warning, failure, danger, bug, example, quote, abstract, todo |
+| `> [!tip]- Title` / `> [!tip]+ Title` | A foldable callout, closed / open by default |
+| `Text.[^1]` … `[^1]: The footnote` | Footnotes |
+| `$E = mc^2$`, `$$ … $$` | Inline and block maths (LaTeX) |
+| ```` ```mermaid ```` code block | Diagrams: flowcharts, sequence diagrams, timelines, … |
+| `%%hidden%%` | A comment, visible only in the editor |
+| `Some paragraph ^my-id` | A block id, so `[[Note#^my-id]]` can link to or embed exactly that paragraph |
+| ```` ```js ```` code block | Code (highlighted in the editor) |
+| `\| a \| b \|` tables | Tables (`/table` inserts one) |
+
+## Images and attachments
+
+- **Paste** an image (e.g. a screenshot) or **drag files** into the editor. They're saved to the vault's `attachments/` folder, and an embed such as `![[screenshot.png]]` is inserted.
+- **Embed** files with `![[file.png]]`. Images, audio (`mp3`, `wav`, `m4a`, `ogg`…), video (`mp4`, `mov`, `webm`…) and PDFs all display inline. The name alone is enough: the file can be in any folder.
+- **Resize** an image with `![[photo.png|300]]` (width) or `![[photo.png|300x200]]`.
+- Standard Markdown images work too: `![alt](attachments/photo.png)`.
 
 ## Links, tags and properties
 
@@ -108,7 +155,9 @@ Click a point, or pick a note from the drawer or the quick switcher, to open it 
 | `[[Folder/Note name]]` | Link by path (when two notes share a name) |
 | `[[Note name\|shown text]]` | Link with different display text |
 | `[[Note name#Heading]]` | Link to a section |
-| `![[Note name]]` | Embed-style link (shown as a link) |
+| `[[Note name#^block-id]]` | Link to a specific block |
+| `![[Note name]]` | Embed the whole note inline |
+| `![[Note name#Heading]]` / `![[Note name#^block-id]]` | Embed just a section or a block |
 | `[text](Other%20Note.md)` | Ordinary Markdown link to another note |
 | `#tag`, `#nested/tag` | Tags. They also count as the parent tag (`#nested`). |
 
@@ -140,6 +189,62 @@ Click a point, or pick a note from the drawer or the quick switcher, to open it 
 - **Rename / delete**: right-click a note in the file tree, or use the buttons in the note panel.
 - **Folders** exist as long as they contain notes.
 
+## Command palette and slash commands
+
+**Ctrl/Cmd+P** opens the command palette. Type to find any action, then press Enter:
+
+- **Create:** new note, new unique note (timestamp name), new note from template
+- **Navigate:** today's journal, quick switcher, random note, search, tasks, bookmarks, insights
+- **Current note:** insert template, bookmark, version history, extract selection to a new note, copy link, rename, delete
+- **Settings:** switch view, Vim keybindings, line numbers
+
+**Slash commands**: type `/` at the start of a word in the editor for a menu of things to insert:
+
+- headings, task, bullet and numbered lists, quote
+- callouts (note, tip, warning, foldable)
+- table, code block, maths, Mermaid diagram, divider
+- highlight, comment, footnote, link, embed
+- today's date or the current time
+- a template
+
+## Templates
+
+Put notes in a **`Templates/`** folder. When a template is used, these placeholders are filled in:
+
+| Placeholder | Becomes |
+| --- | --- |
+| `{{title}}` | The note's name |
+| `{{date}}` | Today, as `2026-11-06` |
+| `{{time}}` | Now, as `14:05` |
+| `{{date:DD/MM/YYYY}}` | A custom format using `YYYY`, `MM`, `DD`, `HH`, `mm`, `ss` |
+
+- **Insert a template** into the current note: `/template` in the editor, or command palette → *Insert template…*. A template's frontmatter is left out when inserting.
+- **Create a note from a template**: command palette → *New note from template…*
+
+The demo vault includes `Templates/Meeting` and `Templates/Book`.
+
+## Bookmarks
+
+The **☆** button on a note bookmarks it, and **☆ Bookmark this search** in the Search tab saves a search. In the Bookmarks tab (☆) you can also add web links. Bookmarks are stored in the vault at `.ultron/bookmarks.json`, so they move with the vault.
+
+## Tasks
+
+The **Tasks** tab (☑) lists every open task in the vault, grouped by note. Tick tasks right there, or click a task to jump to it. *Show completed* includes finished ones. From a terminal: `ultron tasks` and `ultron task "something"`. Claude can list and update tasks too.
+
+## Insights: orphans, dead ends, unlinked mentions
+
+The **Insights** tab (◇) helps keep the vault connected:
+
+- **Orphans**: notes that no other note links to.
+- **Dead ends**: notes that don't link anywhere.
+- **Not written yet**: link targets that don't exist. Click one to create it.
+
+Under each note, **Mentioned in** lists notes that use its name in plain text without linking. These are good candidates for new links.
+
+## Version history
+
+Before a note changes, Ultron keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.ultron/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
+
 ## Daily journal
 
 **Ctrl/Cmd+D** (or ◷) opens today's note, `Journal/YYYY-MM-DD.md`, and creates it if needed. Claude adds timestamped entries here when it uses `log_to_journal`. To use a different folder, start the server with `--daily <folder>`.
@@ -157,7 +262,8 @@ On macOS, use **Cmd** instead of **Ctrl**.
 
 | Shortcut | Action |
 | --- | --- |
-| Ctrl+O (or Ctrl+P) | Quick switcher |
+| Ctrl+P | Command palette |
+| Ctrl+O | Quick switcher |
 | Ctrl+N | New note |
 | Ctrl+D | Today's journal note |
 | Ctrl+E | Toggle read / edit |
@@ -167,10 +273,12 @@ On macOS, use **Cmd** instead of **Ctrl**.
 | Ctrl+G or Esc | Close the note and return to the brain |
 | Ctrl+click on `[[link]]` | Follow the link (in the editor) |
 | Shift+Enter | Create the typed note (in the quick switcher) |
+| `/` | Slash commands (in the editor) |
 
 ## Using it alongside Obsidian, git and other editors
 
 - The vault is just a folder of `.md` files. Ultron Mind ignores hidden folders such as `.obsidian`, `.git` and `.trash`.
 - You can open the same folder in **Obsidian** and in Ultron Mind at the same time. Changes appear in both.
 - **git** works well for history and sync. Commit the vault folder as usual.
-- Attachments and images aren't displayed yet, but they're left untouched.
+- Obsidian attachments (`![[image.png]]`) display as they do in Obsidian, and Obsidian-style callouts, highlights, footnotes, maths, block links and comments all render.
+- Ultron keeps its own data (bookmarks, version history) in a hidden `.ultron/` folder. Add it to `.gitignore` if you don't want it committed.

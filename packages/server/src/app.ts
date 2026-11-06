@@ -196,6 +196,111 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
+  // Attachments: GET by path or bare name (like ![[photo.png]]), POST raw bytes to upload.
+  api.get('/files/*path', (req, res, next) => {
+    try {
+      const ref = notePathParam(req);
+      const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+      const rel = vault.resolveAttachment(ref, from) ?? (vault.resolve(ref) && ref.toLowerCase().endsWith('.md') ? vault.resolve(ref) : null);
+      if (!rel) {
+        res.status(404).json({ error: `File not found: ${ref}` });
+        return;
+      }
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.sendFile(vault.filePath(rel), { dotfiles: 'deny' });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.post('/attachments', express.raw({ type: () => true, limit: '100mb' }), async (req, res, next) => {
+    try {
+      const name = typeof req.query.name === 'string' ? req.query.name : 'file';
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        res.status(400).json({ error: 'Empty upload' });
+        return;
+      }
+      const folder = typeof req.query.folder === 'string' ? req.query.folder : 'attachments';
+      res.status(201).json({ path: await vault.saveAttachment(name, req.body, folder) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.get('/history/*path', async (req, res, next) => {
+    try {
+      const id = typeof req.query.id === 'string' ? req.query.id : '';
+      if (id) res.json({ content: await vault.readVersion(notePathParam(req), id) });
+      else res.json({ versions: await vault.history(notePathParam(req)) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.post('/restore', async (req, res, next) => {
+    try {
+      const { path: p, id } = req.body ?? {};
+      if (typeof p !== 'string' || typeof id !== 'string') {
+        res.status(400).json({ error: 'Body must include "path" and "id"' });
+        return;
+      }
+      res.json(await vault.restoreVersion(p, id));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.get('/mentions/*path', (req, res, next) => {
+    try {
+      res.json({ mentions: vault.unlinkedMentions(notePathParam(req)) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.get('/insights', (_req, res) => {
+    res.json(vault.insights());
+  });
+
+  api.get('/tasks', (req, res) => {
+    res.json({ tasks: vault.tasks({ includeDone: req.query.done === '1' }) });
+  });
+
+  api.post('/tasks', async (req, res, next) => {
+    try {
+      const { path: p, line, status } = req.body ?? {};
+      if (typeof p !== 'string' || typeof line !== 'number') {
+        res.status(400).json({ error: 'Body must include "path" and "line"' });
+        return;
+      }
+      res.json(await vault.setTask(p, line, typeof status === 'string' ? status : undefined));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  const CONFIG_NAMES = new Set(['bookmarks', 'settings']);
+  api.get('/config/:name', async (req, res) => {
+    if (!CONFIG_NAMES.has(req.params.name)) {
+      res.status(404).json({ error: 'Unknown config' });
+      return;
+    }
+    res.json({ value: await vault.getConfig(req.params.name, null) });
+  });
+  api.put('/config/:name', async (req, res, next) => {
+    try {
+      if (!CONFIG_NAMES.has(req.params.name)) {
+        res.status(404).json({ error: 'Unknown config' });
+        return;
+      }
+      await vault.setConfig(req.params.name, req.body?.value ?? null);
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   api.post('/daily', async (_req, res, next) => {
     try {
       res.json(await vault.ensureDailyNote());
