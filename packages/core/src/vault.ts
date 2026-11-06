@@ -387,6 +387,11 @@ export class Vault extends EventEmitter {
   // ---------------------------------------------------------------- links
 
   /** Resolve a link target (as written in `fromPath`) to a vault path. */
+  /** Every indexed note (read-only snapshot, including content and properties). */
+  allNotes(): IndexedNote[] {
+    return [...this.notes.values()];
+  }
+
   resolveLink(link: Pick<ParsedLink, 'target'> & { kind?: ParsedLink['kind'] }, fromPath?: string): string | null {
     const raw = link.target.trim();
     if (!raw) return fromPath && this.notes.has(fromPath) ? fromPath : null;

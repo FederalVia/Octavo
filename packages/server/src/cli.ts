@@ -68,6 +68,10 @@ async function main() {
       into: { type: 'string' },
       done: { type: 'boolean', default: false },
       json: { type: 'boolean', default: false },
+      all: { type: 'boolean', default: false },
+      folder: { type: 'string' },
+      tag: { type: 'string' },
+      title: { type: 'string' },
     },
   });
 
@@ -124,6 +128,10 @@ async function main() {
       json: values.json,
       daily: values.daily,
       into: values.into,
+      all: values.all,
+      folder: values.folder,
+      tag: values.tag,
+      title: values.title,
     });
     return;
   }

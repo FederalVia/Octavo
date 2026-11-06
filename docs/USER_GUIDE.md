@@ -18,6 +18,7 @@
 - [Version history](#version-history)
 - [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Queries (Bases)](#queries-bases)
+- [Publishing a website](#publishing-a-website)
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
 - [Keyboard shortcuts](#keyboard-shortcuts)
@@ -330,6 +331,20 @@ view: cards
 ````
 
 From a terminal: `octavo query 'LIST FROM #project WHERE due < date(today)'` and `octavo set "Octavo" status done`. Claude can use the same queries with `query_notes`, and set properties with `set_property`.
+
+## Publishing a website
+
+Turn some of your notes into a plain website you can host for free anywhere. There's no account or paid service.
+
+1. Mark the notes to share: open a note and run **Publish this note** from the command palette (it adds `publish: true` to its properties). Or skip this and publish a whole folder or tag.
+2. Command palette → **Publish as a website…** Choose what to include and a title, then **Download site (.zip)**.
+3. Unzip it and upload the folder to a static host: GitHub Pages, Netlify (drag the folder onto app.netlify.com/drop), Cloudflare Pages, or your own server.
+
+What you get: one page per note with working links, embeds, images, callouts, tasks, math and diagrams. Each page lists the published notes linking to it, every tag gets a page, and there's a search box. Pages follow the visitor's light or dark setting. The vault's home note becomes the front page if you publish it.
+
+What stays private: notes you don't publish, notes marked `publish: false`, locked notes and templates. A link to a note that isn't published shows as plain text, so its name appears but it can't be opened. Query blocks are saved as tables of published notes only.
+
+From a terminal: `octavo publish ./site` (notes marked `publish: true`), or add `--folder Projects`, `--tag garden` or `--all`, plus `--title "My notes"`. Math and diagrams load their display code from a CDN when a page uses them.
 
 ## Daily journal
 

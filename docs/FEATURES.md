@@ -122,7 +122,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Sync across devices | 🟡 | Your PC is the one server, and every device opens it directly with [Access from Anywhere](SELF_HOSTING.md). Or sync the folder with git/Syncthing |
 | End-to-end encrypted sync, shared vaults, selective sync | 🚧 | Will be free and self-hostable, with no paid service. Encryption design in progress |
 | Version history | ✅ | Local, last 50 versions per note |
-| Publish notes as a website | 🚧 | Will be free: export a static site you host anywhere |
+| Publish notes as a website | ✅ | Free, no account: command palette → *Publish as a website…* downloads a zip of plain web pages (links, backlinks, tags, search, light/dark), or `octavo publish <folder>`. Publishes notes marked `publish: true`, a folder, a tag or everything; links to unpublished notes become plain text. Host it on GitHub Pages, Netlify or anywhere |
 
 ## Customisation
 

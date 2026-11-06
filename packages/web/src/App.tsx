@@ -11,6 +11,7 @@ import { HistoryDialog } from './components/HistoryDialog';
 import { applyTemplate } from './templates';
 import { SplitPane } from './components/SplitPane';
 import { HotkeysDialog } from './components/HotkeysDialog';
+import { PublishDialog } from './components/PublishDialog';
 import { comboFromEvent, formatCombo, type Hotkeys } from './hotkeys';
 import { applySnippets } from './appearance';
 import { Presentation } from './components/Presentation';
@@ -515,6 +516,7 @@ export function App() {
   // Custom keyboard shortcuts, saved with the vault.
   const [hotkeys, setHotkeys] = useState<Hotkeys>({});
   const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [presenting, setPresenting] = useState(false);
   // Workspaces: named layouts (tabs, split, sidebar, view), saved with the vault.
   type Workspace = { tabs: string[]; active: string | null; split: string | null; showLeft: boolean; leftTab: DrawerTab; viewMode: 'atlas' | 'network'; panelWide: boolean; mode: Mode };
@@ -1355,6 +1357,14 @@ export function App() {
           ...(split ? [{ id: 'split-close', label: 'Close split view', keywords: 'pane', run: () => setSplit(null) }] : []),
           { id: 'export-pdf', label: window.octavoDesktop ? 'Export to PDF…' : 'Export to PDF / print…', keywords: 'pdf save share print', run: () => exportNote('pdf') },
           ...(window.octavoDesktop ? [{ id: 'print', label: 'Print…', keywords: 'printer paper', run: () => exportNote('print') }] : []),
+          { id: 'publish-site', label: 'Publish as a website…', keywords: 'publish site static html export web share host pages', run: () => setPublishOpen(true) },
+          ...(route.view === 'note' && detail && !detail.encrypted
+            ? [
+                detail.frontmatter.publish === true
+                  ? { id: 'publish-note', label: 'Stop publishing this note', keywords: 'publish website unpublish', run: () => void api.setProperty(detail.path, 'publish', null).then(refreshNotes) }
+                  : { id: 'publish-note', label: 'Publish this note (mark publish: true)', keywords: 'publish website share', run: () => void api.setProperty(detail.path, 'publish', true).then(refreshNotes) },
+              ]
+            : []),
           { id: 'present', label: 'Start presentation (slides)', keywords: 'slides present deck fullscreen', run: () => setPresenting(true) },
           { id: 'popout', label: 'Open this note in a new window', keywords: 'pop out window detach', run: () => route.view === 'note' && popOut(route.path) },
           { id: 'merge', label: 'Merge this note into another…', keywords: 'combine composer duplicate join', run: () => setMergeFrom(route.path) },
@@ -1916,6 +1926,14 @@ export function App() {
       )}
       {presenting && detail && (
         <Presentation content={draft} path={detail.path} exists={exists} namesKey={namesKey} onClose={() => setPresenting(false)} />
+      )}
+      {publishOpen && (
+        <PublishDialog
+          vaultName={vaultName}
+          folders={[...new Set(notes.flatMap((n) => n.folder.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')).filter(Boolean)))].sort()}
+          tags={[...new Set(notes.flatMap((n) => n.tags.map((t) => t.toLowerCase())))].sort()}
+          onClose={() => setPublishOpen(false)}
+        />
       )}
       {hotkeysOpen && <HotkeysDialog commands={commandItems} hotkeys={hotkeys} onChange={saveHotkeys} onClose={() => setHotkeysOpen(false)} />}
       {newTabPick && (
