@@ -197,11 +197,38 @@ function softDot(rgb: [number, number, number]): HTMLCanvasElement {
 }
 
 const STORE_KEY = 'octavo.atlas';
-function loadPrefs(): { labels: boolean; hidden: RegionKey[] } {
+function loadPrefs(): { labels: boolean; hidden: RegionKey[]; trail: boolean } {
   try {
-    return { labels: true, hidden: [], ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };
+    return { labels: true, hidden: [], trail: true, ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };
   } catch {
-    return { labels: true, hidden: [] };
+    return { labels: true, hidden: [], trail: true };
+  }
+}
+
+// ---- Trail: the notes Claude (or you, via the app) read or changed recently, joined in order and fading out.
+const TRAIL_KEY = 'octavo.trail';
+/** How long a step of the trail stays visible. */
+export const TRAIL_MS = 30 * 60 * 1000;
+type TrailStep = { id: string; t: number };
+let trail: TrailStep[] = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(TRAIL_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string' && Date.now() - x.t < TRAIL_MS) : [];
+  } catch {
+    return [];
+  }
+})();
+function addToTrail(id: string) {
+  const now = Date.now();
+  trail = trail.filter((x) => now - x.t < TRAIL_MS);
+  const last = trail[trail.length - 1];
+  if (last?.id === id) last.t = now;
+  else trail.push({ id, t: now });
+  if (trail.length > 300) trail = trail.slice(-300);
+  try {
+    localStorage.setItem(TRAIL_KEY, JSON.stringify(trail));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -212,15 +239,16 @@ export function AtlasView(props: Props) {
   propsRef.current = props;
   const [labels, setLabels] = useState(() => loadPrefs().labels);
   const [hidden, setHidden] = useState<Set<RegionKey>>(() => new Set(loadPrefs().hidden));
+  const [showTrail, setShowTrail] = useState(() => loadPrefs().trail);
   const [filter, setFilter] = useState('');
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ labels, hidden: [...hidden] }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ labels, hidden: [...hidden], trail: showTrail }));
     } catch {
       /* ignore */
     }
-  }, [labels, hidden]);
+  }, [labels, hidden, showTrail]);
 
   const layout = useMemo(() => (props.data ? buildLayout(props.data) : null), [props.data]);
 
@@ -235,6 +263,7 @@ export function AtlasView(props: Props) {
     moved: false,
     hover: null as ANode | null,
     labels: true,
+    showTrail: true,
     hidden: new Set<RegionKey>(),
     filter: '',
     rings: [] as { node: ANode; start: number }[],
@@ -244,6 +273,7 @@ export function AtlasView(props: Props) {
     baseZoom: 1,
   });
   st.current.labels = labels;
+  st.current.showTrail = showTrail;
   st.current.hidden = hidden;
   st.current.filter = filter.trim().toLowerCase();
 
@@ -327,7 +357,11 @@ export function AtlasView(props: Props) {
       if (!n) return;
       s.camGoal = { tx: n.x, ty: n.y, tz: n.z, zoom: Math.max(s.cam.zoom, 1.7) };
     };
-    propsRef.current.onReady?.({ fire, focus });
+    const visit = (id: string) => {
+      addToTrail(id);
+      fire(id);
+    };
+    propsRef.current.onReady?.({ fire, focus, visit });
 
     const tmp = [0, 0, 0, 0];
 
@@ -415,6 +449,39 @@ export function AtlasView(props: Props) {
           ctx.lineTo(l.b.sx, l.b.sy);
         }
         ctx.stroke();
+      }
+
+      // Trail: recent steps joined in order, each segment fading with the age of the step it leads to.
+      if (s.showTrail && trail.length) {
+        const wall = Date.now();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineCap = 'round';
+        let prev: ANode | null = null;
+        for (const step of trail) {
+          const age = wall - step.t;
+          const n = L.byId.get(step.id);
+          if (age >= TRAIL_MS || !n || !n.visible) {
+            prev = n && n.visible && age < TRAIL_MS ? n : null;
+            continue;
+          }
+          const fade = Math.pow(1 - age / TRAIL_MS, 1.4);
+          const rgb = REGION_BY_KEY[n.region].rgb.join(',');
+          if (prev && prev !== n) {
+            ctx.strokeStyle = `rgba(${rgb}, ${0.55 * fade})`;
+            ctx.lineWidth = 0.6 + 1.4 * fade;
+            ctx.beginPath();
+            ctx.moveTo(prev.sx, prev.sy);
+            ctx.lineTo(n.sx, n.sy);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = `rgba(${rgb}, ${0.7 * fade})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(n.sx, n.sy, 3 + nodeSize(n) * 1.6, 0, Math.PI * 2);
+          ctx.stroke();
+          prev = n;
+        }
+        ctx.globalCompositeOperation = 'lighter';
       }
 
       // Signals from fired notes.
@@ -767,6 +834,13 @@ export function AtlasView(props: Props) {
         <div className="atlas-row">
           <button className={`atlas-btn${labels ? ' on' : ''}`} onClick={() => setLabels((l) => !l)}>
             Labels
+          </button>
+          <button
+            className={`atlas-btn${showTrail ? ' on' : ''}`}
+            onClick={() => setShowTrail((t) => !t)}
+            title="A fading line through the notes Claude read or changed in the last 30 minutes"
+          >
+            Trail
           </button>
           <button className="atlas-btn" onClick={() => setHidden(new Set())}>
             All

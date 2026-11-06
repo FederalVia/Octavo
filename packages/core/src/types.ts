@@ -95,4 +95,6 @@ export type VaultEvent =
   | { type: 'change'; path: string }
   | { type: 'delete'; path: string }
   | { type: 'rename'; from: string; to: string }
-  | { type: 'rescan' };
+  | { type: 'rescan' }
+  /** Claude (or another MCP client) read a note; the app draws it in the trail. */
+  | { type: 'access'; path: string };

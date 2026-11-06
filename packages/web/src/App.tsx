@@ -464,6 +464,11 @@ export function App() {
     const toFire = new Set<string>();
     const unsub = subscribe(
       (e: VaultEvent) => {
+        // Claude read a note: light it up and add it to the trail; nothing changed, so no refresh.
+        if (e.type === 'access') {
+          (brain.current?.visit ?? brain.current?.fire)?.(e.path);
+          return;
+        }
         if (e.type === 'change') toFire.add(e.path);
         if (e.type === 'rename') toFire.add(e.to);
         if (e.type === 'rename' && e.from === loadedPath.current) {
@@ -478,7 +483,7 @@ export function App() {
           const fire = [...toFire];
           toFire.clear();
           refreshGraph()
-            .then(() => setTimeout(() => fire.forEach((p) => brain.current?.fire(p)), 60))
+            .then(() => setTimeout(() => fire.forEach((p) => (brain.current?.visit ?? brain.current?.fire)?.(p)), 60))
             .catch(() => {});
           refreshCurrentRef.current();
           setRefreshKey((k) => k + 1);

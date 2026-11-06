@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { formatDate, type NoteSummary, type Vault } from '@octavo/core';
+import { formatDate, REGION_INFO, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
 
 export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
 
@@ -9,7 +9,8 @@ How to use it:
 - Save things worth remembering: decisions, facts about the user and their preferences, project context, and lessons learned. Update an existing note with append_to_note or edit_note rather than creating near-duplicates; search first.
 - Keep one topic per note, give it a clear name, and connect notes with [[wikilinks]] (e.g. [[Project Octavo]]) and #tags. Linking to a note that doesn't exist yet is fine: it marks a topic to fill in later.
 - Use log_to_journal for a short running log of what happened in each session.
-- The app draws the vault as a brain, and folders decide the region: Projects/ and Decisions/ (frontal), Concepts/ and Tools/ (parietal), People/ and Orgs/ (temporal), Sources/, Repos/ and Reading/ (occipital), Journal/ and Logs/ (cerebellum), Home/Index notes (brain stem). Put new notes in the matching folder, or set \`region:\` in frontmatter.
+- Now and then, use random_note to resurface an older note: it may be relevant again, out of date, or worth linking to something new.
+- The app draws the vault as a brain, and folders decide the region: Projects/ and Decisions/ (frontal), Concepts/ and Tools/ (parietal), People/ and Orgs/ (temporal), Sources/, Repos/ and Reading/ (occipital), Journal/ and Logs/ (cerebellum), Home/Index notes (brain stem). Put new notes in the matching folder. read_note shows each note's region and why; get_note_region and set_note_region check or pin it.
 - Note paths are relative to the vault, e.g. "Projects/Octavo.md". The .md extension is optional, and a bare note name like "Octavo" resolves the same way a wikilink would.
 - Notes marked 🔒 locked are encrypted by the user. You can't read, edit or delete them, and you shouldn't try to infer their contents.
 - Never store secrets such as passwords or API keys in the vault.`;
@@ -50,6 +51,28 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   const pathArg = z.string().describe('Note path relative to the vault (e.g. "Projects/Octavo.md") or a note name.');
+  const regionArg = z.enum(['frontal', 'parietal', 'temporal', 'occipital', 'cerebellum', 'stem']);
+  const regionLabel = (k: RegionKey) => REGION_INFO.find((r) => r.key === k)!.label;
+  const regionCounts = () => {
+    const counts = new Map<RegionKey, number>();
+    for (const n of vault.list()) {
+      const r = vault.regionOf(n.path).region;
+      counts.set(r, (counts.get(r) ?? 0) + 1);
+    }
+    return REGION_INFO.filter((r) => counts.get(r.key)).map((r) => `${r.label} ${counts.get(r.key)}`).join(', ') || 'none';
+  };
+  /** The full text of a note, with its region, links and backlinks; also lights it up in the app's trail. */
+  const noteText = async (path: string) => {
+    vault.noteAccessed(path);
+    if (vault.isEncrypted(path)) {
+      return `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Octavo app, so don't guess at what it contains. Ask the user if you need information from it.`;
+    }
+    const n = await vault.read(path);
+    const region = vault.regionOf(n.path);
+    const out = n.links.length ? n.links.map((l) => `- [[${l.target}]] → ${l.path ?? '(not created yet)'}`).join('\n') : '(none)';
+    const back = n.backlinks.length ? n.backlinks.map((b) => `- ${b.path}: ${b.context.map((c) => c.text).join(' | ')}`).join('\n') : '(none)';
+    return `# ${n.path}\nUpdated ${fmtDate(n.mtime)} · Brain region: ${region.label} (${region.reason})\n\n${n.content}\n\n---\nOutgoing links:\n${out}\n\nBacklinks:\n${back}`;
+  };
 
   server.registerTool(
     'get_vault_overview',
@@ -66,6 +89,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
         `Vault "${o.name}": ${o.noteCount} notes.`,
         `Folders: ${o.folders.map((f) => `${f.folder} (${f.count})`).join(', ') || 'none'}`,
         `Top tags: ${o.topTags.map((t) => `#${t.tag} (${t.count})`).join(', ') || 'none'}`,
+        `Brain regions: ${regionCounts()}`,
         `Recently updated:\n${o.recent.map(summaryLine).join('\n') || '(none)'}`,
         o.home ? `Home note (${o.home.path}):\n\n${o.home.content}` : 'No home note yet. Consider creating Home.md as an index.',
       ];
@@ -108,22 +132,42 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
       inputSchema: { path: pathArg },
       annotations: { readOnlyHint: true },
     },
+    safe(async ({ path }) => text(await noteText(path))),
+  );
+
+  server.registerTool(
+    'random_note',
+    {
+      title: 'Random note',
+      description:
+        'Pick a random note and read it, to rediscover older memories instead of only recent ones. Notes that haven\'t been updated in a long time are more likely (set prefer_old to false for an even chance). Optionally limit to a folder, tag or brain region.',
+      inputSchema: {
+        folder: z.string().optional(),
+        tag: z.string().optional(),
+        region: regionArg.optional(),
+        prefer_old: z.boolean().optional().describe('Favour notes not updated for a long time (default true)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ folder, tag, region, prefer_old }) => {
+      const n = vault.randomNote({ folder, tag, region, preferOld: prefer_old });
+      if (!n) return text('No notes match.');
+      return text(await noteText(n.path));
+    }),
+  );
+
+  server.registerTool(
+    'get_note_region',
+    {
+      title: 'Brain region of a note',
+      description:
+        'Which brain region a note is drawn in, and why (its properties, folder, tags or name). Regions: frontal (projects, decisions), parietal (concepts, tools), temporal (people, orgs), occipital (sources, reading), cerebellum (journal, logs), stem (home, index).',
+      inputSchema: { path: pathArg },
+      annotations: { readOnlyHint: true },
+    },
     safe(async ({ path }) => {
-      if (vault.isEncrypted(path)) {
-        return text(
-          `${vault.resolve(path)} is a locked (encrypted) note. Its contents are only readable by the user after unlocking it in the Octavo app, so don't guess at what it contains. Ask the user if you need information from it.`,
-        );
-      }
-      const n = await vault.read(path);
-      const out = n.links.length
-        ? n.links.map((l) => `- [[${l.target}]] → ${l.path ?? '(not created yet)'}`).join('\n')
-        : '(none)';
-      const back = n.backlinks.length
-        ? n.backlinks.map((b) => `- ${b.path}: ${b.context.map((c) => c.text).join(' | ')}`).join('\n')
-        : '(none)';
-      return text(
-        `# ${n.path}\nUpdated ${fmtDate(n.mtime)}\n\n${n.content}\n\n---\nOutgoing links:\n${out}\n\nBacklinks:\n${back}`,
-      );
+      const r = vault.regionOf(path);
+      return text(`${vault.resolve(path)} is in the ${r.label} region (${r.region}): ${r.reason}.`);
     }),
   );
 
@@ -307,6 +351,22 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   server.registerTool(
+    'set_note_region',
+    {
+      title: 'Set brain region of a note',
+      description:
+        'Pin a note to a brain region by setting `region:` in its properties, or pass "auto" to place it by folder and tags again. Prefer putting notes in the matching folder; use this when a note belongs somewhere its folder doesn\'t suggest.',
+      inputSchema: { path: pathArg, region: z.union([regionArg, z.literal('auto')]) },
+    },
+    safe(async ({ path, region }) => {
+      if (vault.isEncrypted(path)) throw new Error(`${vault.resolve(path)} is a locked note; only the user can change it, from the Octavo app.`);
+      await vault.setRegion(path, region === 'auto' ? null : region);
+      const r = vault.regionOf(path);
+      return text(`${vault.resolve(path)} is now in the ${regionLabel(r.region)} region (${r.reason}).`);
+    }),
+  );
+
+  server.registerTool(
     'merge_notes',
     {
       title: 'Merge notes',
@@ -377,6 +437,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     },
     safe(async ({ period }) => {
       const s = await vault.ensurePeriodicNote(period);
+      vault.noteAccessed(s.path);
       if (vault.isEncrypted(s.path)) return text(`${s.path} is a locked (encrypted) note; its contents are only readable in the Octavo app.`);
       const note = await vault.read(s.path);
       return text(`${s.path}\n\n${note.content}`);

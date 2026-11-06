@@ -1,6 +1,8 @@
 import type { GraphNode } from './api';
 
-export type RegionKey = 'frontal' | 'parietal' | 'temporal' | 'occipital' | 'cerebellum' | 'stem';
+import { classifyRegion, type RegionKey } from '@octavo/core/regions';
+
+export type { RegionKey };
 
 export interface Region {
   key: RegionKey;
@@ -26,52 +28,11 @@ export const REGIONS: Region[] = [
 
 export const REGION_BY_KEY = Object.fromEntries(REGIONS.map((r) => [r.key, r])) as Record<RegionKey, Region>;
 
-// Folder names, tags and frontmatter values that map to each region.
-const RULES: [RegionKey, RegExp][] = [
-  ['stem', /^(home|index|readme|start here|mocs?|maps?( of content)?|hubs?|dashboards?|inbox|unsorted|routing)$/],
-  ['cerebellum', /^(journals?|daily|dailies|daily notes|logs?|incidents?|meetings?|standups?|diary|calendar|archives?|periodic)$/],
-  ['temporal', /^(people|persons?|contacts?|orgs?|organi[sz]ations?|compan(y|ies)|teams?|family|friends|clients?|customers?|crm)$/],
-  ['occipital', /^(sources?|repos?|repositories|reading|books?|articles?|papers?|references?|resources?|links?|bookmarks?|media|videos?|podcasts?|courses?|literature|clippings?)$/],
-  ['frontal', /^(projects?|current projects|decisions?|goals?|plans?|planning|tasks?|todos?|okrs?|roadmaps?|areas?)$/],
-  ['parietal', /^(concepts?|tools?|ideas?|knowledge|topics?|notes|zettels?|zettelkasten|permanent|wiki|tech|skills?|evergreen)$/],
-];
-
-function normalize(segment: string): string {
-  return segment
-    .toLowerCase()
-    .replace(/^\d+\s*[-_.)]?\s*/, '') // "00 - Current Projects" -> "current projects"
-    .trim();
-}
-
-function match(segment: string): RegionKey | null {
-  const s = normalize(segment);
-  if (!s) return null;
-  for (const [key, re] of RULES) if (re.test(s)) return key;
-  return null;
-}
-
 /**
  * Decide which brain region a note belongs to. Order of precedence:
  * frontmatter `region`, home/index notes, folder names, tags, date-like names,
- * and finally parietal (general knowledge).
+ * and finally parietal (general knowledge). Shared with the server.
  */
 export function classify(node: Pick<GraphNode, 'id' | 'name' | 'tags'> & { region?: string }): RegionKey {
-  if (node.region) {
-    const r = node.region.toLowerCase().replace(/\s+/g, '');
-    const direct = REGIONS.find((x) => x.key === r || x.label.toLowerCase().replace(/\s+/g, '') === r || x.short.toLowerCase() === r);
-    if (direct) return direct.key;
-  }
-  const parts = node.id.replace(/\.md$/i, '').split('/');
-  const folders = parts.slice(0, -1);
-  if (folders.length === 0 && RULES[0][1].test(normalize(node.name))) return 'stem';
-  for (const f of folders) {
-    const m = match(f);
-    if (m) return m;
-  }
-  for (const t of node.tags) {
-    const m = match(t) ?? match(t.split('/')[0]);
-    if (m) return m;
-  }
-  if (/^\d{4}-\d{2}-\d{2}/.test(node.name)) return 'cerebellum';
-  return 'parietal';
+  return classifyRegion(node).region;
 }

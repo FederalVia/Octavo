@@ -117,6 +117,7 @@ When it connects, the server gives Claude instructions to:
 - keep one topic per note and connect notes with `[[wikilinks]]` and `#tags`
 - file notes by region: `Projects/`, `Concepts/`, `People/`, `Sources/`, `Journal/`
 - keep a short session log with `log_to_journal`
+- now and then, resurface an older note with `random_note`
 - leave 🔒 locked notes alone: it can see they exist, but can't read, overwrite or delete them
 - never store secrets (passwords, API keys) in the vault
 
@@ -132,7 +133,9 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | --- | --- | --- |
 | `get_vault_overview` | Note count, folders, top tags, recently updated notes and the home note | |
 | `search_notes` | Full-text search with `"phrases"`, `tag:` and `path:` filters; returns matching lines | |
-| `read_note` | Full content plus outgoing links and backlinks | |
+| `read_note` | Full content, its brain region (and why), outgoing links and backlinks | |
+| `random_note` | Read a random note, favouring ones not updated for a long time, optionally in a folder, tag or region | |
+| `get_note_region` | Which brain region a note is drawn in, and why | |
 | `list_notes` | Notes in a folder and/or with a tag, newest first | |
 | `get_backlinks` | Notes linking to a note, with the linking lines | |
 | `get_related` | Related notes via links, backlinks, shared tags and two-step links | |
@@ -142,6 +145,7 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `append_to_note` | Append to the end, or under a heading (created if missing) | ✓ |
 | `edit_note` | Replace an exact snippet of text | ✓ |
 | `rename_note` | Rename or move; updates every link to it | ✓ |
+| `set_note_region` | Pin a note to a region (`region:` in its properties), or back to automatic | ✓ |
 | `merge_notes` | Merge one note into another; links to it are updated and it moves to `.trash` | ✓ |
 | `delete_note` | Move to `.trash` (recoverable) | ✓ |
 | `update_task` | Tick, untick or set a task's status (`x`, `-`, `?`…) by note and line | ✓ |

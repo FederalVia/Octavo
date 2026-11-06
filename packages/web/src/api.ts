@@ -75,7 +75,8 @@ export type VaultEvent =
   | { type: 'change'; path: string }
   | { type: 'delete'; path: string }
   | { type: 'rename'; from: string; to: string }
-  | { type: 'rescan' };
+  | { type: 'rescan' }
+  | { type: 'access'; path: string };
 
 export class ApiError extends Error {
   constructor(

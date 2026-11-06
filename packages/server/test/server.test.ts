@@ -164,7 +164,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -185,7 +185,16 @@ describe('HTTP server', () => {
       assert.match(r.text, /Logged to Journal\//);
       r = await call('open_periodic_note', { period: 'week' });
       assert.match(r.text, /^Journal\/Weekly\/\d{4}-W\d{2}\.md\n\n# Week /);
+      r = await call('random_note', { folder: 'People' });
+      assert.match(r.text, /^# People\/Ada\.md\nUpdated .* · Brain region: Temporal \(in the “People” folder\)/);
+      r = await call('set_note_region', { path: 'Ada', region: 'frontal' });
+      assert.match(r.text, /now in the Frontal region \(set in the note’s properties/);
+      r = await call('get_note_region', { path: 'Ada' });
+      assert.match(r.text, /Frontal region \(frontal\)/);
+      r = await call('set_note_region', { path: 'Ada', region: 'auto' });
+      assert.match(r.text, /Temporal region/);
       r = await call('get_vault_overview', {});
+      assert.match(r.text, /Brain regions: /);
       assert.match(r.text, /Home note \(Home.md\)/);
       r = await call('read_note', { path: 'Does not exist' });
       assert.equal(r.isError, true);
