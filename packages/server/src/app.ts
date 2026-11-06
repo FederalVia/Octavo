@@ -1,3 +1,4 @@
+import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -315,6 +316,26 @@ export function createApp(opts: AppOptions): express.Express {
 
   api.get('/insights', (_req, res) => {
     res.json(vault.insights());
+  });
+
+  // Publish: the static website as a zip download.
+  api.get('/publish.zip', async (req, res, next) => {
+    try {
+      const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+      const site = await buildSite(vault, {
+        scope: req.query.scope === 'all' ? 'all' : 'marked',
+        folder: req.query.folder !== undefined ? String(req.query.folder) : undefined,
+        tag: str(req.query.tag),
+        title: str(req.query.title),
+      });
+      const name = (str(req.query.title) ?? path.basename(vault.root)).replace(/[^\p{L}\p{N} _-]+/gu, '').trim() || 'site';
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}-site.zip`);
+      res.setHeader('X-Octavo-Pages', String(site.pages));
+      res.send(zipFiles(site.files, `${name}-site/`));
+    } catch (err) {
+      next(err);
+    }
   });
 
   api.get('/query', (req, res) => {

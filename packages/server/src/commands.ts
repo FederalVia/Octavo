@@ -1,5 +1,7 @@
 import { Vault, formatQueryResult } from '@octavo/core';
+import path from 'node:path';
 import { importEnex, importNotion } from './importers.js';
+import { buildSite, writeSite } from './publish.js';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -19,6 +21,9 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo orphans                       Notes nothing links to, and dead ends
   octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
   octavo set <note> <key> [value]      Set a property (no value removes it)
+  octavo publish <folder> [--all | --folder F | --tag T] [--title T]
+                                       Build a static website from notes marked "publish: true"
+                                       (or everything, a folder or a tag) into <folder>
   octavo import notion <folder> [--into F]
                                        Import an unzipped Notion "Markdown & CSV" export
   octavo import evernote <file.enex> [--into F]
@@ -45,6 +50,7 @@ export const NOTE_COMMANDS = new Set([
   'orphans',
   'query',
   'set',
+  'publish',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -66,6 +72,10 @@ export interface NoteCommandOptions {
   json?: boolean;
   daily?: string;
   into?: string;
+  all?: boolean;
+  folder?: string;
+  tag?: string;
+  title?: string;
 }
 
 /** Run a note command against the vault and print the result. */
@@ -172,6 +182,19 @@ export async function runNoteCommand(
         need(args, 2, 'restore <note> <version-id>');
         const s = await vault.restoreVersion(args[0], args[1]);
         console.log(`Restored ${s.path} to version ${args[1]}`);
+        break;
+      }
+      case 'publish': {
+        need(args, 1, 'publish <output-folder> [--all | --folder F | --tag T] [--title T]');
+        const out = path.resolve(args[0]);
+        const root = path.resolve(vault.root);
+        if (out === root || out.startsWith(root + path.sep)) throw new Error('Publish to a folder outside the vault');
+        const site = await buildSite(vault, { scope: opts.all ? 'all' : 'marked', folder: opts.folder, tag: opts.tag, title: opts.title });
+        await writeSite(site, out);
+        console.log(`Published ${site.pages} note${site.pages === 1 ? '' : 's'} and ${site.attachments} attachment${site.attachments === 1 ? '' : 's'} to ${out}`);
+        if (!site.pages) console.log('No notes matched. Add "publish: true" to a note\'s properties, or use --all, --folder or --tag.');
+        if (site.skippedLocked) console.log(`Skipped ${site.skippedLocked} locked note(s).`);
+        console.log('Open index.html, or upload the folder to any static host (GitHub Pages, Netlify, Cloudflare Pages…).');
         break;
       }
       case 'query': {
