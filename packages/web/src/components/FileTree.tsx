@@ -5,11 +5,16 @@ interface Folder {
   name: string;
   path: string;
   folders: Map<string, Folder>;
-  notes: NoteSummary[];
+  notes: Item[];
 }
+
+type Item = NoteSummary & { canvas?: boolean };
 
 interface Props {
   notes: NoteSummary[];
+  /** .canvas files, shown in their folders. */
+  canvases?: string[];
+  onOpenCanvas?: (path: string) => void;
   currentPath: string | null;
   onOpen: (path: string, opts?: { newTab?: boolean }) => void;
   onSplit?: (path: string) => void;
@@ -19,7 +24,7 @@ interface Props {
   onMove: (path: string, folder: string) => void;
 }
 
-function buildTree(notes: NoteSummary[]): Folder {
+function buildTree(notes: Item[]): Folder {
   const root: Folder = { name: '', path: '', folders: new Map(), notes: [] };
   for (const n of notes) {
     let f = root;
@@ -47,7 +52,14 @@ function loadCollapsed(): Set<string> {
 }
 
 export function FileTree(props: Props) {
-  const tree = useMemo(() => buildTree(props.notes), [props.notes]);
+  const tree = useMemo(
+    () =>
+      buildTree([
+        ...props.notes,
+        ...(props.canvases ?? []).map((c): Item => ({ path: c, name: c.replace(/\.canvas$/i, '').split('/').pop()!, folder: c.includes('/') ? c.slice(0, c.lastIndexOf('/')) : '', tags: [], mtime: 0, ctime: 0, size: 0, canvas: true })),
+      ]),
+    [props.notes, props.canvases],
+  );
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; isFolder: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -108,7 +120,21 @@ export function FileTree(props: Props) {
             </div>
           );
         })}
-        {notes.map((n) => (
+        {notes.map((n) =>
+          n.canvas ? (
+            <div
+              key={n.path}
+              className="tree-item note canvas"
+              style={{ paddingLeft: 22 + depth * 14 }}
+              onClick={() => props.onOpenCanvas?.(n.path)}
+              title={n.path}
+            >
+              <span className="tree-name">
+                <span className="canvas-mark" aria-hidden="true">◫ </span>
+                {n.name}
+              </span>
+            </div>
+          ) : (
           <div
             key={n.path}
             className={`tree-item note${n.path === props.currentPath ? ' active' : ''}`}
@@ -131,7 +157,8 @@ export function FileTree(props: Props) {
               {n.name}
             </span>
           </div>
-        ))}
+          ),
+        )}
       </>
     );
   };

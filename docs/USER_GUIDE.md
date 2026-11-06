@@ -18,6 +18,7 @@
 - [Version history](#version-history)
 - [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Queries (Bases)](#queries-bases)
+- [Canvas](#canvas)
 - [Audio notes](#audio-notes)
 - [Web viewer and clipping](#web-viewer-and-clipping)
 - [Publishing a website](#publishing-a-website)
@@ -333,6 +334,19 @@ view: cards
 ````
 
 From a terminal: `octavo query 'LIST FROM #project WHERE due < date(today)'` and `octavo set "Octavo" status done`. Claude can use the same queries with `query_notes`, and set properties with `set_property`.
+
+## Canvas
+
+A canvas is an endless board for laying out ideas: cards you can move around, connected by arrows. Command palette → **New canvas…** (or **Open canvas…**). Canvases appear in the file tree with ◫, and `[[Board.canvas]]` links open them.
+
+- **Cards:** double-click empty space to write a text card (Markdown and `[[links]]` work). **+ Note** adds a live view of a note; click its title to open it. **+ Link** adds a web link. Paste or drop an image or file to add it, and drag notes from the file tree onto the board.
+- **Arrows:** select a card and drag one of the dots on its edges onto another card. Drop it on empty space instead and a new card grows there, already connected. Double-click an arrow to label it.
+- **Arranging:** drag cards to move them (they snap to the grid), drag the corner to resize, and Shift-drag on empty space to select several. **+ Group** puts the selected cards in a labelled group (double-click the label to rename it); moving a group moves everything in it.
+- **Colours:** with something selected, pick one of six colours.
+- **Moving around:** drag empty space (or one finger) to pan. Ctrl/Cmd + scroll or pinch zooms. The % button fits everything on screen.
+- **Keys:** Delete removes the selection, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z redoes, Ctrl/Cmd+A selects everything, Enter edits the selected text card, and Esc deselects or closes the canvas.
+
+Canvases are saved as `.canvas` files in the open [JSON Canvas](https://jsoncanvas.org) format, so other apps that support it can open them. Claude can read them and add cards and arrows too.
 
 ## Audio notes
 

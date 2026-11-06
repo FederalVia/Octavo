@@ -7,6 +7,7 @@ import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
+  CanvasFormatError,
   EditMatchError,
   EncryptedNoteError,
   NoteConflictError,
@@ -346,6 +347,28 @@ export function createApp(opts: AppOptions): express.Express {
     res.json(vault.query(q, { lang, thisPath: from }));
   });
 
+  // Canvases (.canvas files, JSON Canvas format).
+  api.get('/canvases', (_req, res) => {
+    res.json({ canvases: vault.canvases() });
+  });
+
+  api.get('/canvas/*path', async (req, res, next) => {
+    try {
+      res.json(await vault.readCanvas(notePathParam(req)));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.put('/canvas/*path', async (req, res, next) => {
+    try {
+      const { data, expectedMtime, createOnly } = req.body ?? {};
+      res.json(await vault.writeCanvas(notePathParam(req), data ?? { nodes: [], edges: [] }, { expectedMtime: typeof expectedMtime === 'number' ? expectedMtime : undefined, createOnly: createOnly === true }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Web viewer: reader mode and clipping a page into the vault.
   api.get('/web/read', async (req, res, next) => {
     try {
@@ -534,7 +557,7 @@ export function createApp(opts: AppOptions): express.Express {
       res.status(409).json({ error: err.message });
     } else if (err instanceof EncryptedNoteError) {
       res.status(423).json({ error: err.message, encrypted: true });
-    } else if (err instanceof VaultPathError || err instanceof EditMatchError) {
+    } else if (err instanceof VaultPathError || err instanceof EditMatchError || err instanceof CanvasFormatError) {
       res.status(400).json({ error: err.message });
     } else {
       console.error('[octavo] request failed:', err);

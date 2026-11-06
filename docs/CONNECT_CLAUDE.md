@@ -140,6 +140,7 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `get_backlinks` | Notes linking to a note, with the linking lines | |
 | `get_related` | Related notes via links, backlinks, shared tags and two-step links | |
 | `query_notes` | Query notes like a database: `TABLE status, due FROM "Projects" WHERE status != "done" SORT due` | |
+| `read_canvas` | Cards and arrows on a `.canvas` board (or the list of canvases) | |
 | `find_orphans` | Notes nothing links to, notes that link nowhere, and links to notes that don't exist | |
 | `list_tags` | All tags with counts | |
 | `list_tasks` | Tasks (`- [ ] …`) across the vault, or in one note, with line numbers and due dates (`📅 2026-11-10`); can filter to overdue, today, next 7 days, and by status (open to-dos by default, `[?]` questions, done, all) | |
@@ -149,6 +150,7 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `rename_note` | Rename or move; updates every link to it | ✓ |
 | `set_note_region` | Pin one note, a list of notes or a whole folder to a region (`region:` in its properties), or back to automatic | ✓ |
 | `set_property` | Set or remove one property (frontmatter field) on a note | ✓ |
+| `add_to_canvas` | Add text, note and link cards to a canvas (created if needed), connect them with labelled arrows, optionally in a group | ✓ |
 | `merge_notes` | Merge one note into another; links to it are updated and it moves to `.trash` | ✓ |
 | `delete_note` | Move to `.trash` (recoverable) | ✓ |
 | `restore_note` | Bring a note back from `.trash` | ✓ |

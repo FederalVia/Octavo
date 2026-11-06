@@ -164,7 +164,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property', 'read_canvas', 'add_to_canvas']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -215,6 +215,20 @@ describe('HTTP server', () => {
       assert.match(r.text, /in the trash/);
       r = await call('restore_note', { path: 'Two' });
       assert.match(r.text, /Restored Batch\/Two\.md/);
+      // Canvases.
+      r = await call('add_to_canvas', {
+        canvas: 'Boards/Plan',
+        cards: [{ key: 'a', text: 'Start here' }, { key: 'b', note: 'Batch/One', color: '4' }, { key: 'c', note: 'Nope' }],
+        connections: [{ from: 'a', to: 'b', label: 'leads to' }, { from: 'a', to: 'zzz' }],
+        group: 'Plan',
+      });
+      assert.match(r.text, /^Boards\/Plan\.canvas: added 2 card\(s\) and 1 arrow\(s\)\. Ids: a=\w+, b=\w+\.\nSkipped:\n- c: no note called "Nope"\n- connection a → zzz: unknown card/);
+      r = await call('read_canvas', { path: 'Plan' });
+      assert.match(r.text, /Canvas Boards\/Plan\.canvas: 3 card\(s\), 1 arrow\(s\)/);
+      assert.match(r.text, /\(file, colour 4\) \[\[Batch\/One\]\]/);
+      assert.match(r.text, /"leads to"/);
+      r = await call('read_canvas', {});
+      assert.match(r.text, /Canvases \(1\):\n- Boards\/Plan\.canvas/);
       // Properties and queries.
       r = await call('set_property', { path: 'Batch/One', key: 'status', value: 'active' });
       assert.match(r.text, /Set status: "active" on Batch\/One\.md/);

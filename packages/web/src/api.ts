@@ -221,6 +221,10 @@ export const api = {
   tasks: (done = false) => request<{ tasks: Task[] }>('GET', `api/tasks${done ? '?done=1' : ''}`),
   query: (q: string, opts: { lang?: 'base' | 'dql'; from?: string } = {}) =>
     request<QueryResult>('GET', `api/query?q=${encodeURIComponent(q)}${opts.lang ? `&lang=${opts.lang}` : ''}${opts.from ? `&from=${encodeURIComponent(opts.from)}` : ''}`),
+  canvases: () => request<{ canvases: string[] }>('GET', 'api/canvases'),
+  canvas: (p: string) => request<{ path: string; data: { nodes: unknown[]; edges: unknown[] }; mtime: number }>('GET', `api/canvas/${p.split('/').map(encodeURIComponent).join('/')}`),
+  saveCanvas: (p: string, data: unknown, expectedMtime?: number, createOnly = false) =>
+    request<{ path: string; mtime: number }>('PUT', `api/canvas/${p.split('/').map(encodeURIComponent).join('/')}`, { data, expectedMtime, createOnly }),
   webRead: (url: string) => request<{ url: string; title: string; siteName?: string; byline?: string; excerpt?: string; html: string; markdown: string }>('GET', `api/web/read?url=${encodeURIComponent(url)}`),
   webClip: (url: string, folder?: string) => request<NoteSummary>('POST', 'api/web/clip', { url, folder }),
   append: (p: string, text: string, heading?: string) => request<NoteSummary>('POST', 'api/append', { path: p, text, heading }),
