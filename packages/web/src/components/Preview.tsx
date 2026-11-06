@@ -101,7 +101,7 @@ interface Props {
   exists: (target: string) => boolean;
   /** Changes whenever the set of note names changes, to restyle unresolved links. */
   namesKey: string;
-  onOpenLink: (target: string, heading?: string, opts?: { markdown?: boolean }) => void;
+  onOpenLink: (target: string, heading?: string, opts?: { markdown?: boolean; newTab?: boolean }) => void;
   onTag: (tag: string) => void;
   onToggleTask?: (index: number) => void;
   scrollToHeading?: string | null;
@@ -386,6 +386,14 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
         onMouseOut={(e) => {
           if ((e.target as HTMLElement).closest('a.wikilink')) hideHover();
         }}
+        onAuxClick={(e) => {
+          // Middle-click a link: open it in a new tab.
+          if (e.button !== 1) return;
+          const link = (e.target as HTMLElement).closest('a.wikilink') as HTMLAnchorElement | null;
+          if (!link || !link.dataset.target) return;
+          e.preventDefault();
+          onOpenLink(link.dataset.target, link.dataset.heading || undefined, { markdown: link.dataset.md === '1', newTab: true });
+        }}
         onContextMenu={(e) => {
           const cell = (e.target as HTMLElement).closest('.table-wrap td, .table-wrap th') as HTMLTableCellElement | null;
           if (!cell || !canEditTables) return;
@@ -445,7 +453,7 @@ export function Preview({ content, path, exists, namesKey, onOpenLink, onTag, on
               scrollToAnchor(ref.current, h, true);
               return;
             }
-            onOpenLink(t, h, { markdown: link.dataset.md === '1' });
+            onOpenLink(t, h, { markdown: link.dataset.md === '1', newTab: e.ctrlKey || e.metaKey });
             return;
           }
           const tag = target.closest('a.tag') as HTMLAnchorElement | null;

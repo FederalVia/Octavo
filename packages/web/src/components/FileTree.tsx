@@ -11,7 +11,8 @@ interface Folder {
 interface Props {
   notes: NoteSummary[];
   currentPath: string | null;
-  onOpen: (path: string) => void;
+  onOpen: (path: string, opts?: { newTab?: boolean }) => void;
+  onSplit?: (path: string) => void;
   onNewNote: (folder: string) => void;
   onRename: (path: string) => void;
   onDelete: (path: string) => void;
@@ -117,7 +118,8 @@ export function FileTree(props: Props) {
               e.dataTransfer.setData('application/x-octavo-note', n.path);
               e.dataTransfer.effectAllowed = 'move';
             }}
-            onClick={() => props.onOpen(n.path)}
+            onClick={(e) => props.onOpen(n.path, { newTab: e.ctrlKey || e.metaKey })}
+            onAuxClick={(e) => e.button === 1 && props.onOpen(n.path, { newTab: true })}
             onContextMenu={(e) => {
               e.preventDefault();
               setMenu({ x: e.clientX, y: e.clientY, path: n.path, isFolder: false });
@@ -147,6 +149,8 @@ export function FileTree(props: Props) {
             ) : (
               <>
                 <button onClick={() => (props.onOpen(menu.path), setMenu(null))}>Open</button>
+                <button onClick={() => (props.onOpen(menu.path, { newTab: true }), setMenu(null))}>Open in new tab</button>
+                {props.onSplit && <button onClick={() => (props.onSplit!(menu.path), setMenu(null))}>Show alongside (split)</button>}
                 <button onClick={() => (props.onRename(menu.path), setMenu(null))}>Rename / move…</button>
                 <button className="danger" onClick={() => (props.onDelete(menu.path), setMenu(null))}>
                   Delete

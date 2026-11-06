@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('octavoDesktop', {
   removeBrain: (path) => ipcRenderer.invoke('octavo:remove-brain', path),
   copyBrainConfig: (path) => ipcRenderer.invoke('octavo:copy-brain-config', path),
   revealBrain: (path) => ipcRenderer.invoke('octavo:reveal-brain', path),
+  popOut: (path) => ipcRenderer.invoke('octavo:pop-out', path),
   onOpenSettings: (callback) => {
     const listener = (_event, section) => callback(section);
     ipcRenderer.on('octavo:open-settings', listener);

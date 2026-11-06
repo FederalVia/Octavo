@@ -182,7 +182,8 @@ export const api = {
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
   graph: () => request<GraphData>('GET', 'api/graph'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
-  periodic: (period: 'day' | 'week' | 'month') => request<NoteSummary>('POST', `api/periodic/${period}`),
+  periodic: (period: 'day' | 'week' | 'month', date?: string) =>
+    request<NoteSummary>('POST', `api/periodic/${period}${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   upload: async (file: File, folder = 'attachments'): Promise<{ path: string }> => {
     const headers: Record<string, string> = { 'Content-Type': file.type || 'application/octet-stream' };
     const token = getToken();

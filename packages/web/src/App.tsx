@@ -9,19 +9,21 @@ import { QuickSwitcher } from './components/QuickSwitcher';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HistoryDialog } from './components/HistoryDialog';
 import { applyTemplate } from './templates';
+import { SplitPane } from './components/SplitPane';
 import { DEFAULT_SETTINGS, SettingsDialog, useDesktopUpdate, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
-import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
-import { taskLines, wordCount } from './markdown';
+import { BookmarksPanel, CalendarPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
+import { fileUrl, taskLines, wordCount } from './markdown';
 import { deriveKey, isLocked, keyForContent, lockContent, unlockContent, WrongPasswordError, type NoteKey } from './crypto';
 
 type Mode = 'edit' | 'preview';
-type DrawerTab = 'files' | 'search' | 'tags' | 'tasks' | 'bookmarks' | 'insights';
+type DrawerTab = 'files' | 'search' | 'tags' | 'tasks' | 'calendar' | 'bookmarks' | 'insights';
 const DRAWER_TABS: { key: DrawerTab; icon: string; label: string }[] = [
   { key: 'files', icon: '▤', label: 'Files' },
   { key: 'search', icon: '⌕', label: 'Search' },
   { key: 'tags', icon: '#', label: 'Tags' },
   { key: 'tasks', icon: '☑', label: 'Tasks' },
+  { key: 'calendar', icon: '▦', label: 'Calendar' },
   { key: 'bookmarks', icon: '☆', label: 'Bookmarks' },
   { key: 'insights', icon: '◇', label: 'Insights' },
 ];
@@ -66,6 +68,7 @@ const narrow = () => window.matchMedia('(max-width: 800px)').matches;
 
 export function App() {
   const [vaultName, setVaultName] = useState('');
+  const [dailyFolder, setDailyFolder] = useState('Journal');
   const [notes, setNotes] = useState<NoteSummary[]>([]);
   const [route, setRoute] = useState<Route>(parseHash);
   const [detail, setDetail] = useState<NoteDetail | null>(null);
@@ -81,6 +84,7 @@ export function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [mentions, setMentions] = useState<Backlink[]>([]);
   const [vimMode, setVimMode] = useState<boolean>(() => load('octavo.vim', false));
+  const [livePreviewOn, setLivePreviewOn] = useState<boolean>(() => load('octavo.livePreview', true));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsFocus, setSettingsFocus] = useState<string | undefined>();
   useEffect(
@@ -101,6 +105,7 @@ export function App() {
   const [panelWide, setPanelWide] = useState<boolean>(() => load('octavo.panelWide', false));
   const [lineNumbers, setLineNumbers] = useState(() => load('octavo.lineNumbers', false));
   useEffect(() => store('octavo.vim', vimMode), [vimMode]);
+  useEffect(() => store('octavo.livePreview', livePreviewOn), [livePreviewOn]);
   const [switcher, setSwitcher] = useState(false);
   /** Path of the note being merged into another (shows a note picker). */
   const [mergeFrom, setMergeFrom] = useState<string | null>(null);
@@ -406,8 +411,9 @@ export function App() {
 
   // ---------------------------------------------------------------- navigation
   const navigate = useCallback(
-    (path: string, opts: { line?: number; heading?: string; mode?: Mode } = {}) => {
+    (path: string, opts: { line?: number; heading?: string; mode?: Mode; newTab?: boolean } = {}) => {
       if (dirty.current) save();
+      if (opts.newTab) openInNewTab.current = true;
       pendingLine.current = opts.line ?? null;
       setPendingHeading(opts.heading ?? null);
       if (opts.mode) setMode(opts.mode);
@@ -440,12 +446,82 @@ export function App() {
     if (route.view === 'note' && route.path !== loadedPath.current) loadNote(route.path);
   }, [route, loadNote]);
 
+  // ---------------------------------------------------------------- tabs
+  // Opening a note replaces the current tab; Ctrl/Cmd+click, middle-click or ＋ opens a new one.
+  const [tabs, setTabs] = useState<string[]>(() => load<string[]>('octavo.tabs', []).filter((t) => typeof t === 'string'));
+  const openInNewTab = useRef(false);
+  const activeTab = useRef<string | null>(null);
+  useEffect(() => store('octavo.tabs', tabs), [tabs]);
+  // Drop tabs of notes that no longer exist (deleted elsewhere), keeping the one on screen.
+  useEffect(() => {
+    if (!notes.length) return;
+    const have = new Set(notes.map((n) => n.path));
+    setTabs((ts) => {
+      const next = ts.filter((t) => have.has(t) || t === activeTab.current);
+      return next.length === ts.length ? ts : next;
+    });
+    setSplit((sp) => (sp && !have.has(sp) ? null : sp));
+  }, [notes]);
+  useEffect(() => {
+    if (route.view !== 'note') return;
+    const p = route.path;
+    // Read these now: the updater below runs later, after the refs have moved on.
+    const prev = activeTab.current;
+    const newTab = openInNewTab.current;
+    setTabs((ts) => {
+      if (ts.includes(p)) return ts;
+      const at = prev ? ts.indexOf(prev) : -1;
+      if (newTab || at === -1) return at === -1 ? [...ts, p] : [...ts.slice(0, at + 1), p, ...ts.slice(at + 1)];
+      const next = [...ts];
+      next[at] = p;
+      return next;
+    });
+    openInNewTab.current = false;
+    activeTab.current = p;
+  }, [route]);
+  const closeTab = useCallback(
+    (p: string) => {
+      setTabs((ts) => {
+        const i = ts.indexOf(p);
+        const next = ts.filter((t) => t !== p);
+        if (route.view === 'note' && route.path === p) {
+          const neighbour = next[Math.min(i, next.length - 1)];
+          activeTab.current = neighbour ?? null;
+          if (neighbour) navigate(neighbour);
+          else closePanelRef.current();
+        }
+        return next;
+      });
+    },
+    [route, navigate],
+  );
+  const closePanelRef = useRef<() => void>(() => {});
+  /** Second note shown alongside, in reading view. */
+  const [split, setSplit] = useState<string | null>(() => load<string | null>('octavo.split', null));
+  useEffect(() => store('octavo.split', split), [split]);
+  const [splitPick, setSplitPick] = useState(false);
+  const [newTabPick, setNewTabPick] = useState(false);
+  /** Open a note in its own window (desktop: an app window; browser: a new window). */
+  const popOut = useCallback((p: string) => {
+    if (window.octavoDesktop?.popOut) window.octavoDesktop.popOut(p);
+    else window.open(`${location.href.split('#')[0]}${noteHash(p)}`, '_blank', 'popup,width=900,height=900');
+  }, []);
+  const cycleTab = useCallback(
+    (by: number) => {
+      if (route.view !== 'note' || tabs.length < 2) return;
+      const i = tabs.indexOf(route.path);
+      navigate(tabs[(i + by + tabs.length) % tabs.length]);
+    },
+    [route, tabs, navigate],
+  );
+
   // ---------------------------------------------------------------- startup
   useEffect(() => {
     (async () => {
       try {
         const v = await api.vault();
         setVaultName(v.name);
+        setDailyFolder(v.dailyFolder ?? 'Journal');
         document.title = `${v.name} · Octavo`;
         const list = await refreshNotes();
         await refreshGraph().catch(() => {});
@@ -470,7 +546,11 @@ export function App() {
           return;
         }
         if (e.type === 'change') toFire.add(e.path);
-        if (e.type === 'rename') toFire.add(e.to);
+        if (e.type === 'rename') {
+          toFire.add(e.to);
+          setTabs((ts) => ts.map((t) => (t === e.from ? e.to : t)));
+          setSplit((sp) => (sp === e.from ? e.to : sp));
+        }
         if (e.type === 'rename' && e.from === loadedPath.current) {
           loadedPath.current = e.to;
           history.replaceState(null, '', noteHash(e.to));
@@ -558,14 +638,14 @@ export function App() {
   );
 
   const openLink = useCallback(
-    async (target: string, heading?: string) => {
+    async (target: string, heading?: string, opts: { newTab?: boolean } = {}) => {
       if (!target) {
         if (heading) setPendingHeading(heading);
         return;
       }
       try {
         const r = await api.resolve(target, loadedPath.current ?? undefined);
-        if (r.path) navigate(r.path, { heading });
+        if (r.path) navigate(r.path, { heading, newTab: opts.newTab });
         else createNote(target);
       } catch (err) {
         handleError(err);
@@ -670,9 +750,9 @@ export function App() {
   );
 
   const openPeriodic = useCallback(
-    async (period: 'day' | 'week' | 'month') => {
+    async (period: 'day' | 'week' | 'month', date?: string) => {
       try {
-        const s = await api.periodic(period);
+        const s = await api.periodic(period, date);
         await refreshNotes();
         navigate(s.path, { mode: 'edit' });
       } catch (err) {
@@ -714,6 +794,7 @@ export function App() {
     if (dirty.current) save();
     if (location.hash && location.hash !== '#/') location.hash = '#/';
   }, [save]);
+  closePanelRef.current = closePanel;
 
   // ---------------------------------------------------------------- bookmarks, mentions, tasks, templates
   useEffect(() => {
@@ -1019,6 +1100,15 @@ export function App() {
       const m = isMac ? e.metaKey : e.ctrlKey;
       if (!m || dialog) return;
       const k = e.key.toLowerCase();
+      // Tab shortcuts (desktop app only: browsers keep Ctrl+T / Ctrl+W / Ctrl+Tab for their own tabs).
+      if (window.octavoDesktop && (k === 't' || k === 'w' || k === 'tab')) {
+        e.preventDefault();
+        if (k === 't') setNewTabPick(true);
+        else if (k === 'w') {
+          if (route.view === 'note') closeTab(route.path);
+        } else cycleTab(e.shiftKey ? -1 : 1);
+        return;
+      }
       if (k === 'p') {
         e.preventDefault();
         setPalette('commands');
@@ -1050,7 +1140,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, switcher, palette, historyOpen, settingsOpen, showLeft, showSearch, closePanel, openDaily, newNote, save]);
+  }, [dialog, switcher, palette, historyOpen, settingsOpen, showLeft, showSearch, closePanel, openDaily, newNote, save, route, closeTab, cycleTab]);
 
   // ---------------------------------------------------------------- render
   const counts = useMemo(() => wordCount(draft), [draft]);
@@ -1068,10 +1158,12 @@ export function App() {
     { id: 'settings', label: 'Open settings', keywords: 'preferences options encryption', run: () => setSettingsOpen(true) },
     { id: 'search', label: 'Search all notes', hint: `${mod}+Shift+F`, run: () => showSearch() },
     { id: 'tasks', label: 'Show all tasks', keywords: 'todo checkbox', run: () => openDrawer('tasks') },
+    { id: 'calendar', label: 'Show calendar', keywords: 'month day date journal', run: () => openDrawer('calendar') },
     { id: 'bookmarks', label: 'Show bookmarks', run: () => openDrawer('bookmarks') },
     { id: 'insights', label: 'Find orphans and dead ends', keywords: 'insights unlinked', run: () => openDrawer('insights') },
     { id: 'files', label: 'Show file explorer', hint: `${mod}+\\`, run: () => openDrawer('files') },
     { id: 'view', label: viewMode === 'atlas' ? 'Switch to network view' : 'Switch to atlas view', keywords: 'graph brain', run: () => setViewMode((v) => (v === 'atlas' ? 'network' : 'atlas')) },
+    { id: 'live-preview', label: livePreviewOn ? 'Show raw Markdown while editing (source mode)' : 'Show formatting while editing (live preview)', keywords: 'live preview source mode wysiwyg', run: () => setLivePreviewOn((v) => !v) },
     { id: 'vim', label: vimMode ? 'Turn off Vim keybindings' : 'Turn on Vim keybindings', run: () => setVimMode((v) => !v) },
     { id: 'lines', label: lineNumbers ? 'Hide line numbers' : 'Show line numbers', run: () => setLineNumbers((v: boolean) => !v) },
     ...(hasNote
@@ -1095,6 +1187,18 @@ export function App() {
                 ]),
           { id: 'history', label: 'Show version history', keywords: 'recovery restore snapshot', run: () => setHistoryOpen(true) },
           { id: 'extract', label: 'Extract selection to new note', keywords: 'split composer refactor', run: extractSelection },
+          { id: 'tab-new', label: 'Open a note in a new tab…', hint: window.octavoDesktop ? `${mod}+T` : undefined, keywords: 'tabs', run: () => setNewTabPick(true) },
+          { id: 'tab-close', label: 'Close this tab', hint: window.octavoDesktop ? `${mod}+W` : undefined, keywords: 'tabs', run: () => route.view === 'note' && closeTab(route.path) },
+          ...(tabs.length > 1
+            ? [
+                { id: 'tab-next', label: 'Next tab', hint: window.octavoDesktop ? 'Ctrl+Tab' : undefined, keywords: 'tabs', run: () => cycleTab(1) },
+                { id: 'tab-prev', label: 'Previous tab', hint: window.octavoDesktop ? 'Ctrl+Shift+Tab' : undefined, keywords: 'tabs', run: () => cycleTab(-1) },
+                { id: 'tab-others', label: 'Close other tabs', keywords: 'tabs', run: () => setTabs(route.view === 'note' ? [route.path] : []) },
+              ]
+            : []),
+          { id: 'split', label: 'Show another note alongside (split view)…', keywords: 'pane side by side compare', run: () => setSplitPick(true) },
+          ...(split ? [{ id: 'split-close', label: 'Close split view', keywords: 'pane', run: () => setSplit(null) }] : []),
+          { id: 'popout', label: 'Open this note in a new window', keywords: 'pop out window detach', run: () => route.view === 'note' && popOut(route.path) },
           { id: 'merge', label: 'Merge this note into another…', keywords: 'combine composer duplicate join', run: () => setMergeFrom(route.path) },
           { id: 'copy', label: 'Copy link to this note', run: copyLink },
           ...(window.octavoDesktop
@@ -1232,7 +1336,8 @@ export function App() {
             <FileTree
               notes={notes}
               currentPath={currentPath}
-              onOpen={(p) => navigate(p)}
+              onOpen={(p, o) => navigate(p, { newTab: o?.newTab })}
+              onSplit={(p) => setSplit(p)}
               onNewNote={(f) => newNote(f)}
               onRename={renameNote}
               onDelete={deleteNote}
@@ -1251,6 +1356,16 @@ export function App() {
           )}
           {leftTab === 'tags' && <TagsPanel refreshKey={refreshKey} onSelect={(t) => showSearch(`tag:${t}`)} />}
           {leftTab === 'tasks' && <TasksPanel refreshKey={refreshKey} onOpen={(p, line) => navigate(p, { line })} />}
+          {leftTab === 'calendar' && (
+            <CalendarPanel
+              notes={notes}
+              dailyFolder={dailyFolder}
+              refreshKey={refreshKey}
+              onOpenDay={(d) => openPeriodic('day', d)}
+              onOpenWeek={(d) => openPeriodic('week', d)}
+              onOpenMonth={(d) => openPeriodic('month', d)}
+            />
+          )}
           {leftTab === 'bookmarks' && (
             <BookmarksPanel
               bookmarks={bookmarks}
@@ -1264,12 +1379,66 @@ export function App() {
         </aside>
       )}
 
+      {panelOpen && split && !isNarrow && (
+        <SplitPane
+          path={split}
+          refreshKey={refreshKey}
+          exists={exists}
+          namesKey={namesKey}
+          style={{ right: `${panelFraction * 100}%`, width: `${Math.min(panelFraction, 0.98 - panelFraction) * 100}%` }}
+          onNavigate={(p) => setSplit(p)}
+          onSwap={() => {
+            const main = route.view === 'note' ? route.path : null;
+            navigate(split);
+            setSplit(main);
+          }}
+          onClose={() => setSplit(null)}
+        />
+      )}
+
       {/* Note panel */}
       <section
         className={`note-panel${panelOpen ? ' open' : ''}`}
         style={{ width: isNarrow ? '100%' : `${panelFraction * 100}%` }}
         aria-hidden={!panelOpen}
       >
+        {tabs.length > 0 && (
+          <div className="tab-bar" role="tablist">
+            {tabs.map((t) => {
+              const active = route.view === 'note' && route.path === t;
+              return (
+                <div
+                  key={t}
+                  role="tab"
+                  aria-selected={active}
+                  className={`note-tab${active ? ' active' : ''}`}
+                  title={t.replace(/\.md$/, '')}
+                  onClick={() => !active && navigate(t)}
+                  onAuxClick={(e) => e.button === 1 && closeTab(t)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setSplit(t);
+                  }}
+                >
+                  <span className="note-tab-name">{t.replace(/\.md$/, '').split('/').pop()}</span>
+                  <button
+                    className="note-tab-close"
+                    aria-label="Close tab"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      closeTab(t);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+            <button className="note-tab-new" title="Open a note in a new tab" onClick={() => setNewTabPick(true)}>
+              ＋
+            </button>
+          </div>
+        )}
         <header className="panel-header">
           <div className="panel-title" onDoubleClick={() => detail && renameNote(detail.path)}>
             {detail?.folder && <span className="crumb">{detail.folder} / </span>}
@@ -1397,6 +1566,8 @@ export function App() {
               showLineNumbers={lineNumbers}
               onReady={(h) => (editor.current = h)}
               vimMode={vimMode}
+              livePreview={livePreviewOn}
+              fileUrl={(ref) => fileUrl(ref, detail?.path)}
               onUpload={async (file) => {
                 const r = await api.upload(file);
                 return r.path;
@@ -1515,6 +1686,8 @@ export function App() {
           settings={settings}
           onChange={saveSettings}
           vimMode={vimMode}
+          livePreview={livePreviewOn}
+          setLivePreview={setLivePreviewOn}
           setVimMode={setVimMode}
           lineNumbers={lineNumbers}
           setLineNumbers={setLineNumbers}
@@ -1550,6 +1723,21 @@ export function App() {
 
       {switcher && (
         <QuickSwitcher notes={notes} onOpen={(p) => navigate(p)} onCreate={(n) => createNote(n)} onClose={() => setSwitcher(false)} />
+      )}
+      {newTabPick && (
+        <QuickSwitcher
+          notes={notes}
+          placeholder="Open in a new tab…"
+          onOpen={(p) => navigate(p, { newTab: true })}
+          onCreate={(n) => {
+            openInNewTab.current = true;
+            createNote(n);
+          }}
+          onClose={() => setNewTabPick(false)}
+        />
+      )}
+      {splitPick && (
+        <QuickSwitcher notes={notes.filter((n) => route.view !== "note" || n.path !== route.path)} placeholder="Show alongside (split view)…" onOpen={(p) => setSplit(p)} onClose={() => setSplitPick(false)} />
       )}
       {mergeFrom && (
         <QuickSwitcher

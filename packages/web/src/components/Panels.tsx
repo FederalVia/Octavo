@@ -363,3 +363,110 @@ function Section({ title, count, hint, children }: { title: string; count: numbe
     </div>
   );
 }
+
+// ---------------------------------------------------------------- calendar
+
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** Month grid: days with a journal note are marked, dots show tasks due that day. */
+export function CalendarPanel({
+  notes,
+  dailyFolder,
+  refreshKey,
+  onOpenDay,
+  onOpenWeek,
+  onOpenMonth,
+}: {
+  notes: import('../api').NoteSummary[];
+  dailyFolder: string;
+  refreshKey: number;
+  onOpenDay: (date: string) => void;
+  onOpenWeek: (date: string) => void;
+  onOpenMonth: (date: string) => void;
+}) {
+  const today = localIso(new Date());
+  const [month, setMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [due, setDue] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    api
+      .tasks(false)
+      .then((r) => {
+        const m = new Map<string, number>();
+        for (const t of r.tasks) if (t.due) m.set(t.due, (m.get(t.due) ?? 0) + 1);
+        setDue(m);
+      })
+      .catch(() => {});
+  }, [refreshKey]);
+  const prefix = dailyFolder ? `${dailyFolder}/` : '';
+  const days = new Set(notes.filter((n) => n.path.startsWith(prefix)).map((n) => n.name).filter((n) => /^\d{4}-\d{2}-\d{2}$/.test(n)));
+  const weeks = new Set(notes.filter((n) => n.path.startsWith(`${prefix}Weekly/`)).map((n) => n.name));
+  const months = new Set(notes.filter((n) => n.path.startsWith(`${prefix}Monthly/`)).map((n) => n.name));
+
+  // Six rows of seven days starting on the Monday on or before the 1st.
+  const first = new Date(month);
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - ((first.getDay() + 6) % 7));
+  const cells = Array.from({ length: 42 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+  const isoWeek = (d: Date) => {
+    const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+    const week = Math.ceil(((t.getTime() - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+    return { week, label: `${t.getUTCFullYear()}-W${String(week).padStart(2, '0')}` };
+  };
+  const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
+  const shift = (n: number) => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + n, 1));
+
+  return (
+    <div className="panel calendar">
+      <div className="cal-head">
+        <button className="icon-btn" onClick={() => shift(-1)} aria-label="Previous month">
+          ‹
+        </button>
+        <button className={`cal-title${months.has(monthKey) ? ' has-note' : ''}`} onClick={() => onOpenMonth(localIso(month))} title="Open this month’s note">
+          {month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+        </button>
+        <button className="icon-btn" onClick={() => shift(1)} aria-label="Next month">
+          ›
+        </button>
+      </div>
+      <div className="cal-grid">
+        <span className="cal-wk muted">Wk</span>
+        {WEEKDAYS.map((d) => (
+          <span key={d} className="cal-dow muted">
+            {d.slice(0, 2)}
+          </span>
+        ))}
+        {cells.map((d, i) => {
+          const iso = localIso(d);
+          const wk = i % 7 === 0 ? isoWeek(d) : null;
+          const count = due.get(iso) ?? 0;
+          const classes = ['cal-day'];
+          if (d.getMonth() !== month.getMonth()) classes.push('other');
+          if (iso === today) classes.push('today');
+          if (days.has(iso)) classes.push('has-note');
+          return (
+            <span key={iso} style={{ display: 'contents' }}>
+              {wk && (
+                <button className={`cal-wk${weeks.has(wk.label) ? ' has-note' : ''}`} onClick={() => onOpenWeek(iso)} title={`Open week ${wk.week}`}>
+                  {wk.week}
+                </button>
+              )}
+              <button className={classes.join(' ')} onClick={() => onOpenDay(iso)} title={`${iso}${days.has(iso) ? ' · journal note' : ''}${count ? ` · ${count} task${count > 1 ? 's' : ''} due` : ''}`}>
+                {d.getDate()}
+                {count > 0 && <span className={`cal-dot${iso < today ? ' overdue' : ''}`} />}
+              </button>
+            </span>
+          );
+        })}
+      </div>
+      <div className="cal-foot">
+        <button className="link-btn small" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}>
+          Today
+        </button>
+        <span className="muted small">● journal note · • task due</span>
+      </div>
+    </div>
+  );
+}

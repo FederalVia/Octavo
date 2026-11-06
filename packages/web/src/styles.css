@@ -2064,3 +2064,39 @@ form.setting-row { cursor: default; }
 
 /* Offline banner */
 .offline-banner { position: absolute; left: 50%; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 26; max-width: min(560px, calc(100vw - 32px)); padding: 8px 14px; border-radius: 10px; background: rgba(251, 191, 36, 0.14); border: 1px solid rgba(251, 191, 36, 0.4); color: var(--text); font-size: 13px; text-align: center; backdrop-filter: blur(8px); }
+
+/* Calendar panel */
+.calendar .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+.calendar .cal-title { background: none; border: 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.calendar .cal-title:hover { background: var(--bg-hover); }
+.calendar .cal-title.has-note::after { content: ' ●'; color: var(--accent); font-size: 0.6em; vertical-align: middle; }
+.calendar .cal-grid { display: grid; grid-template-columns: 26px repeat(7, 1fr); gap: 2px; text-align: center; }
+.calendar .cal-dow, .calendar span.cal-wk { font-size: 11px; padding: 2px 0; }
+.calendar .cal-day, .calendar button.cal-wk { position: relative; background: none; border: 0; color: var(--text); font: inherit; font-size: 13px; padding: 6px 0; border-radius: 6px; cursor: pointer; }
+.calendar button.cal-wk { font-size: 10px; color: var(--text-faint); }
+.calendar button.cal-wk.has-note { color: var(--accent); }
+.calendar .cal-day:hover, .calendar button.cal-wk:hover { background: var(--bg-hover); }
+.calendar .cal-day.other { color: var(--text-faint); }
+.calendar .cal-day.today { outline: 1px solid var(--accent-soft); }
+.calendar .cal-day.has-note { background: rgba(220, 202, 159, 0.14); font-weight: 600; }
+.calendar .cal-dot { position: absolute; left: 50%; bottom: 2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--text-muted); }
+.calendar .cal-dot.overdue { background: var(--danger); }
+.calendar .cal-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+
+/* Tabs */
+.tab-bar { display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
+.tab-bar::-webkit-scrollbar { display: none; }
+.note-tab { display: flex; align-items: center; gap: 4px; max-width: 180px; min-width: 0; padding: 4px 4px 5px 10px; border-radius: 8px 8px 0 0; color: var(--text-muted); font-size: 12.5px; cursor: pointer; border: 1px solid transparent; border-bottom: 0; }
+.note-tab:hover { background: var(--bg-hover); }
+.note-tab.active { background: var(--bg-elevated); color: var(--text); border-color: var(--border); }
+.note-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-tab-close { border: 0; background: none; color: var(--text-faint); font-size: 14px; line-height: 1; padding: 1px 4px; border-radius: 4px; cursor: pointer; opacity: 0; }
+.note-tab:hover .note-tab-close, .note-tab.active .note-tab-close { opacity: 1; }
+.note-tab-close:hover { background: var(--bg-hover); color: var(--text); }
+.note-tab-new { border: 0; background: none; color: var(--text-faint); padding: 0 8px; cursor: pointer; font-size: 14px; }
+.note-tab-new:hover { color: var(--text); }
+@media (hover: none) { .note-tab-close { opacity: 1; } }
+
+/* Split view: a second note to the left of the main one */
+.split-panel { position: absolute; top: 0; bottom: 0; z-index: 14; display: flex; flex-direction: column; min-width: 280px; background: var(--glass); border-left: 1px solid var(--glass-border); backdrop-filter: blur(16px); box-shadow: -20px 0 60px rgba(0, 0, 0, 0.4); }
+.split-panel .preview-scroll { flex: 1; overflow-y: auto; }
