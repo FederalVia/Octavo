@@ -142,4 +142,4 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Calendar | ✅ | Calendar tab in the sidebar: journal days, weekly/monthly notes and due tasks; click a day to open or create its note |
 | Dataview | ✅ | The common Dataview syntax: `TABLE`/`LIST` with `FROM`, `WHERE`, `SORT`, `GROUP BY`, `LIMIT`, inline `key:: value` fields and `file.*` fields. Not JavaScript queries |
 | Outliner | ✅ | In lists, Tab / Shift-Tab move an item with everything under it, Ctrl/Cmd+Shift+↑/↓ move it past its siblings, Ctrl/Cmd+Enter cycles a checkbox, and list items and heading sections fold from the gutter |
-| Excalidraw | 🚧 | |
+| Drawings (Excalidraw) | ✅ | The real Excalidraw editor, built in: *New drawing…* creates a `.excalidraw` file (and embeds it in the open note), `![[sketch.excalidraw]]` shows it as a picture in the note, click to edit. Hand-drawn fonts ship with the app, so drawings work offline |

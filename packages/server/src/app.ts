@@ -97,7 +97,7 @@ export function createApp(opts: AppOptions): express.Express {
     res.status(401).json({ error: 'Unauthorized' });
   };
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '40mb' })); // drawings carry their images inline
 
   // ------------------------------------------------------------------ MCP
   app.post('/mcp', auth, async (req, res) => {
@@ -364,6 +364,28 @@ export function createApp(opts: AppOptions): express.Express {
     try {
       const { data, expectedMtime, createOnly } = req.body ?? {};
       res.json(await vault.writeCanvas(notePathParam(req), data ?? { nodes: [], edges: [] }, { expectedMtime: typeof expectedMtime === 'number' ? expectedMtime : undefined, createOnly: createOnly === true }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Drawings (.excalidraw files).
+  api.get('/drawings', (_req, res) => {
+    res.json({ drawings: vault.drawings() });
+  });
+
+  api.get('/drawing/*path', async (req, res, next) => {
+    try {
+      res.json(await vault.readDrawing(notePathParam(req)));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  api.put('/drawing/*path', async (req, res, next) => {
+    try {
+      const { data, expectedMtime, createOnly } = req.body ?? {};
+      res.json(await vault.writeDrawing(notePathParam(req), data, { expectedMtime: typeof expectedMtime === 'number' ? expectedMtime : undefined, createOnly: createOnly === true }));
     } catch (err) {
       next(err);
     }

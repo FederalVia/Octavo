@@ -19,6 +19,7 @@
 - [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Queries (Bases)](#queries-bases)
 - [Canvas](#canvas)
+- [Drawings](#drawings)
 - [Audio notes](#audio-notes)
 - [Web viewer and clipping](#web-viewer-and-clipping)
 - [Publishing a website](#publishing-a-website)
@@ -347,6 +348,18 @@ A canvas is an endless board for laying out ideas: cards you can move around, co
 - **Keys:** Delete removes the selection, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z redoes, Ctrl/Cmd+A selects everything, Enter edits the selected text card, and Esc deselects or closes the canvas.
 
 Canvases are saved as `.canvas` files in the open [JSON Canvas](https://jsoncanvas.org) format, so other apps that support it can open them. Claude can read them and add cards and arrows too.
+
+## Drawings
+
+Sketch diagrams, mind maps and doodles with the built-in [Excalidraw](https://excalidraw.com) editor. Command palette → **New drawing…** With a note open, the drawing is also embedded in it, so it shows up as a picture right where you are.
+
+- Draw with the toolbar at the top (or its number keys): shapes, arrows, lines, free-hand pen, text and images. Everything keeps its hand-drawn look.
+- It saves as you go. **Done** (or ← Back to notes in the ☰ menu) takes you back.
+- `![[Name.excalidraw]]` in any note shows the drawing as a picture, matching your light or dark theme. Click it to edit. `[[Name.excalidraw]]` is a plain link to it.
+- **Open drawing…** finds existing drawings, and they appear in the file tree with ✎.
+- The ☰ menu can export a drawing as PNG or SVG.
+
+Drawings are `.excalidraw` files in Excalidraw's own format, so excalidraw.com and other apps can open them too. The drawing tools download the first time you open a drawing; after that, and in the desktop app, they work offline.
 
 ## Audio notes
 

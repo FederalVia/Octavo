@@ -112,3 +112,34 @@ export function normalizeCanvasPath(input: string): string {
 export function canvasFileRefs(data: CanvasData): string[] {
   return data.nodes.filter((n): n is Extract<CanvasNode, { type: 'file' }> => n.type === 'file').map((n) => n.file);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Drawings: Excalidraw scenes stored as `.excalidraw` files (Excalidraw's own JSON format).
+
+export interface DrawingData {
+  type: 'excalidraw';
+  version: number;
+  source?: string;
+  elements: unknown[];
+  appState?: Record<string, unknown>;
+  files?: Record<string, unknown>;
+  [extra: string]: unknown;
+}
+
+export function emptyDrawing(): DrawingData {
+  return { type: 'excalidraw', version: 2, source: 'octavo', elements: [], appState: { gridSize: 20 }, files: {} };
+}
+
+export function validateDrawing(input: unknown): DrawingData {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new CanvasFormatError('A drawing is an Excalidraw scene object');
+  const o = input as Record<string, unknown>;
+  if (o.type !== undefined && o.type !== 'excalidraw') throw new CanvasFormatError('That file isn’t an Excalidraw drawing');
+  if (!Array.isArray(o.elements ?? [])) throw new CanvasFormatError('"elements" must be a list');
+  if (o.files !== undefined && (typeof o.files !== 'object' || Array.isArray(o.files))) throw new CanvasFormatError('"files" must be an object');
+  return { ...o, type: 'excalidraw', version: typeof o.version === 'number' ? o.version : 2, elements: (o.elements as unknown[]) ?? [] } as DrawingData;
+}
+
+export function normalizeDrawingPath(input: string): string {
+  const p = normalizeCanvasPath(input.replace(/\.excalidraw$/i, '')).replace(/\.canvas$/i, '');
+  return `${p}.excalidraw`;
+}
