@@ -21,6 +21,7 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@mixmark-io/domino": "^2.2.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@octavo/core": "*",
     "acme-client": "^5.4.0",

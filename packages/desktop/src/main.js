@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, clipboard, dialog, ipcMain, session, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -946,8 +946,32 @@ if (!app.requestSingleInstanceLock()) {
     return desktopState();
   });
 
+/**
+ * The web viewer's Live mode shows pages in a frame. Many sites forbid that with X-Frame-Options or a
+ * CSP frame-ancestors rule; inside the desktop app (where the page is only ever shown to its owner)
+ * those rules are dropped for embedded frames only, never for top-level pages.
+ */
+function allowWebViewerFrames() {
+  session.defaultSession.webRequest.onHeadersReceived({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+    if (details.resourceType !== 'subFrame' || !details.responseHeaders) return callback({});
+    const headers = {};
+    for (const [k, v] of Object.entries(details.responseHeaders)) {
+      const key = k.toLowerCase();
+      if (key === 'x-frame-options') continue;
+      if (key === 'content-security-policy') {
+        const kept = v.map((p) => p.split(';').filter((d) => !/^\s*frame-ancestors\b/i.test(d)).join(';')).filter((p) => p.trim());
+        if (kept.length) headers[k] = kept;
+        continue;
+      }
+      headers[k] = v;
+    }
+    callback({ responseHeaders: headers });
+  });
+}
+
   app.whenReady().then(async () => {
     registerProtocol();
+    allowWebViewerFrames();
     createWindow();
     initUpdater();
     buildMenu();

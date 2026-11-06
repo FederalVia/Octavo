@@ -2297,3 +2297,31 @@ form.setting-row { cursor: default; }
 .publish-title { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-muted); }
 .publish-title input { font: inherit; font-size: 14px; color: var(--text); }
 .publish-dialog .error { color: var(--danger); }
+
+/* Audio recorder */
+.recorder { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 16px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--glass-border, var(--border)); box-shadow: 0 12px 40px rgba(0,0,0,0.45); max-width: calc(100vw - 24px); }
+.recorder button { min-height: 36px; border-radius: 999px; padding: 0 14px; }
+.recorder-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--text-faint); flex: none; transition: transform 0.08s linear; }
+.recorder-dot.live { background: #ff4d5e; box-shadow: 0 0 0 4px rgba(255, 77, 94, 0.18); }
+.recorder-time { font-variant-numeric: tabular-nums; min-width: 64px; font-size: 14px; }
+.recorder-error { font-size: 13px; color: var(--text-muted); max-width: 420px; }
+
+/* Web viewer */
+.web-viewer { position: fixed; top: 0; right: 0; bottom: 0; width: min(760px, 100vw); z-index: 65; display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--border); box-shadow: -16px 0 48px rgba(0,0,0,0.35); padding-top: env(safe-area-inset-top); }
+.wv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); flex-wrap: wrap; }
+.wv-bar > button, .wv-external { min-width: 34px; min-height: 34px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; text-decoration: none; color: var(--text); }
+.wv-url { flex: 1 1 180px; min-width: 0; }
+.wv-url input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+.wv-modes { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.wv-modes button { border: 0; border-radius: 0; padding: 0 10px; min-height: 32px; background: transparent; color: var(--text-muted); font-size: 13px; }
+.wv-modes button.active { background: var(--accent-soft); color: var(--text); }
+.wv-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.wv-reader { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.wv-article { max-width: 680px; margin: 0 auto; padding: 24px 24px 80px; }
+.wv-article img { max-width: 100%; height: auto; border-radius: 8px; }
+.wv-meta { font-size: 13px; color: var(--text-faint); margin-bottom: 4px; }
+.wv-status { padding: 32px 24px; max-width: 560px; margin: 0 auto; }
+.wv-status p { margin: 0 0 8px; }
+.wv-toast { position: absolute; bottom: calc(16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; min-height: 0; }
+@media (max-width: 600px) { .wv-url { order: 10; flex-basis: 100%; } .wv-wide { display: none; } .wv-close { margin-left: auto; } }

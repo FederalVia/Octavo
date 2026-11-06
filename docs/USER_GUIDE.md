@@ -18,6 +18,8 @@
 - [Version history](#version-history)
 - [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Queries (Bases)](#queries-bases)
+- [Audio notes](#audio-notes)
+- [Web viewer and clipping](#web-viewer-and-clipping)
 - [Publishing a website](#publishing-a-website)
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
@@ -331,6 +333,22 @@ view: cards
 ````
 
 From a terminal: `octavo query 'LIST FROM #project WHERE due < date(today)'` and `octavo set "Octavo" status done`. Claude can use the same queries with `query_notes`, and set properties with `set_property`.
+
+## Audio notes
+
+Command palette → **Record audio note**. A small recorder appears at the bottom with a timer and a level meter; **Pause** and **Stop & save** do what they say, ✕ throws the recording away. The file is saved in `attachments/` and embedded where you are: at the cursor when editing, at the end of the note when reading, or as a timestamped line in today's journal when no note is open. Recordings play right in the note.
+
+Browsers only allow the microphone on a secure connection, so recording works in the desktop app and on the computer running Octavo. On a phone, use an `https://` address (Tailscale or access from anywhere).
+
+## Web viewer and clipping
+
+Read web pages without leaving Octavo: **Alt/Option-click** a link in a note, or command palette → **Open web page…** To open every web link this way, run **Open web links in Octavo’s web viewer** (run it again to switch back). Cmd/Ctrl-click always opens your browser.
+
+- **Reader** (the default) shows just the article: no ads, menus or pop-ups. Octavo fetches the page itself, so it works everywhere.
+- **Live** shows the real page. In the desktop app almost every site works. In a browser, some sites refuse to be shown inside other pages; use ↗ to open those in a new tab.
+- **Save to vault** turns the article into a note in `Clippings/`, with its address, the date and the author in its properties.
+
+For safety the viewer only opens public web addresses, never ones on your own network.
 
 ## Publishing a website
 
