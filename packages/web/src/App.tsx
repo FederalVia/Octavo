@@ -97,6 +97,15 @@ export function App() {
   const [mentions, setMentions] = useState<Backlink[]>([]);
   const [vimMode, setVimMode] = useState<boolean>(() => load('octavo.vim', false));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFocus, setSettingsFocus] = useState<string | undefined>();
+  useEffect(
+    () =>
+      window.octavoDesktop?.onOpenSettings?.((section) => {
+        setSettingsFocus(section);
+        setSettingsOpen(true);
+      }),
+    [],
+  );
   const [settings, setSettings] = useState<VaultSettings>(DEFAULT_SETTINGS);
   const update = useDesktopUpdate();
   const [updateDismissed, setUpdateDismissed] = useState<string | null>(null);
@@ -1422,7 +1431,11 @@ export function App() {
           setLineNumbers={setLineNumbers}
           viewMode={viewMode}
           setViewMode={setViewMode}
-          onClose={() => setSettingsOpen(false)}
+          focus={settingsFocus}
+          onClose={() => {
+            setSettingsOpen(false);
+            setSettingsFocus(undefined);
+          }}
         />
       )}
       {historyOpen && detail && (

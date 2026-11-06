@@ -17,4 +17,16 @@ contextBridge.exposeInMainWorld('octavoDesktop', {
     ipcRenderer.on('octavo:update', listener);
     return () => ipcRenderer.removeListener('octavo:update', listener);
   },
+  // Brains (separate vaults)
+  getBrains: () => ipcRenderer.invoke('octavo:brains'),
+  switchBrain: (path) => ipcRenderer.invoke('octavo:switch-brain', path),
+  createBrain: (name) => ipcRenderer.invoke('octavo:create-brain', name),
+  removeBrain: (path) => ipcRenderer.invoke('octavo:remove-brain', path),
+  copyBrainConfig: (path) => ipcRenderer.invoke('octavo:copy-brain-config', path),
+  revealBrain: (path) => ipcRenderer.invoke('octavo:reveal-brain', path),
+  onOpenSettings: (callback) => {
+    const listener = (_event, section) => callback(section);
+    ipcRenderer.on('octavo:open-settings', listener);
+    return () => ipcRenderer.removeListener('octavo:open-settings', listener);
+  },
 });

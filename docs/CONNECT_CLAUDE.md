@@ -74,6 +74,27 @@ Restart Claude Desktop. The tools appear under the tools (🔨) menu.
 
 **Shortcut:** the desktop app's **File → Connect Claude…** menu copies this config with your paths already filled in. It uses the Electron runtime, so Node.js doesn't even need to be on your `PATH`.
 
+If you're already using other MCP servers, add the `octavo` entry *inside* your existing `mcpServers` block, next to them, with a comma between entries. Don't paste a second `{ "mcpServers": … }` block, or the file won't parse and Claude ignores all of it.
+
+### Separate brains
+
+You don't have to give every chat the same memory. Each **brain** is its own vault (folder of notes), and Claude gets a separate connection for each one:
+
+1. In the desktop app, open **Settings → Brains** (or **File → Brains → New Brain…**) and create a brain, e.g. `Work`. New brains go in `~/Octavo Brains/<name>`.
+2. Click **Copy all** (or **Copy Claude setup** on one brain) and paste it into `claude_desktop_config.json`. Your original brain keeps the name `octavo`; the others are named `octavo-<name>`, e.g. `octavo-work`.
+3. Restart Claude. In a chat, open the tools menu and switch on only the brains that chat should use.
+
+Without the app, it's the same thing by hand: one entry per vault, each with its own name and `--vault` path.
+
+```json
+{
+  "mcpServers": {
+    "octavo": { "command": "node", "args": ["/path/to/cli.js", "mcp", "--vault", "/Users/you/Octavo"] },
+    "octavo-work": { "command": "node", "args": ["/path/to/cli.js", "mcp", "--vault", "/Users/you/Octavo Brains/Work"] }
+  }
+}
+```
+
 ---
 
 ## Remote and cloud Claude

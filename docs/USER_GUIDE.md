@@ -298,6 +298,16 @@ On macOS, use **Cmd** instead of **Ctrl**.
 | Shift+Enter | Create the typed note (in the quick switcher) |
 | `/` | Slash commands (in the editor) |
 
+## Brains (separate vaults)
+
+A brain is a separate vault: its own folder, notes, graph and settings. Use them to keep work, school or one project apart from everything else, including what Claude can see.
+
+- **Create one:** Settings → Brains → New brain, or File → Brains → New Brain…. It's created in `~/Octavo Brains/<name>`.
+- **Use an existing folder:** File → Brains → Add Existing Folder as Brain….
+- **Switch:** File → Brains, or Settings → Brains → Open.
+- **Remove:** Settings → Brains → Remove. This only takes it off the list; the notes stay in their folder.
+- **Claude:** each brain is a separate connection (`octavo`, `octavo-work`, …). See [Separate brains](CONNECT_CLAUDE.md#separate-brains).
+
 ## Using it alongside Obsidian, git and other editors
 
 - The vault is just a folder of `.md` files. Octavo ignores hidden folders such as `.obsidian`, `.git` and `.trash`.
