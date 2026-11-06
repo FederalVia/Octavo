@@ -211,10 +211,11 @@ p{color:#a8a397;line-height:1.5;margin:8px 0;white-space:pre-line}b{color:#e9e5d
 }
 
 /** One window for Wi-Fi/internet access: progress, QR code, or what went wrong. */
-async function showAccessWindow(html) {
+async function showAccessWindow(html, { wide = false } = {}) {
+  if (accessWin && !accessWin.isDestroyed()) accessWin.setSize(wide ? 760 : 440, 680);
   if (!accessWin || accessWin.isDestroyed()) {
     accessWin = new BrowserWindow({
-      width: 440,
+      width: wide ? 760 : 440,
       height: 680,
       parent: win ?? undefined,
       title: 'Open on your phone',
@@ -313,7 +314,7 @@ async function startRemote(showWindow) {
     if (s.state === 'starting') {
       await showAccessWindow(pageHtml('Setting up', `<div class="big">⏳</div><h2>Setting up access from anywhere</h2><p>${esc(s.step)}</p><p>This usually takes under a minute.</p>`));
     } else if (s.state === 'ready') {
-      await showAccessWindow(await qrPage(s.url, 'Works from <b>anywhere</b>: home Wi-Fi, other Wi-Fi or mobile data.'));
+      await showAccessWindow(await qrPage(s.url, 'Works away from home: mobile data and other Wi-Fi. Many routers can’t open it from your own home Wi-Fi; for home, also turn on <b>Home Wi-Fi only</b>.'));
     } else if (s.state === 'error') {
       await showAccessWindow(pageHtml('Couldn’t set up', `<div class="big">⚠️</div><h2>${esc(s.step)}</h2><p class="err">${esc(s.advice ?? '')}</p>`));
     }
@@ -556,7 +557,27 @@ async function showConnectClaude() {
 async function showPhoneQr() {
   if (!server) return;
   if (remote && remote.current.state === 'ready') {
-    await showAccessWindow(await qrPage(remote.current.url, 'Works from <b>anywhere</b>: home Wi-Fi, other Wi-Fi or mobile data.'));
+    const away = `${remote.current.url}/?token=${encodeURIComponent(phoneToken())}`;
+    const home = phoneEnabled() && lanAddresses()[0] ? phoneUrl(lanAddresses()[0], server.port, phoneToken()) : null;
+    if (!home) {
+      await showAccessWindow(await qrPage(remote.current.url, 'Works away from home: mobile data and other Wi-Fi. Many routers can’t open it from your own home Wi-Fi; for that, also turn on <b>Home Wi-Fi only</b>.'));
+      return;
+    }
+    // Both on: one code for home, one for away (most routers can't reach their own internet address from inside).
+    const [qrHome, qrAway] = await Promise.all([qrDataUrl(home), qrDataUrl(away)]);
+    await showAccessWindow(
+      pageHtml(
+        'Open on your phone',
+        `<h2>Scan with your phone</h2>
+<div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+<div style="flex:1;min-width:220px"><h3>At home</h3><img src="${qrHome}" alt="QR code for home Wi-Fi" style="width:220px;height:220px"><code>${esc(home)}</code><p>On your home Wi-Fi.</p></div>
+<div style="flex:1;min-width:220px"><h3>Away</h3><img src="${qrAway}" alt="QR code for away" style="width:220px;height:220px"><code>${esc(away)}</code><p>Mobile data and other Wi-Fi.</p></div>
+</div>
+<p>Add each to your home screen (<b>Share → Add to Home Screen</b> on iPhone) and name them, e.g. “Octavo” and “Octavo (away)”. Same notes, same key.</p>
+<p>Treat these codes like a password: anyone who scans one can read and edit your notes.</p>`,
+      ),
+      { wide: true },
+    );
     return;
   }
   if (!phoneEnabled()) {
