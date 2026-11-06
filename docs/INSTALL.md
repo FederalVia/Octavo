@@ -197,29 +197,14 @@ This prints a QR code. Scan it with your phone, which must be on the same Wi-Fi 
 
 > On Wi-Fi, the connection is plain `http://`. Your notes and the access key travel unencrypted across your local network. That's fine on a home network you trust, but don't use phone mode on public Wi-Fi. For that, use one of the options below.
 
-### Away from home
+### Away from home (Access from Anywhere)
 
-Your phone needs a way to reach the computer running Octavo. Two good options:
+Octavo can make itself reachable from anywhere by itself, directly, with no extra accounts or apps:
 
-**Tailscale (recommended, free for personal use):** a private, encrypted network between your own devices.
+- **Desktop app:** **File → Access from Anywhere**
+- **Terminal:** `npm start -- --remote`
 
-1. Install [Tailscale](https://tailscale.com) on the computer and on your phone, and sign in on both.
-2. Run Octavo in phone mode (`npm start -- --phone`, or the desktop menu). The QR code includes the computer's Tailscale address (`100.x.y.z`) when Tailscale is running. You can also open `http://<computer's tailscale name>:4321` on the phone.
-3. It works from anywhere, and Tailscale encrypts the connection.
-
-**Your PC (or any machine) as an always-on server:** [SELF_HOSTING.md](SELF_HOSTING.md) has ready-made Docker setups with Tailscale or your own domain. To set up HTTPS by hand instead:
-
-1. **Always set a token**: `--token <secret>` or `OCTAVO_TOKEN`. Without one, anyone who can reach the port can read and change your notes. The server prints a warning if you forget.
-2. **Listen on the network**: `--host 0.0.0.0` (the Docker image already does this).
-3. **Put HTTPS in front of it.** [Caddy](https://caddyserver.com) is the easiest option. It gets certificates automatically. Here's a `Caddyfile`:
-
-   ```
-   mind.example.com {
-       reverse_proxy 127.0.0.1:4321
-   }
-   ```
-
-   Then open `https://mind.example.com/?token=<your token>` once on the phone. Live updates use Server-Sent Events, which Caddy passes through without extra configuration. With nginx, add `proxy_buffering off;` for the `/api/events` location.
+It opens your router (UPnP), gets a free HTTPS certificate for your home's internet address, and shows a QR code. The full guide and troubleshooting are in **[SELF_HOSTING.md](SELF_HOSTING.md)**. Run `node packages/server/dist/cli.js check-remote` first to see whether your network allows it.
 
 ## 7. Command-line options
 
@@ -261,6 +246,9 @@ All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `ta
 | `--host <addr>` | `OCTAVO_HOST` | `127.0.0.1` | Address to listen on (`serve`) |
 | `--token <secret>` | `OCTAVO_TOKEN` | none | Require `Authorization: Bearer <secret>` for `/api` and `/mcp` |
 | `--phone` | | off | Listen on the Wi-Fi network with a saved access key, and print a QR code for your phone |
+| `--remote` | | off | Access from Anywhere: open the router (UPnP), get an HTTPS certificate for your public IP, print a QR code |
+| `--public-ip <ip>` | `OCTAVO_PUBLIC_IP` (desktop) | | With `--remote`: skip UPnP, for ports forwarded by hand |
+| `--https-port <n>` / `--challenge-port <n>` | | 4443 / 4380 | With `--remote`: local ports that the router forwards to |
 | `--read-only` | | off | Only expose read tools over MCP |
 | `--daily <folder>` | | `Journal` | Folder for daily notes |
 | `--no-seed` | | off | Don't create starter notes in an empty vault |

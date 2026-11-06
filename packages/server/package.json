@@ -21,8 +21,10 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@achingbrain/nat-port-mapper": "^4.0.5",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@octavo/core": "0.1.0",
+    "acme-client": "^5.4.0",
     "express": "^5.1.0",
     "qrcode": "^1.5.4",
     "zod": "^4.1.0"

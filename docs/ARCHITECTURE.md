@@ -107,4 +107,10 @@ A Vite + React single-page app, served by the server (or by Vite in development,
   - Keys live only in the tab's memory and are cleared on reload, on "Lock", or after 15 minutes idle.
   - Web Crypto is used when available. On insecure origins (a phone on plain-http Wi-Fi) the same algorithms run via `@noble/hashes` and `@noble/ciphers`, producing identical envelopes.
   - Locking is opt-in per vault (`.octavo/settings.json` → `locking`).
+- **Access from Anywhere** (`packages/server/src/remote/`, `octavo serve --remote`, desktop **File → Access from Anywhere**):
+  - Finds the router via UPnP (`@achingbrain/nat-port-mapper`) and reads its WAN address. It refuses CGNAT (100.64/10) and double-NAT addresses with an explanation.
+  - Maps internet port 80 → a local http-01 challenge server, and 443 (falling back to 8443, then 47321) → a local HTTPS server running the same Express app.
+  - Gets a Let's Encrypt **IP address certificate** using the `shortlived` profile (`acme-client`). The certificate is cached in `remote.json` (mode 600) outside the vault, renewed when under 3 days remain, and swapped in with `setSecureContext`.
+  - Polls the WAN address every 5 minutes and re-issues on change (`address-changed` event → new QR code).
+  - A safety check refuses to start unless the local server answers `401` without the access key. Failed keys are rate-limited per address: 10 failures → 15-minute lockout.
 - **Phone access** (`octavo serve --phone`, or the desktop app's **Use on Your Phone**): listens on `0.0.0.0` with a saved random access key, stored outside the vault, and prints a QR code linking to `http://<lan-ip>:<port>/?token=…`. The web app stores the key and removes it from the URL.

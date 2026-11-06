@@ -1,9 +1,9 @@
-import { app, BrowserWindow, Menu, clipboard, dialog, shell } from 'electron';
+import { app, BrowserWindow, Menu, Notification, clipboard, dialog, shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from '@octavo/server';
+import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
 const DEFAULT_PORT = 4321;
@@ -33,15 +33,26 @@ function saveConfig(cfg) {
 // ------------------------------------------------------------------ server
 
 const phoneEnabled = () => !!loadConfig().phoneAccess;
+const remoteEnabled = () => !!loadConfig().remoteAccess;
+/** Any outside access (Wi-Fi or internet) means the server needs the access key. */
+const needsKey = () => phoneEnabled() || remoteEnabled();
+/** @type {import('@octavo/server').RemoteAccess | null} */
+let remote = null;
+/** @type {BrowserWindow | null} */
+let accessWin = null;
 const phoneToken = () => loadOrCreateToken(path.join(app.getPath('userData'), 'phone-token'));
 
 /** URL the desktop window loads (carries the access key when phone access is on). */
 function windowUrl() {
   if (!server) return '';
-  return phoneEnabled() ? `${server.url}/?token=${encodeURIComponent(phoneToken())}` : server.url;
+  return needsKey() ? `${server.url}/?token=${encodeURIComponent(phoneToken())}` : server.url;
 }
 
-async function openVault(vaultPath) {
+async function openVault(vaultPath, { autoRemote = true } = {}) {
+  if (remote) {
+    await remote.stop();
+    remote = null;
+  }
   if (server) {
     await server.close();
     server = null;
@@ -52,7 +63,7 @@ async function openVault(vaultPath) {
     port: DEFAULT_PORT,
     // Phone access: listen on the Wi-Fi network, protected by an access key.
     host: phone ? '0.0.0.0' : '127.0.0.1',
-    token: phone ? phoneToken() : undefined,
+    token: needsKey() ? phoneToken() : undefined,
     fallbackToRandomPort: true,
   });
   await seedIfEmpty(server.vault);
@@ -60,6 +71,119 @@ async function openVault(vaultPath) {
   if (win) {
     win.setTitle(`${path.basename(vaultPath)} · Octavo`);
     await win.loadURL(windowUrl());
+  }
+  buildMenu();
+  if (autoRemote && remoteEnabled()) startRemote(false);
+}
+
+// ------------------------------------------------------------------ access from anywhere
+
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function pageHtml(title, body) {
+  return `<!doctype html><meta charset="utf-8"><title>${esc(title)}</title>
+<style>body{margin:0;background:#141317;color:#e9e5dc;font:14px -apple-system,system-ui,sans-serif;text-align:center;padding:24px}
+img{border-radius:12px;width:280px;height:280px}code{display:block;word-break:break-all;background:#1f1e24;padding:8px;border-radius:6px;margin:12px 0;font-size:12px}
+p{color:#a8a397;line-height:1.5;margin:8px 0;white-space:pre-line}b{color:#e9e5dc}.err{color:#f8a3a3}.big{font-size:40px;margin:30px 0 10px}</style>${body}`;
+}
+
+/** One window for Wi-Fi/internet access: progress, QR code, or what went wrong. */
+async function showAccessWindow(html) {
+  if (!accessWin || accessWin.isDestroyed()) {
+    accessWin = new BrowserWindow({
+      width: 440,
+      height: 680,
+      parent: win ?? undefined,
+      title: 'Open on your phone',
+      backgroundColor: '#141317',
+      autoHideMenuBar: true,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, javascript: false },
+    });
+    accessWin.on('closed', () => (accessWin = null));
+  }
+  await accessWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  accessWin.show();
+}
+
+async function qrPage(url, where) {
+  const link = `${url}/?token=${encodeURIComponent(phoneToken())}`;
+  const qr = await qrDataUrl(link);
+  return pageHtml(
+    'Open on your phone',
+    `<h2>Scan with your phone</h2><img src="${qr}" alt="QR code"><code>${esc(link)}</code>
+<p>${where}</p>
+<p>Then use <b>Share → Add to Home Screen</b> (iPhone) or <b>⋮ → Install app</b> (Android) to keep it as an app.</p>
+<p>Treat this code like a password: anyone who scans it can read and edit your notes.</p>`,
+  );
+}
+
+async function startRemote(showWindow) {
+  if (!server) return;
+  // Never expose the server to the internet without the access key.
+  if (!needsKey()) throw new Error('Remote access requires the access key to be enabled');
+  if (remote) await remote.stop();
+  remote = new RemoteAccess({
+    app: server.app,
+    stateDir: path.join(app.getPath('userData'), 'remote'),
+      // Hard guard: the local server must reject requests without the access key.
+      requireToken: async () => (await fetch(`${server.url}/api/vault`).then((r) => r.status).catch(() => 0)) === 401,
+    // Advanced: ports forwarded by hand / testing against another ACME server.
+    publicIp: process.env.OCTAVO_PUBLIC_IP || undefined,
+    directoryUrl: process.env.OCTAVO_ACME_DIRECTORY || undefined,
+    ...(process.env.OCTAVO_HTTPS_PORT
+      ? { httpsPort: Number(process.env.OCTAVO_HTTPS_PORT), externalHttpsPorts: [Number(process.env.OCTAVO_HTTPS_PORT)] }
+      : {}),
+    ...(process.env.OCTAVO_CHALLENGE_PORT ? { challengePort: Number(process.env.OCTAVO_CHALLENGE_PORT) } : {}),
+    log: (m) => console.log(`[octavo] ${m}`),
+  });
+  remote.on('status', async (s) => {
+    buildMenu();
+    if (!showWindow && !(accessWin && !accessWin.isDestroyed())) return;
+    if (s.state === 'starting') {
+      await showAccessWindow(pageHtml('Setting up', `<div class="big">⏳</div><h2>Setting up access from anywhere</h2><p>${esc(s.step)}</p><p>This usually takes under a minute.</p>`));
+    } else if (s.state === 'ready') {
+      await showAccessWindow(await qrPage(s.url, 'Works from <b>anywhere</b>: home Wi-Fi, other Wi-Fi or mobile data.'));
+    } else if (s.state === 'error') {
+      await showAccessWindow(pageHtml('Couldn’t set up', `<div class="big">⚠️</div><h2>${esc(s.step)}</h2><p class="err">${esc(s.advice ?? '')}</p>`));
+    }
+  });
+  remote.on('address-changed', async (s) => {
+    new Notification({ title: 'Octavo: scan the new code', body: 'Your home internet address changed, so your phone needs the new QR code.' }).show();
+    await showAccessWindow(await qrPage(s.url, 'Your home internet address changed. Scan this new code on your phone.'));
+  });
+  return remote.start();
+}
+
+async function toggleRemoteAccess() {
+  const enable = !remoteEnabled();
+  if (enable) {
+    const { response } = await dialog.showMessageBox(win ?? undefined, {
+      type: 'question',
+      message: 'Open Octavo to the internet?',
+      detail:
+        'Octavo will ask your router to open two ports, get a free HTTPS certificate for your home’s internet address, and show a QR code. Your phone can then open your notes from anywhere, protected by HTTPS and a secret access key.\n\nThis computer must stay on and awake.',
+      buttons: ['Turn On', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) return;
+  }
+  saveConfig({ ...loadConfig(), remoteAccess: enable });
+  if (!enable) {
+    if (remote) await remote.stop();
+    remote = null;
+    if (accessWin && !accessWin.isDestroyed()) accessWin.close();
+  }
+  // Restart the server so the access key requirement matches the setting.
+  if (server) {
+    const root = server.vault.root;
+    if (enable) {
+      // Restart with the access key required, then start remote access with progress shown.
+      await openVault(root, { autoRemote: false });
+      await startRemote(true);
+    } else {
+      await openVault(root);
+    }
   }
   buildMenu();
 }
@@ -122,6 +246,14 @@ async function showConnectClaude() {
 
 async function showPhoneQr() {
   if (!server) return;
+  if (remote && remote.current.state === 'ready') {
+    await showAccessWindow(await qrPage(remote.current.url, 'Works from <b>anywhere</b>: home Wi-Fi, other Wi-Fi or mobile data.'));
+    return;
+  }
+  if (!phoneEnabled()) {
+    if (remote) await showAccessWindow(pageHtml('Not ready', `<div class="big">⚠️</div><h2>${esc(remote.current.step)}</h2><p class="err">${esc(remote.current.advice ?? '')}</p>`));
+    return;
+  }
   const addrs = lanAddresses();
   if (!addrs.length) {
     await dialog.showMessageBox(win ?? undefined, {
@@ -204,8 +336,9 @@ function buildMenu() {
         { type: 'separator' },
         { label: 'Connect Claude…', click: showConnectClaude },
         { type: 'separator' },
-        { label: 'Use on Your Phone', type: 'checkbox', checked: phoneEnabled(), click: togglePhoneAccess },
-        { label: 'Show Phone QR Code…', enabled: phoneEnabled() && !!server, click: showPhoneQr },
+        { label: 'Use on Your Phone (Wi-Fi)', type: 'checkbox', checked: phoneEnabled(), click: togglePhoneAccess },
+        { label: 'Access from Anywhere', type: 'checkbox', checked: remoteEnabled(), click: toggleRemoteAccess },
+        { label: 'Show Phone QR Code…', enabled: needsKey() && !!server, click: showPhoneQr },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
       ],
@@ -306,6 +439,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('before-quit', async (e) => {
+    if (remote) {
+      // Close the router ports before quitting.
+      e.preventDefault();
+      const r = remote;
+      remote = null;
+      await r.stop();
+      app.quit();
+      return;
+    }
     if (server) {
       e.preventDefault();
       const s = server;

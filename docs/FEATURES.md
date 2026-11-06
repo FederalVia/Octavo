@@ -19,7 +19,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Lock individual notes with a password | ✅ | Optional, off by default (⚙ Settings). End-to-end encrypted on your device (AES-256-GCM, PBKDF2 600k), including on phones over plain Wi-Fi. The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
 | Mac, Windows, Linux | ✅ | Desktop app (Electron) or any browser |
-| iOS and Android | 🟡 | Scan a QR code (`--phone` or desktop **File → Use on Your Phone**) and add Octavo to your home screen. Works on home Wi-Fi, or anywhere with Tailscale or your own server. No native apps |
+| iOS and Android | 🟡 | Scan a QR code and add Octavo to your home screen. **Access from Anywhere** connects your phone directly to your PC over Wi-Fi or mobile data (automatic router setup and HTTPS). No native apps |
 | Multiple vaults | 🟡 | Desktop: **File → Open Vault Folder…**; server: run one per vault (`--vault`, `--port`). No in-app vault switcher yet |
 | Open a single Markdown file outside a vault | 🚧 | |
 
@@ -118,7 +118,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Sync across devices | 🟡 | Run one server, e.g. on your PC with Docker + Tailscale ([guide](SELF_HOSTING.md)), and open it from every device. Or sync the folder with git/Syncthing |
+| Sync across devices | 🟡 | Your PC is the one server, and every device opens it directly with [Access from Anywhere](SELF_HOSTING.md). Or sync the folder with git/Syncthing |
 | End-to-end encrypted sync, shared vaults, selective sync | 🚧 | Will be free and self-hostable, with no paid service. Encryption design in progress |
 | Version history | ✅ | Local, last 50 versions per note |
 | Publish notes as a website | 🚧 | Will be free: export a static site you host anywhere |

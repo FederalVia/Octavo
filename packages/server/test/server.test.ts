@@ -35,6 +35,21 @@ describe('HTTP server', () => {
     assert.equal(res.status, 401);
   });
 
+  test('locks out an address after repeated wrong keys', async () => {
+    const lockSrv = await startServer({ vaultPath: dir, port: 0, token: 'right-key', webDir: '/nonexistent' });
+    try {
+      for (let i = 0; i < 10; i++) {
+        const r = await fetch(`${lockSrv.url}/api/vault`, { headers: { Authorization: 'Bearer wrong' } });
+        assert.equal(r.status, 401);
+      }
+      const blocked = await fetch(`${lockSrv.url}/api/vault`, { headers: { Authorization: 'Bearer right-key' } });
+      assert.equal(blocked.status, 429, 'even the right key is refused while locked out');
+      assert.ok(Number(blocked.headers.get('retry-after')) > 0);
+    } finally {
+      await lockSrv.close();
+    }
+  });
+
   test('REST CRUD, search, graph', async () => {
     let res = await api('/api/notes');
     const list = await res.json();
