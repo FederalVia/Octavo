@@ -101,6 +101,10 @@ Stop the server with **Ctrl+C**.
 
 ## 3. Desktop app
 
+**Easiest:** download the installer for your system from the [Releases page](https://github.com/FederalVia/octavo/releases): `.exe` for Windows, `.dmg` for Mac, `.AppImage` for Linux. No Node.js needed.
+
+**From source:**
+
 ```bash
 npm run desktop
 ```
@@ -113,7 +117,7 @@ This builds the project and opens Octavo in its own window.
 
 After the first build, `npm start -w @octavo/desktop` opens the app faster because it skips the rebuild.
 
-> Packaged installers (`.dmg`, `.exe`, AppImage) aren't available yet, so the desktop app runs from the source folder.
+**Build the installers yourself:** `npm run dist:desktop` builds one for the system you're on, and puts it in `release/dist/`. Pushing a version tag (e.g. `v0.2.0`) makes GitHub build all three and publish a release (`.github/workflows/release.yml`).
 
 ---
 

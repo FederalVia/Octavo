@@ -39,7 +39,11 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 
 See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what's planned.
 
-## Quick start
+## Download
+
+Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](https://github.com/FederalVia/octavo/releases)**. The release notes cover the one-time security prompt for unsigned test builds.
+
+## Quick start (from source)
 
 You need [Node.js](https://nodejs.org) 20 or newer and git.
 
@@ -117,4 +121,4 @@ docs/          Guides and screenshots
 
 ## Status
 
-Octavo is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. In particular, packaged desktop installers (`.dmg`/`.exe`) aren't available yet, so the desktop app runs from source.
+Octavo is at an early stage (v0.1). It works and has tests, but expect rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. Test builds aren't signed with a paid developer certificate yet, so Windows and macOS show a one-time warning.
