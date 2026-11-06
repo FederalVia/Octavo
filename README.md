@@ -31,6 +31,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
   - hover previews, backlinks, unlinked mentions, aliases and nested `#tags`
   - automatic link updates when you rename a note
 - **Organise**: file tree, quick switcher (Ctrl/Cmd+O), command palette (Ctrl/Cmd+P), `/` slash commands, full-text search, bookmarks, templates, daily journal, a vault-wide task list, and orphan and dead-end finding.
+- **Optional note locking**: turn it on in ⚙ Settings to password-protect individual notes with end-to-end encryption. It's off by default, and notes are never encrypted unless you lock them.
 - **Safety net**: version history for every note (compare with the current version and restore), deletes go to a recoverable trash, and you get a conflict warning instead of losing your edits.
 - **Claude memory over MCP**: 15 tools (search, read, write, append, edit, tasks, journal, link graph…) over stdio or HTTP. Notes Claude touches light up in the brain.
 - **CLI**: `ultron new / read / append / search / daily / task / tasks / move / history …`
@@ -59,6 +60,8 @@ npm start -- --vault ~/UltronMind    # any folder; it's created if missing
 ```
 
 Prefer an app window? Run `npm run desktop`. For a server, use Docker (`docker compose up -d`).
+
+**On your phone:** run `npm start -- --phone` (or **File → Use on Your Phone** in the desktop app) and scan the QR code. See [Use it on your phone](docs/INSTALL.md#6-use-it-on-your-phone-and-other-devices).
 
 **Full instructions for every platform: [docs/INSTALL.md](docs/INSTALL.md)**
 

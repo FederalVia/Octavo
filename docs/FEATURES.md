@@ -16,10 +16,10 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Works fully offline | 🟡 | The desktop app and a locally run server need no internet. A hosted server needs a connection, and there's no offline cache yet |
 | No account needed | ✅ | |
 | Free, no paid tiers | ✅ | Every feature, including future sync and publishing |
-| Lock individual notes with a password | ✅ | End-to-end encrypted in the browser (AES-256-GCM, PBKDF2 600k). The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
+| Lock individual notes with a password | ✅ | Optional, off by default (⚙ Settings). End-to-end encrypted on your device (AES-256-GCM, PBKDF2 600k), including on phones over plain Wi-Fi. The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
 | Mac, Windows, Linux | ✅ | Desktop app (Electron) or any browser |
-| iOS and Android | 🟡 | Installable home-screen web app with a mobile layout, connecting to your self-hosted server. No native apps |
+| iOS and Android | 🟡 | Scan a QR code (`--phone` or desktop **File → Use on Your Phone**) and add Ultron to your home screen. Works on home Wi-Fi, or anywhere with Tailscale or your own server. No native apps |
 | Multiple vaults | 🟡 | Desktop: **File → Open Vault Folder…**; server: run one per vault (`--vault`, `--port`). No in-app vault switcher yet |
 | Open a single Markdown file outside a vault | 🚧 | |
 

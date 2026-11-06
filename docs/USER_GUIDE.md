@@ -30,6 +30,7 @@
 
 - **The brain** fills the window. Every note is a point, and every link between notes is a line.
 - **The toolbar** (top left) has these buttons, from left to right:
+  - ⚙ opens settings: note locking, Vim, line numbers, and the default brain view.
   - ☰ opens the drawer. Its tabs are Files ▤, Search ⌕, Tags #, Tasks ☑, Bookmarks ☆ and Insights ◇.
   - The green dot shows live sync is connected.
   - The title shows the vault name, the current view and the note count.
@@ -248,7 +249,7 @@ Before a note changes, Ultron keeps a copy of the previous version (at most ever
 
 ## Locked (encrypted) notes
 
-You can lock any note with a password: diary entries, health records, anything private.
+You can lock any note with a password: diary entries, health records, anything private. This is **optional and off by default**. Turn it on in **⚙ Settings → Lock notes with a password**, and a 🔐 button appears on each note. The setting is stored in the vault, so it applies on every device. Notes that are already locked still open, with a password prompt, even if the setting is off.
 
 - **Lock**: open the note and click **🔐** (or command palette → *Lock note with a password*). Enter a password of at least 8 characters, twice.
 - **Read and edit**: a locked note shows a 🔒 screen. Enter the password to unlock it, then read and edit as usual. Every save is encrypted before it leaves your browser.
@@ -265,7 +266,7 @@ You can lock any note with a password: diary entries, health records, anything p
 - **Claude can see that a locked note exists, but can't read, change or delete it.**
 - **Locking deletes the note's earlier plain-text versions from Ultron's version history.** Copies elsewhere, such as git history, backups or sync services, may still hold the old plain text.
 - **The file is still a `.md` file** with a short "this note is locked" message, so Obsidian and git show a placeholder. Don't edit that file by hand, or it can no longer be unlocked.
-- Encryption needs a secure page: `https://`, or `http://localhost` / `127.0.0.1`.
+- On your phone over home Wi-Fi (`http://`), the same encryption runs in JavaScript. Unlocking takes a moment longer but is just as secure, and the password never leaves the phone.
 
 ## Daily journal
 

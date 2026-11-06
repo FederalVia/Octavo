@@ -13,7 +13,7 @@ There are three ways to run Ultron Mind. All of them use the same notes, which a
 - [3. Desktop app](#3-desktop-app)
 - [4. Keep it running in the background](#4-keep-it-running-in-the-background)
 - [5. Self-hosting with Docker](#5-self-hosting-with-docker)
-- [6. Accessing it from other devices (HTTPS)](#6-accessing-it-from-other-devices-https)
+- [6. Use it on your phone and other devices](#6-use-it-on-your-phone-and-other-devices)
 - [7. Command-line options](#7-command-line-options)
 - [8. Updating](#8-updating)
 - [9. Uninstalling](#9-uninstalling)
@@ -191,13 +191,42 @@ docker run -d --name ultron-mind -p 4321:4321 \
 
 ---
 
-## 6. Accessing it from other devices (HTTPS)
+## 6. Use it on your phone and other devices
 
-By default the server only listens on `127.0.0.1`, which means only your own computer can reach it. To use it from your phone, another computer, or Claude in the cloud:
+### On your home Wi-Fi (easiest)
+
+**Desktop app:** choose **File → Use on Your Phone**, confirm, and scan the QR code with your phone's camera.
+
+**From a terminal:**
+
+```bash
+npm start -- --phone --vault ~/UltronMind
+```
+
+This prints a QR code. Scan it with your phone, which must be on the same Wi-Fi network.
+
+- The link contains a long random **access key**. The app remembers it on the phone and removes it from the address bar. Anyone without the key gets "Unauthorized".
+- The key is saved, so the same link keeps working after restarts: `~/.ultron-mind/phone-token` for the terminal version, and the desktop app's settings folder for the desktop app. Delete that file to generate a new key, which logs out every phone.
+- To keep Ultron as an app on your phone: **Share → Add to Home Screen** (iPhone, Safari) or **⋮ → Install app** (Android, Chrome).
+- [Locked notes](USER_GUIDE.md#locked-encrypted-notes) open on the phone too. They're decrypted on the phone itself, so the password never crosses the network.
+
+> On Wi-Fi, the connection is plain `http://`. Your notes and the access key travel unencrypted across your local network. That's fine on a home network you trust, but don't use phone mode on public Wi-Fi. For that, use one of the options below.
+
+### Away from home
+
+Your phone needs a way to reach the computer running Ultron. Two good options:
+
+**Tailscale (recommended, free for personal use):** a private, encrypted network between your own devices.
+
+1. Install [Tailscale](https://tailscale.com) on the computer and on your phone, and sign in on both.
+2. Run Ultron in phone mode (`npm start -- --phone`, or the desktop menu). The QR code includes the computer's Tailscale address (`100.x.y.z`) when Tailscale is running. You can also open `http://<computer's tailscale name>:4321` on the phone.
+3. It works from anywhere, and Tailscale encrypts the connection.
+
+**Your own server with HTTPS:** run Ultron on a server or always-on machine ([Docker](#5-self-hosting-with-docker)) behind HTTPS:
 
 1. **Always set a token**: `--token <secret>` or `ULTRON_TOKEN`. Without one, anyone who can reach the port can read and change your notes. The server prints a warning if you forget.
 2. **Listen on the network**: `--host 0.0.0.0` (the Docker image already does this).
-3. **Put HTTPS in front of it.** Over plain HTTP your token travels unencrypted. [Caddy](https://caddyserver.com) is the easiest option. It gets certificates automatically. Here's a `Caddyfile`:
+3. **Put HTTPS in front of it.** [Caddy](https://caddyserver.com) is the easiest option. It gets certificates automatically. Here's a `Caddyfile`:
 
    ```
    mind.example.com {
@@ -205,11 +234,7 @@ By default the server only listens on `127.0.0.1`, which means only your own com
    }
    ```
 
-   Live updates use Server-Sent Events, which Caddy passes through without extra configuration. With nginx, add `proxy_buffering off;` for the `/api/events` location.
-
-If you only need access from your own devices, [Tailscale](https://tailscale.com) works well: install it on the server and your devices, then open `http://<tailscale-name>:4321`. You should still set a token.
-
----
+   Then open `https://mind.example.com/?token=<your token>` once on the phone. Live updates use Server-Sent Events, which Caddy passes through without extra configuration. With nginx, add `proxy_buffering off;` for the `/api/events` location.
 
 ## 7. Command-line options
 
@@ -250,13 +275,14 @@ All of them take `--vault <dir>` (or use `ULTRON_VAULT`). `search`, `tasks`, `ta
 | `--port <n>` | `PORT` | `4321` | HTTP port (`serve`) |
 | `--host <addr>` | `ULTRON_HOST` | `127.0.0.1` | Address to listen on (`serve`) |
 | `--token <secret>` | `ULTRON_TOKEN` | none | Require `Authorization: Bearer <secret>` for `/api` and `/mcp` |
+| `--phone` | | off | Listen on the Wi-Fi network with a saved access key, and print a QR code for your phone |
 | `--read-only` | | off | Only expose read tools over MCP |
 | `--daily <folder>` | | `Journal` | Folder for daily notes |
 | `--no-seed` | | off | Don't create starter notes in an empty vault |
 
 ### Installing on a phone
 
-Open your server's address in Safari (iOS) or Chrome (Android), then choose **Share → Add to Home Screen** (iOS) or **⋮ → Install app** (Android). Ultron then opens full-screen like an app. Your phone needs to be able to reach the server: see [section 6](#6-accessing-it-from-other-devices-https).
+Open your server's address in Safari (iOS) or Chrome (Android), then choose **Share → Add to Home Screen** (iOS) or **⋮ → Install app** (Android). Ultron then opens full-screen like an app. Your phone needs to be able to reach the server: see [section 6](#6-use-it-on-your-phone-and-other-devices).
 
 ---
 

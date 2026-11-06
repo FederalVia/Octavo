@@ -8,6 +8,7 @@ import { AtlasView } from './components/AtlasView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HistoryDialog } from './components/HistoryDialog';
+import { DEFAULT_SETTINGS, SettingsDialog, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
 import { taskLines, wordCount } from './markdown';
@@ -95,6 +96,8 @@ export function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [mentions, setMentions] = useState<Backlink[]>([]);
   const [vimMode, setVimMode] = useState<boolean>(() => load('ultron.vim', false));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<VaultSettings>(DEFAULT_SETTINGS);
   const [query, setQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -653,6 +656,16 @@ export function App() {
   // ---------------------------------------------------------------- bookmarks, mentions, tasks, templates
   useEffect(() => {
     api
+      .getConfig<Partial<VaultSettings>>('settings')
+      .then((r) => setSettings({ ...DEFAULT_SETTINGS, ...(r.value ?? {}) }))
+      .catch(() => {});
+  }, []);
+  const saveSettings = useCallback((next: VaultSettings) => {
+    setSettings(next);
+    api.setConfig('settings', next).catch(() => {});
+  }, []);
+  useEffect(() => {
+    api
       .getConfig<Bookmark[]>('bookmarks')
       .then((r) => setBookmarks(Array.isArray(r.value) ? r.value : []))
       .catch(() => {});
@@ -910,7 +923,11 @@ export function App() {
   // ---------------------------------------------------------------- shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !dialog && !switcher && !palette && !historyOpen) {
+      if (e.key === 'Escape' && settingsOpen && !dialog) {
+        setSettingsOpen(false);
+        return;
+      }
+      if (e.key === 'Escape' && !dialog && !switcher && !palette && !historyOpen && !settingsOpen) {
         const inEditor = (e.target as HTMLElement | null)?.closest?.('.cm-editor, input, textarea');
         if (!inEditor) {
           if (showLeft && narrow()) setShowLeft(false);
@@ -952,7 +969,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, switcher, palette, historyOpen, showLeft, showSearch, closePanel, openDaily, newNote, save]);
+  }, [dialog, switcher, palette, historyOpen, settingsOpen, showLeft, showSearch, closePanel, openDaily, newNote, save]);
 
   // ---------------------------------------------------------------- render
   const counts = useMemo(() => wordCount(draft), [draft]);
@@ -964,7 +981,8 @@ export function App() {
     { id: 'daily', label: 'Open today’s journal', hint: `${mod}+D`, keywords: 'daily note', run: openDaily },
     { id: 'switcher', label: 'Open quick switcher', hint: `${mod}+O`, keywords: 'find note', run: () => setSwitcher(true) },
     { id: 'random', label: 'Open random note', run: openRandom },
-    { id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) },
+    ...(settings.locking ? [{ id: 'lock-all', label: 'Lock all unlocked notes', keywords: 'encrypt', run: () => lockNow(true) }] : []),
+    { id: 'settings', label: 'Open settings', keywords: 'preferences options encryption', run: () => setSettingsOpen(true) },
     { id: 'search', label: 'Search all notes', hint: `${mod}+Shift+F`, run: () => showSearch() },
     { id: 'tasks', label: 'Show all tasks', keywords: 'todo checkbox', run: () => openDrawer('tasks') },
     { id: 'bookmarks', label: 'Show bookmarks', run: () => openDrawer('bookmarks') },
@@ -979,7 +997,9 @@ export function App() {
           { id: 'tpl', label: 'Insert template…', run: () => setTimeout(() => setPalette('templates'), 0) },
           { id: 'bookmark', label: isBookmarked ? 'Remove bookmark' : 'Bookmark this note', run: toggleBookmark },
           ...(!isEncrypted
-            ? [{ id: 'lock', label: 'Lock note with a password', keywords: 'encrypt private secret', run: () => lockNote() }]
+            ? settings.locking
+              ? [{ id: 'lock', label: 'Lock note with a password', keywords: 'encrypt private secret', run: () => lockNote() }]
+              : []
             : locked
               ? []
               : [
@@ -1027,7 +1047,7 @@ export function App() {
     : [];
 
   return (
-    <div className="app brain-app">
+    <div className={`app brain-app${panelOpen ? ' panel-open' : ''}`}>
       {(() => {
         const viewProps = {
           data: graphView,
@@ -1069,6 +1089,9 @@ export function App() {
         </button>
         <button className="tb-btn" title={`Today’s journal (${mod}+D)`} onClick={openDaily}>
           ◷
+        </button>
+        <button className="tb-btn" title="Settings" onClick={() => setSettingsOpen(true)}>
+          ⚙
         </button>
       </div>
 
@@ -1152,6 +1175,7 @@ export function App() {
               <button className="icon-btn hide-narrow" title={panelWide ? 'Narrower' : 'Wider'} onClick={() => setPanelWide((w) => !w)}>
                 {panelWide ? '⇥' : '⇤'}
               </button>
+              {(settings.locking || isEncrypted) && (
               <button
                 className={`icon-btn${isEncrypted ? ' lock-on' : ''}`}
                 title={!isEncrypted ? 'Lock note with a password' : locked ? 'Locked' : 'Lock now'}
@@ -1159,6 +1183,7 @@ export function App() {
               >
                 {isEncrypted ? (locked ? '🔒' : '🔓') : '🔐'}
               </button>
+              )}
               <button className={`icon-btn${isBookmarked ? ' starred' : ''}`} title={isBookmarked ? 'Remove bookmark' : 'Bookmark this note'} onClick={toggleBookmark}>
                 {isBookmarked ? '★' : '☆'}
               </button>
@@ -1367,6 +1392,19 @@ export function App() {
             hint: t.folder,
             run: () => (palette === 'templates' ? insertTemplate(t.path) : newFromTemplate(t.path)),
           }))}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsDialog
+          settings={settings}
+          onChange={saveSettings}
+          vimMode={vimMode}
+          setVimMode={setVimMode}
+          lineNumbers={lineNumbers}
+          setLineNumbers={setLineNumbers}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          onClose={() => setSettingsOpen(false)}
         />
       )}
       {historyOpen && detail && (

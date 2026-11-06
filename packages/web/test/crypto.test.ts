@@ -37,3 +37,22 @@ test('tampering is detected', async () => {
   const tampered = locked.replace(env.ct, bytes.toString('base64'));
   await assert.rejects(unlockContent(tampered, nk), WrongPasswordError);
 });
+
+test('pure-JS fallback (plain-http pages) is interoperable with Web Crypto', async () => {
+  const { _setForceFallback } = await import('../src/crypto.ts');
+  const nk = await deriveKey('phone password');
+  const fromWebCrypto = await lockContent(PLAIN, nk);
+  _setForceFallback(true);
+  try {
+    const fallbackKey = await keyForContent(fromWebCrypto, 'phone password');
+    assert.deepEqual([...fallbackKey.raw], [...nk.raw], 'same derived key');
+    assert.equal(fallbackKey.ck, undefined);
+    assert.equal(await unlockContent(fromWebCrypto, fallbackKey), PLAIN);
+    const fromFallback = await lockContent(PLAIN + 'edited on phone', fallbackKey);
+    await assert.rejects(keyForContent(fromFallback, 'wrong'), WrongPasswordError);
+    _setForceFallback(false);
+    assert.equal(await unlockContent(fromFallback, nk), PLAIN + 'edited on phone');
+  } finally {
+    _setForceFallback(false);
+  }
+});
