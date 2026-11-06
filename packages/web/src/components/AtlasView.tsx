@@ -185,7 +185,7 @@ function buildLayout(data: GraphData): Layout {
   return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled };
 }
 
-const MONO = 'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace';
+const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
 
 const glints = new Map<string, HTMLCanvasElement>();
 const lightColors = new Map<string, string>();
@@ -278,6 +278,9 @@ export function AtlasView(props: Props) {
     lastInteract: 0,
     lastFire: 0,
     kick: () => {},
+    zoomBy: (_f: number) => {},
+    dismissTip: () => {},
+    recenter: () => {},
     drag: null as null | { x: number; y: number; yaw: number; pitch: number; pan: boolean; tx: number; ty: number; tz: number },
     pointers: new Map<number, { x: number; y: number }>(),
     pinch: null as null | { d: number; zoom: number },
@@ -400,6 +403,17 @@ export function AtlasView(props: Props) {
       const n = s.layout?.byId.get(id);
       if (!n) return;
       s.camGoal = { tx: n.x, ty: n.y, tz: n.z, zoom: Math.max(s.cam.zoom, 1.7) };
+    };
+    s.zoomBy = (f: number) => {
+      const g = s.camGoal ?? s.cam;
+      s.camGoal = { tx: g.tx, ty: g.ty, tz: g.tz, zoom: Math.min(12, Math.max(0.3, g.zoom * f)) };
+      s.lastInteract = performance.now();
+      kick();
+    };
+    s.recenter = () => {
+      s.camGoal = { tx: 0, ty: 0, tz: 0, zoom: 1 };
+      s.lastInteract = performance.now();
+      kick();
     };
     const visit = (id: string) => {
       addToTrail(id);
@@ -612,18 +626,15 @@ export function AtlasView(props: Props) {
           ctx.fill();
         }
         if (n.hub || isFocus) {
-          // Lens glint: thin cross + halo ring.
-          const g = r * 5;
-          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${0.35 * alpha})`;
-          ctx.lineWidth = 0.6;
-          ctx.beginPath();
-          ctx.moveTo(n.sx - g, n.sy);
-          ctx.lineTo(n.sx + g, n.sy);
-          ctx.moveTo(n.sx, n.sy - g);
-          ctx.lineTo(n.sx, n.sy + g);
-          ctx.stroke();
+          // Hubs and the open note get a soft double halo.
+          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${0.32 * alpha})`;
+          ctx.lineWidth = 0.8;
           ctx.beginPath();
           ctx.arc(n.sx, n.sy, r * 1.9, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${0.14 * alpha})`;
+          ctx.beginPath();
+          ctx.arc(n.sx, n.sy, r * 3.2, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
@@ -647,7 +658,7 @@ export function AtlasView(props: Props) {
 
       // Labels.
       ctx.globalCompositeOperation = 'source-over';
-      ctx.font = `10.5px ${MONO}`;
+      ctx.font = `500 11.5px ${SANS}`;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       const zoomed = s.cam.zoom > 2.2;
@@ -688,36 +699,6 @@ export function AtlasView(props: Props) {
       }
       ctx.globalAlpha = 1;
 
-      // Orientation gizmo (bottom-right of the free area).
-      const gx = W * (1 - propsRef.current.rightInset) - 64;
-      const gy = H - (W < 800 ? 130 : 64); // clear the legend on small screens
-      ctx.strokeStyle = 'rgba(200,196,188,0.35)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(gx, gy, 22, 0, Math.PI * 2);
-      ctx.stroke();
-      const axes: [string, number, number, number][] = [
-        ['S', 0, 1, 0],
-        ['A', 0, 0, 1],
-        ['L', 1, 0, 0],
-      ];
-      const { yaw, pitch } = s.cam;
-      ctx.font = `10px ${MONO}`;
-      ctx.textAlign = 'center';
-      for (const [label, ax, ay, az] of axes) {
-        const x1 = ax * Math.cos(yaw) + az * Math.sin(yaw);
-        const z1 = -ax * Math.sin(yaw) + az * Math.cos(yaw);
-        const y2 = ay * Math.cos(pitch) - z1 * Math.sin(pitch);
-        const ex = gx + x1 * 48;
-        const ey = gy - y2 * 48;
-        ctx.strokeStyle = 'rgba(200,196,188,0.4)';
-        ctx.beginPath();
-        ctx.moveTo(gx, gy);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(220,215,205,0.75)';
-        ctx.fillText(label, gx + x1 * 58, gy - y2 * 58);
-      }
     };
     const frame = (now: number) => {
       scheduled = false;
@@ -772,6 +753,7 @@ export function AtlasView(props: Props) {
     };
 
     const onDown = (e: PointerEvent) => {
+      s.dismissTip();
       canvas.setPointerCapture(e.pointerId);
       s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       s.lastInteract = performance.now();
@@ -930,76 +912,117 @@ export function AtlasView(props: Props) {
     if (hit) props.onSelect(hit.id);
   };
 
-  const insetStyle = { right: `calc(${props.rightInset * 100}% + 14px)` };
+  st.current.dismissTip = () => dismissTipRef.current();
+  const freeRight = `calc(${props.rightInset * 100}% + 12px)`;
+  const toolsStyle = { right: freeRight };
+  const dockStyle = { right: freeRight };
+  const centerStyle = { left: `${(1 - props.rightInset) * 50}%` };
+  const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+  const [viewOpen, setViewOpen] = useState(false);
+  const dismissTipRef = useRef(() => {});
+  const [tip, setTip] = useState(() => {
+    try {
+      return !localStorage.getItem('octavo.atlasTip');
+    } catch {
+      return false;
+    }
+  });
+  const dismissTip = () => {
+    if (!tip) return;
+    setTip(false);
+    try {
+      localStorage.setItem('octavo.atlasTip', '1');
+    } catch {
+      /* ignore */
+    }
+  };
+  dismissTipRef.current = dismissTip;
 
   return (
     <div className="atlas" ref={wrapRef}>
       <canvas ref={canvasRef} />
-      {layout && (
-        <div className="atlas-legend">
-          <div className="atlas-legend-title">Anatomical regions</div>
-          {REGIONS.map((r) => (
-            <div
-              key={r.key}
-              className={`atlas-legend-row${hidden.has(r.key) ? ' off' : ''}`}
-              onClick={() => toggle(r.key)}
-              title={hidden.has(r.key) ? 'Show region' : 'Hide region'}
-            >
-              <i style={{ background: r.color }} />
-              <div>
-                <b>{r.label}</b>
-                <span>{r.subtitle}</span>
-              </div>
-              <em>{String(layout.counts[r.key]).padStart(2, '0')}</em>
-            </div>
-          ))}
+
+      {tip && (
+        <div className="atlas-tip" style={centerStyle} role="status">
+          <span>{coarse ? 'Drag to turn the brain, pinch to zoom, tap a point to open it.' : 'Drag to turn the brain, scroll to zoom, Shift-drag to move, click a point to open it.'}</span>
+          <button onClick={dismissTip}>Got it</button>
         </div>
       )}
 
-      <div className="atlas-controls" style={insetStyle}>
-        <div className="atlas-hint" style={{ visibility: props.rightInset > 0 ? 'hidden' : undefined }}>DRAG — rotate · SHIFT+DRAG — pan · SCROLL — zoom</div>
-        <div className="atlas-row">
-          <button className={`atlas-btn${labels ? ' on' : ''}`} onClick={() => setLabels((l) => !l)}>
-            Labels
+      <div className="atlas-tools" style={toolsStyle}>
+        <div className="atlas-view-wrap">
+          <button className={`atlas-tool${viewOpen ? ' on' : ''}`} aria-label="View options" aria-expanded={viewOpen} onClick={() => setViewOpen((v) => !v)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
           </button>
-          <button
-            className={`atlas-btn${showTrail ? ' on' : ''}`}
-            onClick={() => setShowTrail((t) => !t)}
-            title="A fading line through the notes Claude read or changed in the last 30 minutes"
-          >
-            Trail
-          </button>
-          <button className="atlas-btn" onClick={() => setHidden(new Set())}>
-            All
-          </button>
-          <button className="atlas-btn" onClick={() => setHidden(new Set(REGIONS.map((r) => r.key)))}>
-            None
-          </button>
+          {viewOpen && (
+            <div className="atlas-view-menu" role="menu">
+              <label>
+                <input type="checkbox" checked={labels} onChange={() => setLabels((l) => !l)} /> Note names
+              </label>
+              <label title="A fading line through the notes Claude read or changed in the last 30 minutes">
+                <input type="checkbox" checked={showTrail} onChange={() => setShowTrail((t) => !t)} /> Claude’s trail
+              </label>
+            </div>
+          )}
         </div>
-        <div className="atlas-row">
-          {REGIONS.map((r) => (
-            <button
-              key={r.key}
-              className={`atlas-btn region${hidden.has(r.key) ? '' : ' on'}`}
-              style={{ ['--region' as string]: r.color }}
-              title={`${r.label}: ${r.subtitle}`}
-              onClick={() => toggle(r.key)}
-            >
-              {r.short}
-            </button>
-          ))}
-        </div>
-        <input
-          className="atlas-search"
-          placeholder="search notes…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitFilter();
-            if (e.key === 'Escape') setFilter('');
-          }}
-        />
+        <button className="atlas-tool" aria-label="Zoom in" onClick={() => st.current.zoomBy(1.4)}>
+          ＋
+        </button>
+        <button className="atlas-tool" aria-label="Zoom out" onClick={() => st.current.zoomBy(1 / 1.4)}>
+          −
+        </button>
+        <button className="atlas-tool" aria-label="Show the whole brain" onClick={() => st.current.recenter()}>
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+        </button>
       </div>
+
+      {layout && (
+        <div className="atlas-dock" style={dockStyle}>
+          <label className={`atlas-find${filter ? ' active' : ''}`}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3.5-3.5" />
+            </svg>
+            <input
+              aria-label="Find in the brain"
+              placeholder="Find"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitFilter();
+                if (e.key === 'Escape') setFilter('');
+              }}
+            />
+          </label>
+          <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show, double-tap to show only one">
+            {hidden.size > 0 && (
+              <button className="atlas-pill all" onClick={() => setHidden(new Set())}>
+                Show all
+              </button>
+            )}
+            {REGIONS.map((r) => (
+              <button
+                key={r.key}
+                className={`atlas-pill${hidden.has(r.key) ? ' off' : ''}`}
+                style={{ ['--region' as string]: r.color }}
+                title={`${r.name}: ${r.label} region (${r.subtitle}). Double-tap to show only this.`}
+                aria-pressed={!hidden.has(r.key)}
+                onClick={() => toggle(r.key)}
+                onDoubleClick={() => setHidden(new Set(REGIONS.filter((x) => x.key !== r.key).map((x) => x.key)))}
+              >
+                <i aria-hidden="true" />
+                {r.name}
+                <em>{layout.counts[r.key]}</em>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {props.data && props.data.nodes.length === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
     </div>

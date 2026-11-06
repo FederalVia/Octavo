@@ -42,27 +42,19 @@
 
 ## Atlas view
 
-A 3D brain. Notes are grouped into anatomical [regions](#brain-regions).
+A 3D brain. Notes are grouped into [regions](#brain-regions).
 
 | Action | How |
 | --- | --- |
-| Rotate | Drag |
-| Pan | Shift + drag, or right-drag |
-| Zoom | Scroll, or pinch on a touch screen |
-| Open a note | Click its point |
+| Turn the brain | Drag |
+| Move it | Shift + drag, or right-drag |
+| Zoom | Scroll, pinch, or the ＋ / − buttons |
+| Show the whole brain again | ⛶ button |
+| Open a note | Click (or tap) its point |
 | Highlight a note's connections | Hover over it |
 
-- **The legend** (top left) lists each region with its note count. Click a region to hide or show it.
-- **Trail** (top right): a fading line through the notes Claude read or changed in the last 30 minutes, in order, so you can see the shape of a whole session after the glow has gone. It survives a reload. Click **Trail** to hide it.
-- **The controls** (top right):
-  - **Labels** turns note names on or off.
-  - **All** / **None** show or hide every region.
-  - **FRO PAR TEM OCC CER STM** toggle each region.
-  - **search notes…** highlights matching notes. Press Enter to open the best match.
-- **Larger, glinting points** are your most connected notes (hubs).
-- **Faint points** are links to notes that don't exist yet. Click one to create the note.
-- The brain **rotates slowly** when you leave it alone, and stops as soon as you interact or open a note.
-- **The orientation marker** (bottom right) shows which way is superior (S), anterior (A) and left (L).
+- **Region dock** (bottom): one pill per region (Projects, Knowledge, People, Sources, Journal, Hubs) with its note count. Tap a pill to hide or show that region; double-tap to show only that one. **Find** highlights notes whose names match; press Enter to fly to the first.
+- **View menu** (the eye button, top right): note names on or off, and **Claude's trail**, a fading line through the notes Claude read or changed in the last 30 minutes, so you can see the shape of a whole session after the glow has gone. The trail survives a reload.
 
 ## Network view
 
@@ -80,6 +72,8 @@ Each note belongs to one region. The rules are checked in this order:
 4. The note's **tags**.
 5. Notes named with a date (`2026-11-06…`) go to the **cerebellum**.
 6. Anything else goes to the **parietal** lobe.
+
+In the app each region is shown by an everyday name: **Projects** (frontal), **Knowledge** (parietal), **People** (temporal), **Sources** (occipital), **Journal** (cerebellum) and **Hubs** (brain stem).
 
 | Region | Holds | Folder or tag names that match |
 | --- | --- | --- |
