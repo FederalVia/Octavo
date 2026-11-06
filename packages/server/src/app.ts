@@ -97,7 +97,9 @@ export function createApp(opts: AppOptions): express.Express {
     res.status(401).json({ error: 'Unauthorized' });
   };
 
-  app.use(express.json({ limit: '40mb' })); // drawings carry their images inline
+  // Drawings carry their images inline, so their route parses a bigger body (after the access key check).
+  const json = express.json({ limit: '10mb' });
+  app.use((req, res, next) => (req.method === 'PUT' && req.path.startsWith('/api/drawing/') ? next() : json(req, res, next)));
 
   // ------------------------------------------------------------------ MCP
   app.post('/mcp', auth, async (req, res) => {
@@ -382,7 +384,7 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
-  api.put('/drawing/*path', async (req, res, next) => {
+  api.put('/drawing/*path', express.json({ limit: '40mb' }), async (req, res, next) => {
     try {
       const { data, expectedMtime, createOnly } = req.body ?? {};
       res.json(await vault.writeDrawing(notePathParam(req), data, { expectedMtime: typeof expectedMtime === 'number' ? expectedMtime : undefined, createOnly: createOnly === true }));
@@ -557,6 +559,11 @@ export function createApp(opts: AppOptions): express.Express {
       }
     });
     app.use(express.static(webDir, { index: false, maxAge: '1h' }));
+    // A missing file (e.g. an old build's asset asked for by a tab opened before an update) must be a
+    // 404, never the app page: a script import that gets HTML crashes the app and poisons the cache.
+    app.get(/\.[a-z0-9]{1,8}$/i, (_req, res) => {
+      res.status(404).type('text/plain').send('Not found');
+    });
     app.get('/{*splat}', (_req, res) => {
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(webDir, 'index.html'));
@@ -579,6 +586,10 @@ export function createApp(opts: AppOptions): express.Express {
       res.status(409).json({ error: err.message });
     } else if (err instanceof EncryptedNoteError) {
       res.status(423).json({ error: err.message, encrypted: true });
+    } else if ((err as { type?: string }).type === 'entity.too.large') {
+      res.status(413).json({ error: 'That request is too large' });
+    } else if ((err as { type?: string }).type === 'entity.parse.failed') {
+      res.status(400).json({ error: 'The request body is not valid JSON' });
     } else if (err instanceof VaultPathError || err instanceof EditMatchError || err instanceof CanvasFormatError) {
       res.status(400).json({ error: err.message });
     } else {
