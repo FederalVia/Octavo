@@ -22,6 +22,7 @@ import { Presentation } from './components/Presentation';
 import { currentNoteBody, noteHtml, printHtml } from './exportNote';
 import { DEFAULT_SETTINGS, SettingsDialog, useDesktopUpdate, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { BookmarksPanel, CalendarPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
 import { fileUrl, taskLines, wordCount } from './markdown';
 import { deriveKey, isLocked, keyForContent, lockContent, unlockContent, WrongPasswordError, type NoteKey } from './crypto';
@@ -2076,24 +2077,28 @@ export function App() {
         <Presentation content={draft} path={detail.path} exists={exists} namesKey={namesKey} onClose={() => setPresenting(false)} />
       )}
       {canvasPath && (
-        <CanvasView
-          key={canvasPath}
-          path={canvasPath}
-          notes={notes}
-          onClose={() => setCanvasPath(null)}
-          onOpenNote={(p) => {
-            setCanvasPath(null);
-            navigate(p);
-          }}
-          onOpenUrl={(u) => setWebUrl(u)}
-          pickNote={() => new Promise((resolve) => setCanvasPick(() => resolve))}
-          prompt={prompt}
-        />
+        <ErrorBoundary key={canvasPath} onClose={() => setCanvasPath(null)}>
+          <CanvasView
+            key={canvasPath}
+            path={canvasPath}
+            notes={notes}
+            onClose={() => setCanvasPath(null)}
+            onOpenNote={(p) => {
+              setCanvasPath(null);
+              navigate(p);
+            }}
+            onOpenUrl={(u) => setWebUrl(u)}
+            pickNote={() => new Promise((resolve) => setCanvasPick(() => resolve))}
+            prompt={prompt}
+          />
+        </ErrorBoundary>
       )}
       {drawingPath && (
-        <Suspense fallback={<div className="drawing-view"><div className="dv-error muted">Loading the drawing tools…</div></div>}>
-          <DrawingView key={drawingPath} path={drawingPath} dark={document.documentElement.dataset.theme !== 'light'} onClose={() => setDrawingPath(null)} />
-        </Suspense>
+        <ErrorBoundary key={drawingPath} onClose={() => setDrawingPath(null)}>
+          <Suspense fallback={<div className="drawing-view"><div className="dv-error muted">Loading the drawing tools…</div></div>}>
+            <DrawingView key={drawingPath} path={drawingPath} dark={document.documentElement.dataset.theme !== 'light'} onClose={() => setDrawingPath(null)} />
+          </Suspense>
+        </ErrorBoundary>
       )}
       {drawingPick && (
         <QuickSwitcher
