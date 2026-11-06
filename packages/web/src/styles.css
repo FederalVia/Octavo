@@ -916,13 +916,14 @@ mark {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 4px 2px 6px;
-  font-family: var(--font-hud);
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  border-radius: 8px;
-  background: rgba(17, 16, 20, 0.55);
+  padding: 3px 4px 3px 6px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  border-radius: 14px;
+  background: rgba(17, 16, 20, 0.6);
+  border: 1px solid rgba(220, 205, 170, 0.1);
 }
+.tb-name { font-weight: 650; letter-spacing: -0.005em; }
 .tb-brand {
   display: flex;
   align-items: center;
@@ -1886,8 +1887,8 @@ body {
   top: calc(10px + env(safe-area-inset-top));
   left: calc(12px + env(safe-area-inset-left));
 }
-.atlas-controls {
-  top: calc(12px + env(safe-area-inset-top));
+.atlas-tools {
+  top: calc(64px + env(safe-area-inset-top));
 }
 .panel-header {
   padding-top: env(safe-area-inset-top);
@@ -2193,4 +2194,66 @@ form.setting-row { cursor: default; }
 @media (max-width: 800px) {
   .connections.open { max-height: 45%; }
   .conn-toggle { padding: 12px 16px; font-size: 13px; }
+}
+
+/* ---------------------------------------------------------------- atlas: Octavo's own controls */
+.atlas-legend, .atlas-controls { display: none; }
+.atlas { font-family: var(--font-ui); }
+.atlas-dock {
+  position: absolute; left: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 6;
+  display: flex; align-items: center; gap: 8px; pointer-events: none;
+}
+.atlas-dock > * { pointer-events: auto; }
+.atlas-find {
+  display: flex; align-items: center; gap: 6px; flex: none; height: 36px; padding: 0 12px;
+  border-radius: 18px; background: rgba(17, 16, 20, 0.72); border: 1px solid rgba(220, 205, 170, 0.12); color: var(--text-muted);
+}
+.atlas-find.active { border-color: var(--accent-soft); color: var(--text); }
+.atlas-find input { width: 72px; background: none; border: 0; outline: none; color: var(--text); font: inherit; font-size: 13px; transition: width 0.2s; }
+.atlas-find input:focus, .atlas-find.active input { width: 150px; }
+.atlas-regions { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; padding: 2px; }
+.atlas-regions::-webkit-scrollbar { display: none; }
+.atlas-pill {
+  display: inline-flex; align-items: center; gap: 7px; flex: none; height: 36px; padding: 0 12px;
+  border-radius: 18px; border: 1px solid rgba(220, 205, 170, 0.12); background: rgba(17, 16, 20, 0.72);
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 550; cursor: pointer; transition: opacity 0.15s, background 0.15s;
+}
+.atlas-pill:hover { background: rgba(40, 38, 46, 0.85); }
+.atlas-pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--region); box-shadow: 0 0 10px var(--region); }
+.atlas-pill em { font-style: normal; font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.atlas-pill.off { opacity: 0.42; }
+.atlas-pill.off i { box-shadow: none; background: transparent; border: 1.5px solid var(--region); }
+.atlas-pill.all { color: var(--accent); }
+.atlas-tools {
+  position: absolute; top: 14px; z-index: 6; display: flex; flex-direction: column; gap: 6px;
+}
+.atlas-tool {
+  width: 38px; height: 38px; border-radius: 19px; display: flex; align-items: center; justify-content: center;
+  background: rgba(17, 16, 20, 0.72); border: 1px solid rgba(220, 205, 170, 0.12); color: var(--text-muted);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.atlas-tool:hover, .atlas-tool.on { color: var(--text); background: rgba(40, 38, 46, 0.85); }
+.atlas-view-wrap { position: relative; }
+.atlas-view-menu {
+  position: absolute; right: 46px; top: 0; min-width: 170px; padding: 6px; border-radius: 14px;
+  background: rgba(24, 23, 28, 0.96); border: 1px solid rgba(220, 205, 170, 0.14); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  display: flex; flex-direction: column;
+}
+.atlas-view-menu label { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.atlas-view-menu label:hover { background: var(--bg-hover); }
+.atlas-tip {
+  position: absolute; bottom: calc(66px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 7;
+  display: flex; align-items: center; gap: 12px; max-width: min(520px, calc(100vw - 32px)); padding: 9px 9px 9px 16px;
+  border-radius: 16px; background: rgba(24, 23, 28, 0.94); border: 1px solid rgba(220, 205, 170, 0.14); color: var(--text-muted); font-size: 13px;
+}
+.atlas-tip button { flex: none; border: 0; border-radius: 10px; padding: 6px 12px; background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600; cursor: pointer; }
+@media (pointer: coarse) {
+  .atlas-pill, .atlas-find { height: 40px; }
+  .atlas-tool { width: 42px; height: 42px; border-radius: 21px; }
+}
+@media (max-width: 560px) {
+  .atlas-find { width: 40px; padding: 0; justify-content: center; transition: width 0.2s; }
+  .atlas-find input { width: 0; padding: 0; }
+  .atlas-find:focus-within, .atlas-find.active { width: 190px; padding: 0 12px; justify-content: flex-start; }
+  .atlas-find:focus-within input, .atlas-find.active input { width: 140px; }
 }
