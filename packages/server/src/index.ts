@@ -8,6 +8,7 @@ export { createApp } from './app.js';
 export { createMcpServer, SERVER_INSTRUCTIONS } from './mcp.js';
 export { seedIfEmpty } from './seed.js';
 export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js';
+export { RemoteAccess, diagnose, type RemoteStatus, type RemoteProblem } from './remote/remote.js';
 
 export interface StartOptions {
   vaultPath: string;
@@ -25,6 +26,8 @@ export interface RunningServer {
   url: string;
   port: number;
   vault: Vault;
+  /** The request handler, e.g. to also serve it over HTTPS for remote access. */
+  app: import('express').Express;
   close(): Promise<void>;
 }
 
@@ -85,6 +88,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
     url: `http://${displayHost}:${port}`,
     port,
     vault,
+    app,
     close: () =>
       new Promise<void>((resolve) => {
         vault.close();

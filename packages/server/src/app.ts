@@ -58,12 +58,37 @@ export function createApp(opts: AppOptions): express.Express {
     });
   }
 
+  // Lock out an address after repeated wrong keys (protects internet-facing servers from guessing).
+  const failures = new Map<string, { count: number; first: number; blockedUntil: number }>();
+  const MAX_FAILURES = 10;
+  const WINDOW_MS = 10 * 60 * 1000;
+  const BLOCK_MS = 15 * 60 * 1000;
+
   const auth = (req: Request, res: Response, next: NextFunction) => {
     if (!opts.token) return next();
+    const who = req.socket.remoteAddress ?? 'unknown';
+    const now = Date.now();
+    const rec = failures.get(who);
+    if (rec && rec.blockedUntil > now) {
+      res.setHeader('Retry-After', String(Math.ceil((rec.blockedUntil - now) / 1000)));
+      res.status(429).json({ error: 'Too many wrong access keys. Try again later.' });
+      return;
+    }
     const header = req.headers.authorization ?? '';
     const bearer = header.startsWith('Bearer ') ? header.slice(7) : '';
     const query = typeof req.query.token === 'string' ? req.query.token : '';
-    if ((bearer && safeEqual(bearer, opts.token)) || (query && safeEqual(query, opts.token))) return next();
+    if ((bearer && safeEqual(bearer, opts.token)) || (query && safeEqual(query, opts.token))) {
+      failures.delete(who);
+      return next();
+    }
+    // Only count actual guesses, not requests that simply carry no key.
+    if (bearer || query) {
+      const r = rec && now - rec.first < WINDOW_MS ? rec : { count: 0, first: now, blockedUntil: 0 };
+      r.count++;
+      if (r.count >= MAX_FAILURES) r.blockedUntil = now + BLOCK_MS;
+      failures.set(who, r);
+      if (failures.size > 10_000) failures.clear();
+    }
     res.status(401).json({ error: 'Unauthorized' });
   };
 

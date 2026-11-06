@@ -9,12 +9,14 @@ import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
 import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
 import { lanAddresses, loadOrCreateToken, phoneUrl, qrTerminal } from './phone.js';
+import { RemoteAccess, diagnose, REMOTE_ADVICE } from './remote/remote.js';
 
 const HELP = `Octavo: a Markdown knowledge base that doubles as Claude's memory.
 
 Usage:
   octavo serve [options]   Run the web app, REST API and MCP endpoint (/mcp)
   octavo mcp   [options]   Run an MCP server over stdio (for Claude Desktop / Claude Code)
+  octavo check-remote      Check whether your home network allows direct access from anywhere
   octavo qr <address>      Print a QR code that opens Octavo at <address> on your phone
                            (uses --token or OCTAVO_TOKEN), e.g. octavo qr https://octavo.tail1234.ts.net
 
@@ -24,6 +26,11 @@ Options:
   --host <addr>     Bind address for "serve" (env OCTAVO_HOST, default 127.0.0.1)
   --token <secret>  Require this bearer token for /api and /mcp (env OCTAVO_TOKEN)
   --phone           Open to your Wi-Fi with an access key and show a QR code to scan
+  --remote          Access from anywhere: opens your router (UPnP), gets a free HTTPS
+                    certificate for your home's address and shows a QR code to scan
+  --public-ip <ip>  With --remote: skip UPnP (ports forwarded by hand: 80 → 4380, 443 → 4443)
+  --https-port <n>, --challenge-port <n>
+                    With --remote: change the local ports (defaults 4443 and 4380)
   --read-only       Expose only read tools over MCP
   --daily <folder>  Folder for daily journal notes (default Journal)
   --no-seed         Don't create starter notes in an empty vault
@@ -46,6 +53,11 @@ async function main() {
       token: { type: 'string' },
       'read-only': { type: 'boolean', default: false },
       phone: { type: 'boolean', default: false },
+      remote: { type: 'boolean', default: false },
+      'public-ip': { type: 'string' },
+      'acme-directory': { type: 'string' },
+      'https-port': { type: 'string' },
+      'challenge-port': { type: 'string' },
       daily: { type: 'string' },
       'no-seed': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
@@ -58,7 +70,7 @@ async function main() {
   });
 
   const command = positionals[0] ?? 'serve';
-  if (values.help || !['serve', 'mcp', 'qr', ...NOTE_COMMANDS].includes(command)) {
+  if (values.help || !['serve', 'mcp', 'qr', 'check-remote', ...NOTE_COMMANDS].includes(command)) {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
@@ -66,6 +78,20 @@ async function main() {
   const vaultPath = path.resolve(expandHome(values.vault ?? process.env.OCTAVO_VAULT ?? '~/Octavo'));
   const token = values.token ?? process.env.OCTAVO_TOKEN ?? undefined;
   const seed = !values['no-seed'];
+
+  if (command === 'check-remote') {
+    console.log('Checking whether your network allows direct connections from the internet…\n');
+    const d = await diagnose();
+    for (const l of d.lines) console.log(`  ${l}`);
+    console.log('');
+    if (d.ok) {
+      console.log('  Good news: direct access should work. Start it with:  npm start -- --remote');
+    } else if (d.problem) {
+      console.log('  ' + REMOTE_ADVICE[d.problem].replace('{challenge}', '4380').replace('{https}', '4443'));
+    }
+    console.log('');
+    process.exit(d.ok ? 0 : 2);
+  }
 
   if (command === 'qr') {
     const base = positionals[1];
@@ -119,7 +145,8 @@ async function main() {
   const host = values.host ?? process.env.OCTAVO_HOST ?? (phone ? '0.0.0.0' : '127.0.0.1');
   const port = Number(values.port ?? process.env.PORT ?? 4321);
   // Phone mode always uses an access key: a saved one (so the phone's bookmark keeps working) unless --token is given.
-  const serveToken = token ?? (phone ? loadOrCreateToken() : undefined);
+  const remoteMode = values.remote;
+  const serveToken = token ?? (phone || remoteMode ? loadOrCreateToken() : undefined);
   if (!serveToken && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
     console.warn(
       `[octavo] WARNING: listening on ${host} without --token. Anyone who can reach this port can read and edit your vault.`,
@@ -155,7 +182,51 @@ async function main() {
       console.log('');
     }
   }
+  let remote: RemoteAccess | null = null;
+  if (remoteMode && serveToken) {
+    remote = new RemoteAccess({
+      app: running.app,
+      stateDir: path.join(os.homedir(), '.octavo', 'remote'),
+      // Hard guard: the local server must reject requests without the access key.
+      requireToken: async () => (await fetch(`${running.url}/api/vault`).then((r) => r.status).catch(() => 0)) === 401,
+      publicIp: values['public-ip'],
+      directoryUrl: values['acme-directory'],
+      ...(values['https-port'] ? { httpsPort: Number(values['https-port']), externalHttpsPorts: [Number(values['https-port'])] } : {}),
+      ...(values['challenge-port'] ? { challengePort: Number(values['challenge-port']) } : {}),
+      log: (m) => console.log(`[octavo] ${m}`),
+    });
+    const showQr = async (url: string) => {
+      const link = `${url}/?token=${encodeURIComponent(serveToken)}`;
+      console.log('');
+      console.log('  Access from anywhere: scan with your phone (Wi-Fi or mobile data):');
+      console.log('');
+      console.log(await qrTerminal(link));
+      console.log(`  ${link}`);
+      console.log('');
+      console.log('  Treat this link like a password. Anyone with it can read and edit your notes.');
+      console.log('');
+    };
+    remote.on('status', (s) => {
+      if (s.state === 'starting') console.log(`[octavo] ${s.step}`);
+    });
+    remote.on('address-changed', async (s) => {
+      console.log('[octavo] Your home internet address changed. Scan this new code on your phone:');
+      await showQr(s.url!);
+    });
+    const status = await remote.start();
+    if (status.state === 'ready') await showQr(status.url!);
+    else {
+      console.log('');
+      console.log(`[octavo] ${status.step}`);
+      console.log('');
+      console.log('  ' + (status.advice ?? '').split('\n').join('\n  '));
+      console.log('');
+      console.log('  Octavo is still running on this computer. Run "octavo check-remote" to diagnose.');
+      console.log('');
+    }
+  }
   const shutdown = async () => {
+    await remote?.stop();
     await running.close();
     process.exit(0);
   };
