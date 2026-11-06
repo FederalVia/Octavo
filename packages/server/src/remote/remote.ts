@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { RequestListener } from 'node:http';
 import { issueIpCertificate, LETS_ENCRYPT, type IssuedCertificate } from './acme.js';
 import { classifyAddress } from './netcheck.js';
-import { findRouter, type Router } from './router.js';
+import { findRouter, lastDiscovery, type Router } from './router.js';
 
 export type RemoteProblem =
   | 'no-router' // no UPnP router answered (or UPnP is switched off)
@@ -71,7 +71,7 @@ interface SavedState {
 
 const ADVICE: Record<RemoteProblem, string> = {
   'no-router':
-    'Octavo couldn’t find your router. Turn on “UPnP” in your router’s settings (it’s usually on by default) and try again. Or forward two ports by hand in the router: internet port 80 → this computer’s port {challenge}, and internet port 443 → port {https}. See “Forwarding ports by hand” in docs/SELF_HOSTING.md.',
+    'Octavo couldn’t find your router. Turn on “UPnP” in your router’s settings, restart the router, and try again. Or forward two ports by hand in the router: internet port 80 → this computer’s port {challenge}, and internet port 443 → port {https}. See “Forwarding ports by hand” in docs/SELF_HOSTING.md.',
   cgnat:
     'Your internet provider shares one public address between many homes (called CGNAT), so nothing on the internet can connect to your home directly, whatever app you use. Ask your provider for a “public IPv4 address” (often free or cheap), or use a relay service such as Tailscale.',
   'double-nat':
@@ -415,7 +415,18 @@ export async function diagnose(opts: { findRouter?: () => Promise<Router | null>
   const lines: string[] = [];
   const router = await (opts.findRouter ?? findRouter)();
   if (!router) {
-    lines.push('✗ No router answered on UPnP.');
+    const d = opts.findRouter ? null : lastDiscovery;
+    if (d && d.searchedFrom.length === 0) {
+      lines.push('✗ This computer has no network connection Octavo could search from.');
+    } else if (d && d.seen.length > 0) {
+      lines.push('✗ Devices answered, but none offered automatic port forwarding (UPnP):');
+      for (const s of d.seen.slice(0, 6)) lines.push(`   • ${s}`);
+      lines.push('  If UPnP is on in your router, restart the router so the change takes effect.');
+    } else {
+      lines.push('✗ Nothing on your network answered, not even other devices.');
+      if (d) lines.push(`  Searched from: ${d.searchedFrom.join(', ')}`);
+      lines.push('  This usually means a firewall on this computer is blocking Octavo, or a VPN is active.');
+    }
     return { ok: false, lines, problem: 'no-router' };
   }
   lines.push(`✓ Found your router (${router.label}).`);
