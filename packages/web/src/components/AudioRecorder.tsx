@@ -68,6 +68,7 @@ export function AudioRecorder({ onSaved, onClose }: { onSaved: (embed: string, p
         // A simple input level meter, so it's obvious the mic is picking something up.
         try {
           ctx = new AudioContext();
+          void ctx.resume(); // created after an await, so iOS starts it suspended
           const src = ctx.createMediaStreamSource(s);
           const an = ctx.createAnalyser();
           an.fftSize = 512;

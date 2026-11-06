@@ -8,6 +8,12 @@ import { applyAppearance } from './appearance';
 
 applyAppearance();
 
+// After an app update, old lazy chunks may be gone: reload instead of crashing.
+window.addEventListener('vite:preloadError', (e) => {
+  e.preventDefault();
+  location.reload();
+});
+
 // Drawings load Excalidraw's fonts from the copy shipped with the app (see vite.config.ts).
 (window as unknown as { EXCALIDRAW_ASSET_PATH?: string }).EXCALIDRAW_ASSET_PATH = new URL('excalidraw-assets/', location.href.split('#')[0]).href;
 

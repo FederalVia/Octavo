@@ -138,13 +138,23 @@ const theme = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--bg-elevated)', color: 'var(--text)' },
 });
 
+// No lookbehind (Safari < 16.4 can't parse it): a hashtag's preceding space/paren is captured
+// in group 1 and skipped when decorating.
+const markClass = { hashtag: Decoration.mark({ class: 'cm-hashtag' }), highlight: Decoration.mark({ class: 'cm-highlight' }), comment: Decoration.mark({ class: 'cm-comment' }), wikilink: Decoration.mark({ class: 'cm-wikilink' }) };
 const linkDecorator = new MatchDecorator({
-  regexp: /!?\[\[[^\[\]\n]+?\]\]|(?<=^|[\s(])#[\p{L}\p{N}_\-/]*[\p{L}_\-][\p{L}\p{N}_\-/]*|==[^=\n]+==|%%[^%\n]*%%/gu,
-  decoration: (m) =>
-    Decoration.mark({
-      class: m[0].startsWith('#') ? 'cm-hashtag' : m[0].startsWith('==') ? 'cm-highlight' : m[0].startsWith('%%') ? 'cm-comment' : 'cm-wikilink',
-    }),
+  regexp: /!?\[\[[^\[\]\n]+?\]\]|(^|[\s(])(#[\p{L}\p{N}_\-/]*[\p{L}_\-][\p{L}\p{N}_\-/]*)|==[^=\n]+==|%%[^%\n]*%%/gu,
+  decorate: (add, from, to, m) => {
+    if (m[2] !== undefined) add(from + m[1].length, to, markClass.hashtag);
+    else add(from, to, m[0].startsWith('==') ? markClass.highlight : m[0].startsWith('%%') ? markClass.comment : markClass.wikilink);
+  },
 });
+
+/** ctx.matchBefore for a pattern that starts with an optional lead char (start of line, space, paren), minus that char. */
+function matchAfterLead(ctx: CompletionContext, re: RegExp, sigil: string) {
+  const m = ctx.matchBefore(re);
+  if (!m || m.text.startsWith(sigil)) return m;
+  return { from: m.from + 1, to: m.to, text: m.text.slice(1) };
+}
 
 const linkHighlighter = ViewPlugin.fromClass(
   class {
@@ -212,7 +222,7 @@ export function Editor(props: Props) {
           })),
         };
       }
-      const slash = ctx.matchBefore(/(?<=^|\s)\/[\w-]*/);
+      const slash = matchAfterLead(ctx, /(?:^|\s)\/[\w-]*/, '/');
       if (slash) {
         const now = new Date();
         const commands: SlashCommand[] = [
@@ -290,7 +300,7 @@ export function Editor(props: Props) {
             })),
         };
       }
-      const tag = ctx.matchBefore(/(?<=^|[\s(])#[\p{L}\p{N}_\-/]*/u);
+      const tag = matchAfterLead(ctx, /(?:^|[\s(])#[\p{L}\p{N}_\-/]*/u, '#');
       if (tag && (tag.text.length > 1 || ctx.explicit)) {
         return {
           from: tag.from + 1,

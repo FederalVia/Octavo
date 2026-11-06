@@ -25,6 +25,8 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
   const savedKey = useRef('');
   const pending = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Where saves go: the drawing itself, or a conflict copy once it was changed elsewhere.
+  const target = useRef(path);
   const title = path.replace(/\.excalidraw$/i, '').split('/').pop();
 
   useEffect(() => {
@@ -50,20 +52,27 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
     pending.current = null;
     setStatus('Saving…');
     try {
-      const r = await api.saveDrawing(path, JSON.parse(json), mtime.current);
+      const r = await api.saveDrawing(target.current, JSON.parse(json), mtime.current);
       mtime.current = r.mtime;
       lastSaved.current = json;
       setStatus('Saved');
       window.dispatchEvent(new CustomEvent('octavo:drawing-saved', { detail: r.path }));
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        // Changed elsewhere since we opened it: keep our version (it's what's on screen).
+        // Changed elsewhere since we opened it: leave that copy alone and save ours beside it.
         try {
-          const r = await api.saveDrawing(path, JSON.parse(json));
+          const d = new Date();
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}${pad(d.getMinutes())}`;
+          const conflictPath = target.current.replace(/\.excalidraw$/i, '') + ` (conflict ${stamp}).excalidraw`;
+          const r = await api.saveDrawing(conflictPath, JSON.parse(json), undefined, true);
+          target.current = r.path;
           mtime.current = r.mtime;
           lastSaved.current = json;
-          setStatus('Saved (replaced a newer copy)');
+          setStatus(`Changed elsewhere: your version saved as ${r.path.split('/').pop()}`);
+          window.dispatchEvent(new CustomEvent('octavo:drawing-saved', { detail: r.path }));
         } catch (e2) {
+          pending.current = json;
           setStatus(`Not saved: ${(e2 as Error).message}`);
         }
       } else {

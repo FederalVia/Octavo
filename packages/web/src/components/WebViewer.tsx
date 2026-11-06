@@ -38,7 +38,17 @@ export function WebViewer({ url: initial, onClose, onSaved }: { url: string; onC
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState('');
+  const [notice, setNotice] = useState('');
   const body = useRef<HTMLDivElement>(null);
+  // An https page can't show an http:// page inside it (mixed content).
+  const blocked = location.protocol === 'https:' && /^http:/i.test(url);
+
+  useEffect(() => {
+    if (mode === 'live' && blocked) {
+      setNotice('Your browser blocks http:// pages inside this secure page, so it’s shown in Reader instead.');
+      setMode('reader');
+    } else if (!blocked) setNotice('');
+  }, [mode, blocked]);
 
   const go = useCallback(
     (next: string) => {
@@ -145,6 +155,10 @@ export function WebViewer({ url: initial, onClose, onSaved }: { url: string; onC
           ✕
         </button>
       </div>
+      {mode === 'live' && !window.octavoDesktop && (
+        <div className="muted small wv-hint">Many sites refuse to load inside other pages outside the desktop app. If this stays blank, use Reader or ↗.</div>
+      )}
+      {mode === 'reader' && notice && <div className="muted small wv-hint">{notice}</div>}
       {mode === 'live' ? (
         <iframe key={url} className="wv-frame" src={url} title="Web page" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" referrerPolicy="no-referrer" />
       ) : (

@@ -2315,6 +2315,7 @@ form.setting-row { cursor: default; }
 .wv-modes { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .wv-modes button { border: 0; border-radius: 0; padding: 0 10px; min-height: 32px; background: transparent; color: var(--text-muted); font-size: 13px; }
 .wv-modes button.active { background: var(--accent-soft); color: var(--text); }
+.wv-hint { padding: 6px 12px; border-bottom: 1px solid var(--border); }
 .wv-frame { flex: 1; width: 100%; border: 0; background: #fff; }
 .wv-reader { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .wv-article { max-width: 680px; margin: 0 auto; padding: 24px 24px 80px; }

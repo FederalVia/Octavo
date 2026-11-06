@@ -6,17 +6,38 @@
  * signal), the last copy saved on this device is shown instead, read-only.
  * Only GET requests are cached; saving changes always needs a connection.
  */
-const SHELL = 'octavo-shell-v1';
-const DATA = 'octavo-data-v1';
-const MAX_ASSETS = 80;
+const SHELL = 'octavo-shell-v2';
+const DATA = 'octavo-data-v2';
+const MAX_ASSETS = 400;
+const MAX_CACHE_BYTES = 5 * 1024 * 1024;
 
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener('activate', (event) =>
+  event.waitUntil(
+    (async () => {
+      // Drop caches from older versions of this file.
+      for (const name of await caches.keys()) {
+        if (name.startsWith('octavo-') && name !== SHELL && name !== DATA) await caches.delete(name);
+      }
+      await self.clients.claim();
+    })(),
+  ),
+);
 
 const scope = new URL(self.registration.scope);
 
 function isApi(url) {
   return url.pathname.startsWith(scope.pathname + 'api/');
+}
+
+/** Big downloads and live web pages aren't worth keeping offline. */
+function shouldCache(request, res) {
+  if (res.status !== 200) return false; // cache.put rejects 206 etc.
+  const path = new URL(request.url).pathname;
+  if (path === scope.pathname + 'api/publish.zip' || path.startsWith(scope.pathname + 'api/web/')) return false;
+  const len = Number(res.headers.get('Content-Length'));
+  if (len > MAX_CACHE_BYTES) return false;
+  return true;
 }
 
 /** Cache key without the access key, so a new key doesn't hide saved copies. */
@@ -36,9 +57,13 @@ async function networkFirst(request, cacheName) {
   const key = keyFor(request);
   try {
     const res = await fetch(request);
-    if (res.ok) {
-      await cache.put(key, res.clone());
-      if (cacheName === SHELL) trim(cache);
+    if (shouldCache(request, res)) {
+      try {
+        await cache.put(key, res.clone());
+        if (cacheName === SHELL) trim(cache);
+      } catch {
+        /* quota or unsupported response: still return the network copy */
+      }
     }
     return res;
   } catch (err) {
@@ -54,6 +79,7 @@ async function networkFirst(request, cacheName) {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
+  if (request.headers.has('range')) return; // media seeking: 206 responses can't be cached
   const url = new URL(request.url);
   if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   if (url.pathname.endsWith('/api/events') || url.pathname.startsWith(scope.pathname + 'mcp')) return; // live streams
