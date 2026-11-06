@@ -1486,6 +1486,11 @@ export function App() {
       : []),
   ];
   commandsRef.current = commandItems;
+  // Every hook must run before the early return below (else React error #300 when startup fails).
+  const graphView = useMemo(
+    () => (graph ? { ...graph, nodes: graph.nodes.map((n) => (n.encrypted ? { ...n, name: `🔒 ${n.name}` } : n)) } : null),
+    [graph],
+  );
   if (fatal) {
     return (
       <div className="fatal">
@@ -1514,10 +1519,6 @@ export function App() {
   const stackOn = stacked && !isNarrow && panelOpen && tabs.length > 1 && activeIdx >= 0;
   const stackLeft = stackOn ? tabs.slice(0, activeIdx) : [];
   const stackRight = stackOn ? tabs.slice(activeIdx + 1) : [];
-  const graphView = useMemo(
-    () => (graph ? { ...graph, nodes: graph.nodes.map((n) => (n.encrypted ? { ...n, name: `🔒 ${n.name}` } : n)) } : null),
-    [graph],
-  );
   const panelFraction = isNarrow ? 0 : panelWide ? 0.62 : 0.44;
   const outgoing = detail
     ? detail.links.filter((l, i, arr) => l.target && arr.findIndex((x) => (x.path ?? x.target) === (l.path ?? l.target)) === i)
