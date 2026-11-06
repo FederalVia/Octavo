@@ -113,7 +113,8 @@ export class RemoteAccess extends EventEmitter {
       directoryUrl: LETS_ENCRYPT,
       ipCheckMs: 5 * 60 * 1000,
       certificateTimeoutMs: 3 * 60 * 1000,
-      ...options,
+      // Options passed as undefined (e.g. an unset environment variable) keep their defaults.
+      ...(Object.fromEntries(Object.entries(options).filter(([, v]) => v !== undefined)) as RemoteOptions),
     };
   }
 
