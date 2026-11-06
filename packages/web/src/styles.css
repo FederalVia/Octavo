@@ -1852,3 +1852,98 @@ details.callout[open] > summary::after {
   transform: translateX(16px);
   background: var(--on-accent);
 }
+
+/* ------------------------------------------------------------------ phones: the app is exactly one screen */
+
+/* Pin the page so iOS Safari can't pan or rubber-band it; the app scrolls inside its own panels. */
+html,
+body {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+#root,
+.app {
+  height: 100%;
+  height: 100dvh;
+}
+.app {
+  width: 100%;
+  overflow: hidden;
+}
+/* Fully hide the closed note panel so it can't extend the page sideways. */
+.note-panel {
+  visibility: hidden;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.25s ease, visibility 0s linear 0.35s;
+}
+.note-panel.open {
+  visibility: visible;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.25s ease, visibility 0s;
+}
+/* Keep clear of the notch, status bar and home indicator (home-screen app). */
+.toolbar {
+  top: calc(10px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
+}
+.atlas-controls {
+  top: calc(12px + env(safe-area-inset-top));
+}
+.panel-header {
+  padding-top: env(safe-area-inset-top);
+  height: calc(48px + env(safe-area-inset-top));
+}
+.note-panel .statusbar {
+  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(26px + env(safe-area-inset-bottom));
+}
+.drawer {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (max-width: 800px) {
+  /* Never wider than the screen. */
+  .toolbar {
+    max-width: calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+  .tb-btn {
+    width: 28px;
+  }
+  .tb-brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 6px;
+  }
+  /* On phones show just the vault name. */
+  .tb-brand .tb-detail {
+    display: none;
+  }
+  .atlas-controls {
+    top: calc(52px + env(safe-area-inset-top));
+    left: 12px;
+    right: 12px !important;
+  }
+  .atlas-row {
+    gap: 4px;
+  }
+  .atlas-search {
+    width: 100%;
+  }
+  .atlas-legend {
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  .brain-hud.bottom-left {
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+}
+
+/* iOS zooms into any text field under 16px when you tap it, and then the app no
+   longer fits the screen. Touch devices get 16px fields. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  .cm-content {
+    font-size: 16px !important;
+  }
+}
