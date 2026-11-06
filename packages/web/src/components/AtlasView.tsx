@@ -617,7 +617,10 @@ export function AtlasView(props: Props) {
         REGIONS.map((r) => [r.key, Math.min(0.8, 9 / Math.pow(Math.max(1, L.counts[r.key]), 0.55))]),
       ) as Record<RegionKey, number>;
       // Small vaults get bigger, brighter points so the colours read; big ones stay fine-grained.
-      const sizeBoost = L.nodes.length < 150 ? 1.6 : L.nodes.length < 600 ? 1.25 : 1;
+      const count = L.nodes.length;
+      const sizeBoost = count < 150 ? 1.6 : count < 600 ? 1.25 : count < 1500 ? 0.85 : 0.62;
+      // In crowded vaults, halos everywhere add up to a white blob: keep them for notes that matter.
+      const crowded = count > 800;
       const margin = 40;
       const order = L.nodes
         .filter((n) => n.visible && n.sx > -margin && n.sy > -margin && n.sx < W + margin && n.sy < H + margin)
@@ -636,7 +639,7 @@ export function AtlasView(props: Props) {
         const density = densityDim[n.region];
         // Halos: everything at full quality; at lower quality only notes that matter right now.
         const important = n.hub || isFocus || boost > 0 || (focusNode !== null && near?.has(n.id));
-        if (quality === 2 || (important && (quality === 1 || isFocus || boost > 0))) {
+        if ((quality === 2 && !crowded) || (important && (quality >= 1 || isFocus || boost > 0))) {
           ctx.globalCompositeOperation = 'lighter';
           ctx.globalAlpha = Math.min(1, alpha * (n.hub || isFocus || boost > 0 ? 0.9 : density));
           const glow = r * (n.hub || isFocus ? 6 : 2.6) * (1 + boost * 1.5);
@@ -711,19 +714,20 @@ export function AtlasView(props: Props) {
           (s.labels && !focusNode && !filterOn && (n.hub || L.nodes.length <= 60 || (zoomed && fogOf(n) > 0.45 && !n.unresolved)));
         if (!show) continue;
         const plainHub = !isFocus && !near?.has(n.id) && !(filterOn && matches(n));
-        if (plainHub && n.hub && !zoomed && L.nodes.length > 60 && hubLabels >= 14) continue;
+        if (plainHub && n.hub && !zoomed && L.nodes.length > 60 && hubLabels >= (W < 600 ? 6 : 12)) continue;
         const reg = REGION_BY_KEY[n.region];
         const fog = fogOf(n);
         const text = n.name.length > 34 ? n.name.slice(0, 33) + '…' : n.name;
         const x = n.sx + nodeSize(n) * 2 + 6;
         const w = ctx.measureText(text).width;
-        if (!fits(x - 2, n.sy - 7, w + 4, 14) && !isFocus) continue;
+        // Generous spacing so names never stack into a column.
+        if (!fits(x - 8, n.sy - 12, w + 16, 24) && !isFocus) continue;
         if (plainHub && n.hub) hubLabels++;
         ctx.globalAlpha = isFocus ? 1 : 0.45 + fog * 0.5;
         // A dark outline keeps names readable over bright, dense regions.
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 2.5;
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = 'rgba(14,13,17,0.85)';
+        ctx.strokeStyle = 'rgba(14,13,17,0.7)';
         ctx.strokeText(text, x, n.sy);
         ctx.fillStyle = isFocus ? '#ffffff' : labelColor(reg.rgb);
         ctx.fillText(text, x, n.sy);
