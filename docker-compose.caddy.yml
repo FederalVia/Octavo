@@ -1,0 +1,36 @@
+# Ultron on your PC at your own public web address with automatic HTTPS
+# (e.g. https://mind.example.com). Needs a domain name pointing at your home
+# IP and ports 80 + 443 forwarded from your router to this PC.
+#
+#   1. Copy .env.example to .env and set ULTRON_TOKEN and ULTRON_DOMAIN.
+#   2. docker compose -f docker-compose.caddy.yml up -d
+#
+# Step-by-step guide: docs/SELF_HOSTING.md
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ULTRON_DOMAIN: ${ULTRON_DOMAIN:?Set ULTRON_DOMAIN in .env (see docs/SELF_HOSTING.md)}
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - ultron-mind
+
+  ultron-mind:
+    build: .
+    image: ultron-mind
+    restart: unless-stopped
+    environment:
+      ULTRON_TOKEN: ${ULTRON_TOKEN:?Set ULTRON_TOKEN in .env (see docs/SELF_HOSTING.md)}
+    volumes:
+      - ${ULTRON_VAULT_DIR:-./vault}:/vault
+
+volumes:
+  caddy-data:
+  caddy-config:

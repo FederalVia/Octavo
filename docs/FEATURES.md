@@ -118,7 +118,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Sync across devices | 🟡 | Self-host one server and open it from every device, or sync the folder with git/Syncthing |
+| Sync across devices | 🟡 | Run one server, e.g. on your PC with Docker + Tailscale ([guide](SELF_HOSTING.md)), and open it from every device. Or sync the folder with git/Syncthing |
 | End-to-end encrypted sync, shared vaults, selective sync | 🚧 | Will be free and self-hostable, with no paid service. Encryption design in progress |
 | Version history | ✅ | Local, last 50 versions per note |
 | Publish notes as a website | 🚧 | Will be free: export a static site you host anywhere |

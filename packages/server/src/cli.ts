@@ -15,6 +15,8 @@ const HELP = `Ultron Mind: a Markdown knowledge base that doubles as Claude's me
 Usage:
   ultron serve [options]   Run the web app, REST API and MCP endpoint (/mcp)
   ultron mcp   [options]   Run an MCP server over stdio (for Claude Desktop / Claude Code)
+  ultron qr <address>      Print a QR code that opens Ultron at <address> on your phone
+                           (uses --token or ULTRON_TOKEN), e.g. ultron qr https://ultron.tail1234.ts.net
 
 Options:
   --vault <dir>     Vault folder (env ULTRON_VAULT, default ~/UltronMind)
@@ -56,7 +58,7 @@ async function main() {
   });
 
   const command = positionals[0] ?? 'serve';
-  if (values.help || !['serve', 'mcp', ...NOTE_COMMANDS].includes(command)) {
+  if (values.help || !['serve', 'mcp', 'qr', ...NOTE_COMMANDS].includes(command)) {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
@@ -64,6 +66,26 @@ async function main() {
   const vaultPath = path.resolve(expandHome(values.vault ?? process.env.ULTRON_VAULT ?? '~/UltronMind'));
   const token = values.token ?? process.env.ULTRON_TOKEN ?? undefined;
   const seed = !values['no-seed'];
+
+  if (command === 'qr') {
+    const base = positionals[1];
+    if (!base || !/^https?:\/\/\S+$/.test(base)) {
+      console.error('Usage: ultron qr <address>   e.g. ultron qr https://ultron.tail1234.ts.net');
+      process.exit(1);
+    }
+    const url = new URL(base);
+    if (token) url.searchParams.set('token', token);
+    console.log('');
+    console.log('  Scan with your phone:');
+    console.log('');
+    console.log(await qrTerminal(url.toString()));
+    console.log(`  ${url.toString()}`);
+    console.log('');
+    if (token) console.log('  Treat this like a password. Anyone with it can read and edit your notes.');
+    else console.log('  No access key set (ULTRON_TOKEN), so the link has no key.');
+    console.log('');
+    return;
+  }
 
   if (NOTE_COMMANDS.has(command)) {
     await runNoteCommand(vaultPath, command, positionals.slice(1), {

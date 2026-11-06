@@ -59,7 +59,7 @@ To use your own notes:
 npm start -- --vault ~/UltronMind    # any folder; it's created if missing
 ```
 
-Prefer an app window? Run `npm run desktop`. For a server, use Docker (`docker compose up -d`).
+Prefer an app window? Run `npm run desktop`. To run it as an always-on server on your PC, reachable from your phone anywhere, see **[docs/SELF_HOSTING.md](docs/SELF_HOSTING.md)**.
 
 **On your phone:** run `npm start -- --phone` (or **File → Use on Your Phone** in the desktop app) and scan the QR code. See [Use it on your phone](docs/INSTALL.md#6-use-it-on-your-phone-and-other-devices).
 
@@ -97,6 +97,7 @@ Numbered folders such as `00 - Current Projects` work too. More in the [user gui
 | [Installation](docs/INSTALL.md) | Requirements, installing on macOS/Windows/Linux, desktop app, Docker, running as a service, HTTPS, updating, troubleshooting |
 | [User guide](docs/USER_GUIDE.md) | The interface, views, writing syntax, links, search, templates, bookmarks, history, shortcuts |
 | [Features](docs/FEATURES.md) | Every feature with its status: done, partly done, or planned |
+| [Self-hosting](docs/SELF_HOSTING.md) | Run Ultron on your PC with Docker and reach it from your phone anywhere (Tailscale or your own domain) |
 | [Connecting Claude](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, remote access, tool reference, tips |
 | [Architecture](docs/ARCHITECTURE.md) | How it's built, REST API, live events, file handling, security |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, project layout |
