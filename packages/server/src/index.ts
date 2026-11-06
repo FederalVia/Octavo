@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { Vault } from '@octavo/core';
 import { createApp } from './app.js';
 
-export { createApp } from './app.js';
+export { createApp, parseTrustProxy } from './app.js';
 export { createMcpServer, SERVER_INSTRUCTIONS } from './mcp.js';
 export { seedIfEmpty } from './seed.js';
 export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js';
@@ -21,6 +21,8 @@ export interface StartOptions {
   webDir?: string;
   dailyFolder?: string;
   mcpReadOnly?: boolean;
+  /** Behind a reverse proxy: proxy addresses to trust for X-Forwarded-For (see AppOptions.trustProxy). */
+  trustProxy?: string | number | boolean;
   /** If the port is taken, fall back to a random free port. */
   fallbackToRandomPort?: boolean;
 }
@@ -71,6 +73,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
     token: opts.token,
     webDir: opts.webDir ?? defaultWebDir(),
     mcpReadOnly: opts.mcpReadOnly,
+    trustProxy: opts.trustProxy,
     // Without a token, a loopback-only server must reject foreign Host headers (DNS rebinding).
     allowedHosts: !opts.token && LOOPBACK.has(host) ? ['localhost', '127.0.0.1', '::1'] : undefined,
   });

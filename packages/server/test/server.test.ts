@@ -68,6 +68,35 @@ describe('HTTP server', () => {
     }
   });
 
+  test('behind a trusted proxy, each forwarded client has its own lockout', async () => {
+    // The test connects from loopback, standing in for Caddy / Tailscale serve.
+    const proxied = await startServer({ vaultPath: dir, port: 0, token: 'right-key', webDir: '/nonexistent', trustProxy: 'loopback' });
+    const asClient = (ip: string, key: string) =>
+      fetch(`${proxied.url}/api/vault`, { headers: { Authorization: `Bearer ${key}`, 'X-Forwarded-For': ip } });
+    try {
+      for (let i = 0; i < 10; i++) assert.equal((await asClient('203.0.113.5', 'wrong')).status, 401);
+      assert.equal((await asClient('203.0.113.5', 'right-key')).status, 429, 'the guessing client is locked out');
+      assert.equal((await asClient('198.51.100.7', 'right-key')).status, 200, 'another device behind the proxy is not');
+      assert.equal((await asClient('198.51.100.7', 'wrong')).status, 401, 'and keeps its own counter');
+    } finally {
+      await proxied.close();
+    }
+  });
+
+  test('without trustProxy, X-Forwarded-For is ignored (a direct client cannot dodge the lockout)', async () => {
+    const direct = await startServer({ vaultPath: dir, port: 0, token: 'right-key', webDir: '/nonexistent' });
+    try {
+      for (let i = 0; i < 10; i++) {
+        const r = await fetch(`${direct.url}/api/vault`, { headers: { Authorization: 'Bearer wrong', 'X-Forwarded-For': `203.0.113.${i}` } });
+        assert.equal(r.status, 401);
+      }
+      const r = await fetch(`${direct.url}/api/vault`, { headers: { Authorization: 'Bearer right-key', 'X-Forwarded-For': '198.51.100.7' } });
+      assert.equal(r.status, 429, 'a made-up forwarded address is not a different client');
+    } finally {
+      await direct.close();
+    }
+  });
+
   test('REST CRUD, search, graph', async () => {
     let res = await api('/api/notes');
     const list = await res.json();

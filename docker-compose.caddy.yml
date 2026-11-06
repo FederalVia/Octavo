@@ -28,6 +28,9 @@ services:
     restart: unless-stopped
     environment:
       OCTAVO_TOKEN: ${OCTAVO_TOKEN:?Set OCTAVO_TOKEN in .env (see docs/SELF_HOSTING.md)}
+      # Requests arrive from Caddy on the private Docker network: trust its X-Forwarded-For so each
+      # device gets its own wrong-key lockout. Octavo's port isn't published, so only Caddy reaches it.
+      OCTAVO_TRUST_PROXY: uniquelocal
     volumes:
       - ${OCTAVO_VAULT_DIR:-./vault}:/vault
 

@@ -33,6 +33,23 @@ export interface AppOptions {
   allowedHosts?: string[];
   /** Expose MCP tools read-only (no write/edit/delete). */
   mcpReadOnly?: boolean;
+  /**
+   * Running behind a reverse proxy (Caddy, Tailscale serve): which proxy addresses to trust for
+   * X-Forwarded-For, in Express's `trust proxy` format, e.g. "loopback", "uniquelocal", "10.0.0.2",
+   * or a hop count. Off by default, so a client connecting directly can't pick its own address.
+   * Only turn it on when every request reaches Octavo through that proxy.
+   */
+  trustProxy?: string | number | boolean;
+}
+
+/** Parse a trust-proxy setting from the CLI or environment ("1" → 1 hop, "true"/"false", else a list). */
+export function parseTrustProxy(value: string | undefined): string | number | boolean | undefined {
+  if (value === undefined) return undefined;
+  const v = value.trim();
+  if (!v || v === 'false' || v === '0' || v === 'off') return undefined;
+  if (v === 'true') return true;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -50,6 +67,8 @@ export function createApp(opts: AppOptions): express.Express {
   const { vault } = opts;
   const app = express();
   app.disable('x-powered-by');
+  // Behind a reverse proxy, req.ip is the real client (from X-Forwarded-For) instead of the proxy.
+  if (opts.trustProxy !== undefined && opts.trustProxy !== false) app.set('trust proxy', opts.trustProxy);
 
   if (opts.allowedHosts && opts.allowedHosts.length) {
     const allowed = new Set(opts.allowedHosts.map((h) => h.toLowerCase()));
@@ -64,6 +83,8 @@ export function createApp(opts: AppOptions): express.Express {
   }
 
   // Lock out an address after repeated wrong keys (protects internet-facing servers from guessing).
+  // Keyed on req.ip: the socket address normally, the forwarded client address when trustProxy is set,
+  // so devices behind one proxy don't share (and exhaust) one counter.
   const failures = new Map<string, { count: number; first: number; blockedUntil: number }>();
   const MAX_FAILURES = 10;
   const WINDOW_MS = 10 * 60 * 1000;
@@ -71,7 +92,7 @@ export function createApp(opts: AppOptions): express.Express {
 
   const auth = (req: Request, res: Response, next: NextFunction) => {
     if (!opts.token) return next();
-    const who = req.socket.remoteAddress ?? 'unknown';
+    const who = req.ip ?? req.socket.remoteAddress ?? 'unknown';
     const now = Date.now();
     const rec = failures.get(who);
     if (rec && rec.blockedUntil > now) {

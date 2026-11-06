@@ -34,6 +34,10 @@ services:
       - tailscale
     environment:
       OCTAVO_TOKEN: ${OCTAVO_TOKEN:?Set OCTAVO_TOKEN in .env (see docs/SELF_HOSTING.md)}
+      # Tailscale serve shares this network namespace and connects from loopback: trust only that,
+      # so each device gets its own wrong-key lockout. (The 127.0.0.1:4321 port on your PC arrives
+      # through Docker's port forwarding, not loopback, so it can't fake its address.)
+      OCTAVO_TRUST_PROXY: loopback
     volumes:
       # Your notes, as plain Markdown files in this folder on your PC.
       - ${OCTAVO_VAULT_DIR:-./vault}:/vault

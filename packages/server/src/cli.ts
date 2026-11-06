@@ -6,6 +6,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { recordAccess } from './activity.js';
 import { Vault } from '@octavo/core';
 import { startServer } from './index.js';
+import { parseTrustProxy } from './app.js';
 import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
 import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
@@ -33,6 +34,10 @@ Options:
   --https-port <n>, --challenge-port <n>
                     With --remote: change the local ports (defaults 4443 and 4380)
   --read-only       Expose only read tools over MCP
+  --trust-proxy <who>
+                    Behind a reverse proxy only: trust X-Forwarded-For from these proxy
+                    addresses (e.g. loopback, uniquelocal, 10.0.0.2) so each device gets its
+                    own wrong-key lockout (env OCTAVO_TRUST_PROXY; off by default)
   --daily <folder>  Folder for daily journal notes (default Journal)
   --no-seed         Don't create starter notes in an empty vault
   -h, --help        Show this help
@@ -53,6 +58,7 @@ async function main() {
       host: { type: 'string' },
       token: { type: 'string' },
       'read-only': { type: 'boolean', default: false },
+      'trust-proxy': { type: 'string' },
       phone: { type: 'boolean', default: false },
       remote: { type: 'boolean', default: false },
       'public-ip': { type: 'string' },
@@ -183,6 +189,7 @@ async function main() {
     token: serveToken,
     dailyFolder: values.daily,
     mcpReadOnly: values['read-only'],
+    trustProxy: parseTrustProxy(values['trust-proxy'] ?? process.env.OCTAVO_TRUST_PROXY),
   });
   if (seed) await seedIfEmpty(running.vault);
   console.log(`[octavo] Vault:  ${vaultPath} (${running.vault.list().length} notes)`);
