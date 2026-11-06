@@ -161,35 +161,20 @@ pm2 startup      # follow the printed instructions to start on boot
 
 ## 5. Self-hosting with Docker
 
-The Docker image runs the web app, REST API and MCP endpoint together. It requires an access token, because it listens on all network interfaces.
+To run Ultron as an always-on server, for example on your PC, follow **[SELF_HOSTING.md](SELF_HOSTING.md)**. It covers installing Docker, the settings file, and three ways to reach it:
 
-### docker compose (recommended)
+- **Tailscale:** from your phone anywhere, no router setup
+- **Your own domain with automatic HTTPS**
+- **Home Wi-Fi only**
 
-```bash
-git clone https://github.com/FederalVia/ultron-mind.git
-cd ultron-mind
-export ULTRON_TOKEN=$(openssl rand -hex 32)
-echo "Save this token: $ULTRON_TOKEN"
-docker compose up -d
-```
-
-Open `http://<server>:4321`. The app asks for the token once and remembers it in that browser.
-
-- Notes are stored in the `ultron-vault` Docker volume. To keep them in a host folder instead, change the volume in `docker-compose.yml` to `./vault:/vault`, and make sure that folder is writable by UID 1000 (`mkdir vault && sudo chown 1000:1000 vault`).
-- To back up the vault: `docker run --rm -v ultron-mind_ultron-vault:/vault -v "$PWD":/out alpine tar czf /out/vault-backup.tgz -C /vault .`
-
-### Plain docker
+The short version, for this computer only:
 
 ```bash
-docker build -t ultron-mind .
-docker run -d --name ultron-mind -p 4321:4321 \
-  -e ULTRON_TOKEN=your-long-random-token \
-  -v ultron-vault:/vault \
-  --restart unless-stopped \
-  ultron-mind
+cp .env.example .env        # then set ULTRON_TOKEN in .env
+docker compose up -d        # open http://localhost:4321
 ```
 
----
+Notes are stored as plain Markdown in the folder set by `ULTRON_VAULT_DIR` (default `./vault`).
 
 ## 6. Use it on your phone and other devices
 
@@ -222,7 +207,7 @@ Your phone needs a way to reach the computer running Ultron. Two good options:
 2. Run Ultron in phone mode (`npm start -- --phone`, or the desktop menu). The QR code includes the computer's Tailscale address (`100.x.y.z`) when Tailscale is running. You can also open `http://<computer's tailscale name>:4321` on the phone.
 3. It works from anywhere, and Tailscale encrypts the connection.
 
-**Your own server with HTTPS:** run Ultron on a server or always-on machine ([Docker](#5-self-hosting-with-docker)) behind HTTPS:
+**Your PC (or any machine) as an always-on server:** [SELF_HOSTING.md](SELF_HOSTING.md) has ready-made Docker setups with Tailscale or your own domain. To set up HTTPS by hand instead:
 
 1. **Always set a token**: `--token <secret>` or `ULTRON_TOKEN`. Without one, anyone who can reach the port can read and change your notes. The server prints a warning if you forget.
 2. **Listen on the network**: `--host 0.0.0.0` (the Docker image already does this).
@@ -295,7 +280,7 @@ npm install
 npm run build
 ```
 
-Then restart the server or app. With Docker: `git pull && docker compose up -d --build`.
+Then restart the server or app. With Docker: `git pull && docker compose up -d --build` (add `-f docker-compose.tailscale.yml` if you use Tailscale).
 
 Updates never change your notes.
 

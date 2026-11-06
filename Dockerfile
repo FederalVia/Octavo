@@ -1,6 +1,6 @@
 # Ultron Mind: web app + REST API + MCP endpoint in one container.
-#   docker build -t ultron-mind .
-#   docker run -p 4321:4321 -v ultron-vault:/vault -e ULTRON_TOKEN=change-me ultron-mind
+# Easiest: copy .env.example to .env, fill it in, then `docker compose up -d`.
+# See docs/SELF_HOSTING.md.
 
 FROM node:22-slim AS build
 WORKDIR /app
@@ -31,8 +31,10 @@ COPY --from=build /app/packages/server/package.json packages/server/
 COPY --from=build /app/packages/server/dist packages/server/dist
 COPY --from=build /app/packages/web/package.json packages/web/
 COPY --from=build /app/packages/web/dist packages/web/dist
+COPY deploy/docker-entrypoint.sh /usr/local/bin/ultron-entrypoint
 RUN mkdir -p /vault && chown node:node /vault
 VOLUME /vault
 EXPOSE 4321
-USER node
+# Starts as root only to fix /vault permissions, then runs as the "node" user.
+ENTRYPOINT ["ultron-entrypoint"]
 CMD ["node", "packages/server/dist/cli.js", "serve"]
