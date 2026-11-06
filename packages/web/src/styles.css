@@ -1947,3 +1947,24 @@ body {
     font-size: 16px !important;
   }
 }
+
+/* ------------------------------------------------------------------ update banner */
+
+.update-banner {
+  position: absolute;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+}

@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import updaterPkg from 'electron-updater';
 import { startServer, seedIfEmpty, lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl, RemoteAccess, diagnose } from '@octavo/server';
 
 const require = createRequire(import.meta.url);
@@ -76,6 +77,81 @@ async function openVault(vaultPath, { autoRemote = true } = {}) {
   }
   buildMenu();
   if (autoRemote && remoteEnabled()) startRemote(false);
+}
+
+// ------------------------------------------------------------------ updates
+
+const { autoUpdater } = updaterPkg;
+const RELEASES_URL = 'https://github.com/FederalVia/Octavo/releases';
+const IS_MAC = process.platform === 'darwin';
+/** What the Settings panel and the update banner show. */
+let updateState = { status: 'idle', current: app.getVersion() };
+
+function setUpdate(patch) {
+  updateState = { ...updateState, ...patch };
+  if (win && !win.isDestroyed()) win.webContents.send('octavo:update', updateState);
+  buildMenu();
+}
+
+function friendlyUpdateError(err) {
+  const msg = String(err?.message ?? err);
+  if (/404|401|403|private|authentication/i.test(msg)) {
+    return 'Couldn’t read the releases on GitHub. If the repository is private, the app can’t check for updates. Download new versions from the Releases page instead.';
+  }
+  if (/ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|net::/i.test(msg)) return 'No internet connection. Octavo will try again later.';
+  return msg.split('\n')[0].slice(0, 200);
+}
+
+function initUpdater() {
+  if (!app.isPackaged) {
+    updateState = { ...updateState, status: 'unsupported', error: 'Updates are only available in the installed app.' };
+    return;
+  }
+  autoUpdater.allowPrerelease = true; // test builds are published as pre-releases
+  // macOS can only auto-install apps signed with a paid Apple certificate: there we notify and link to the download.
+  autoUpdater.autoDownload = !IS_MAC;
+  autoUpdater.autoInstallOnAppQuit = !IS_MAC;
+  // For testing against a local server: OCTAVO_UPDATE_URL=http://127.0.0.1:8000/
+  if (process.env.OCTAVO_UPDATE_URL) autoUpdater.setFeedURL({ provider: 'generic', url: process.env.OCTAVO_UPDATE_URL });
+  if (!autoUpdater.isUpdaterActive()) {
+    // e.g. Linux when not run from the AppImage
+    updateState = { ...updateState, status: 'unsupported', error: 'This copy can’t update itself. Download new versions from the Releases page.' };
+    return;
+  }
+  autoUpdater.on('checking-for-update', () => setUpdate({ status: 'checking', error: undefined }));
+  autoUpdater.on('update-not-available', () => setUpdate({ status: 'up-to-date', checkedAt: Date.now() }));
+  autoUpdater.on('update-available', (info) =>
+    setUpdate({ status: IS_MAC ? 'available' : 'downloading', version: info.version, progress: 0, checkedAt: Date.now() }),
+  );
+  autoUpdater.on('download-progress', (p) => setUpdate({ status: 'downloading', progress: Math.round(p.percent) }));
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdate({ status: 'ready', version: info.version, progress: 100 });
+    new Notification({ title: `Octavo ${info.version} is ready`, body: 'Restart Octavo to finish updating.' }).show();
+  });
+  autoUpdater.on('error', (err) => setUpdate({ status: 'error', error: friendlyUpdateError(err) }));
+  setTimeout(() => checkForUpdates(), 10_000);
+  setInterval(() => checkForUpdates(), 6 * 3600 * 1000).unref?.();
+}
+
+async function checkForUpdates() {
+  if (updateState.status === 'unsupported') return updateState;
+  if (['checking', 'downloading', 'ready'].includes(updateState.status)) return updateState;
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (err) {
+    setUpdate({ status: 'error', error: friendlyUpdateError(err) });
+  }
+  return updateState;
+}
+
+function installUpdate() {
+  if (updateState.status === 'ready') {
+    // Closes Octavo, installs the new version and starts it again.
+    setImmediate(() => autoUpdater.quitAndInstall(false, true));
+  } else if (updateState.status === 'available' && updateState.version) {
+    shell.openExternal(`${RELEASES_URL}/tag/v${updateState.version}`);
+  }
+  return updateState;
 }
 
 // ------------------------------------------------------------------ access from anywhere
@@ -370,6 +446,15 @@ function buildMenu() {
         },
         { type: 'separator' },
         { label: 'Connect Claude…', click: showConnectClaude },
+        {
+          label:
+            updateState.status === 'ready'
+              ? `Restart to Update to ${updateState.version}`
+              : updateState.status === 'available'
+                ? `Download Octavo ${updateState.version}…`
+                : 'Check for Updates…',
+          click: () => (['ready', 'available'].includes(updateState.status) ? installUpdate() : checkForUpdates()),
+        },
         { type: 'separator' },
         { label: 'Use on Your Phone (Wi-Fi)', type: 'checkbox', checked: phoneEnabled(), click: togglePhoneAccess },
         { label: 'Access from Anywhere', type: 'checkbox', checked: remoteEnabled(), click: toggleRemoteAccess },
@@ -467,6 +552,9 @@ if (!app.requestSingleInstanceLock()) {
     if (fromMainWindow(e)) await togglePhoneAccess();
     return desktopState();
   });
+  ipcMain.handle('octavo:update-state', (e) => (fromMainWindow(e) ? updateState : null));
+  ipcMain.handle('octavo:check-updates', async (e) => (fromMainWindow(e) ? checkForUpdates() : null));
+  ipcMain.handle('octavo:install-update', (e) => (fromMainWindow(e) ? installUpdate() : null));
   ipcMain.handle('octavo:show-qr', async (e) => {
     if (fromMainWindow(e)) await showPhoneQr();
     return desktopState();
@@ -474,6 +562,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     createWindow();
+    initUpdater();
     buildMenu();
     const cfg = loadConfig();
     const vaultPath = process.env.OCTAVO_VAULT || cfg.vaultPath || path.join(os.homedir(), 'Octavo');
