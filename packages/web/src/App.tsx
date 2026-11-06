@@ -8,7 +8,7 @@ import { AtlasView } from './components/AtlasView';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { CommandPalette, type PaletteItem } from './components/CommandPalette';
 import { HistoryDialog } from './components/HistoryDialog';
-import { DEFAULT_SETTINGS, SettingsDialog, type VaultSettings } from './components/SettingsDialog';
+import { DEFAULT_SETTINGS, SettingsDialog, useDesktopUpdate, type VaultSettings } from './components/SettingsDialog';
 import { Dialog, type DialogRequest } from './components/Modal';
 import { BookmarksPanel, InsightsPanel, SearchPanel, TagsPanel, TasksPanel } from './components/Panels';
 import { taskLines, wordCount } from './markdown';
@@ -98,6 +98,8 @@ export function App() {
   const [vimMode, setVimMode] = useState<boolean>(() => load('octavo.vim', false));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<VaultSettings>(DEFAULT_SETTINGS);
+  const update = useDesktopUpdate();
+  const [updateDismissed, setUpdateDismissed] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [searchFocus, setSearchFocus] = useState(0);
   const [graph, setGraph] = useState<GraphData | null>(null);
@@ -1096,6 +1098,20 @@ export function App() {
           ⚙
         </button>
       </div>
+
+      {update && (update.status === 'ready' || update.status === 'available') && updateDismissed !== update.version && (
+        <div className="update-banner" role="status">
+          <span>
+            {update.status === 'ready' ? `Octavo ${update.version} is ready.` : `Octavo ${update.version} is available.`}
+          </span>
+          <button className="btn primary" onClick={() => window.octavoDesktop?.installUpdate()}>
+            {update.status === 'ready' ? 'Restart to update' : 'Download'}
+          </button>
+          <button className="icon-btn" title="Later" onClick={() => setUpdateDismissed(update.version ?? null)}>
+            ✕
+          </button>
+        </div>
+      )}
 
       {ready && !panelOpen && notes.length > 0 && viewMode === 'network' && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag to move</div>}
 

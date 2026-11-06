@@ -63,7 +63,10 @@ jobs:
           path: |
             release/dist/*.exe
             release/dist/*.dmg
+            release/dist/*.zip
             release/dist/*.AppImage
+            release/dist/latest*.yml
+            release/dist/*.blockmap
 
   release:
     needs: build

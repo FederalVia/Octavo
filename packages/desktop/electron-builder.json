@@ -38,6 +38,13 @@
           "arm64",
           "x64"
         ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
       }
     ],
     "category": "public.app-category.productivity",
@@ -56,5 +63,10 @@
     "category": "Office",
     "icon": "packages/desktop/build/icon.png",
     "synopsis": "Notes you see as a brain, shared with Claude"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "FederalVia",
+    "repo": "Octavo"
   }
 }

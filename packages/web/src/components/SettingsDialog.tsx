@@ -1,13 +1,77 @@
 import { useEffect, useState } from 'react';
 import { Overlay } from './Modal';
 
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported';
+  current: string;
+  version?: string;
+  progress?: number;
+  error?: string;
+}
+
 /** Desktop-only actions exposed by the Electron app (packages/desktop/src/preload.cjs). */
-interface DesktopBridge {
+export interface DesktopBridge {
   getState(): Promise<DesktopState | null>;
   checkNetwork(): Promise<DesktopState>;
   toggleRemote(): Promise<DesktopState>;
   togglePhone(): Promise<DesktopState>;
   showQr(): Promise<DesktopState>;
+  getUpdate(): Promise<UpdateState | null>;
+  checkForUpdates(): Promise<UpdateState | null>;
+  installUpdate(): Promise<UpdateState | null>;
+  onUpdate(callback: (s: UpdateState) => void): () => void;
+}
+
+/** Subscribe to the desktop app's update status (null in a browser). */
+export function useDesktopUpdate(): UpdateState | null {
+  const desktop = window.octavoDesktop;
+  const [state, setState] = useState<UpdateState | null>(null);
+  useEffect(() => {
+    if (!desktop?.getUpdate) return;
+    desktop.getUpdate().then(setState).catch(() => {});
+    return desktop.onUpdate(setState);
+  }, [desktop]);
+  return state;
+}
+
+function UpdatesSection() {
+  const desktop = window.octavoDesktop;
+  const state = useDesktopUpdate();
+  if (!desktop?.getUpdate || !state) return null;
+  const text: Record<UpdateState['status'], string> = {
+    idle: 'Checks automatically when Octavo starts and every 6 hours.',
+    checking: 'Checking for a new version…',
+    'up-to-date': 'You have the latest version.',
+    available: `Version ${state.version} is available.`,
+    downloading: `Downloading version ${state.version}… ${state.progress ?? 0}%`,
+    ready: `Version ${state.version} is downloaded and ready.`,
+    error: state.error ?? 'Couldn’t check for updates.',
+    unsupported: state.error ?? 'Updates are only available in the installed app.',
+  };
+  return (
+    <section>
+      <h4>Updates</h4>
+      <div className="setting-row">
+        <div>
+          <b>Octavo {state.current}</b>
+          <span className="muted small">{text[state.status]}</span>
+        </div>
+        {state.status === 'ready' ? (
+          <button className="btn primary" onClick={() => desktop.installUpdate()}>
+            Restart to update
+          </button>
+        ) : state.status === 'available' ? (
+          <button className="btn primary" onClick={() => desktop.installUpdate()}>
+            Download
+          </button>
+        ) : (
+          <button className="btn" disabled={state.status === 'checking' || state.status === 'downloading' || state.status === 'unsupported'} onClick={() => desktop.checkForUpdates()}>
+            Check now
+          </button>
+        )}
+      </div>
+    </section>
+  );
 }
 interface DesktopState {
   phone: boolean;
@@ -182,6 +246,8 @@ export function SettingsDialog(p: Props) {
           <h4>Use on your phone</h4>
           <PhoneSection />
         </section>
+
+        <UpdatesSection />
       </div>
     </Overlay>
   );
