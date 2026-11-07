@@ -840,7 +840,7 @@ export function AtlasView(props: Props) {
     recenter: () => {},
     drag: null as null | { x: number; y: number; yaw: number; pitch: number; pan: boolean; tx: number; ty: number; tz: number },
     pointers: new Map<number, { x: number; y: number }>(),
-    pinch: null as null | { d: number; zoom: number },
+    pinch: null as null | { d: number; zoom: number; mx: number; my: number; tx: number; ty: number; tz: number },
     moved: false,
     hover: null as ANode | null,
     labels: true,
@@ -1519,8 +1519,9 @@ export function AtlasView(props: Props) {
       kick();
       s.camGoal = null;
       if (s.pointers.size === 2) {
+        // Two fingers: pinch to zoom, move both together to slide the brain around.
         const [a, b] = [...s.pointers.values()];
-        s.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom: s.cam.zoom };
+        s.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom: s.cam.zoom, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, tx: s.cam.tx, ty: s.cam.ty, tz: s.cam.tz };
         s.drag = null;
         return;
       }
@@ -1536,12 +1537,27 @@ export function AtlasView(props: Props) {
         tz: s.cam.tz,
       };
     };
+    /** Move the camera target so the scene follows a screen-space drag of (dx, dy) from a start position. */
+    const panFrom = (start: { tx: number; ty: number; tz: number }, dx: number, dy: number) => {
+      // Convert screen delta to world delta (approximate, ignoring perspective).
+      const k = s.cam.zoom * s.baseZoom;
+      const { yaw, pitch } = s.cam;
+      // Rows of the world->view rotation: screen-right and screen-up in world space.
+      const rx = [Math.cos(yaw), 0, Math.sin(yaw)];
+      const uy = [Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), -Math.cos(yaw) * Math.sin(pitch)];
+      s.cam.tx = start.tx - (dx * rx[0] - dy * uy[0]) / k;
+      s.cam.ty = start.ty - (dx * rx[1] - dy * uy[1]) / k;
+      s.cam.tz = start.tz - (dx * rx[2] - dy * uy[2]) / k;
+    };
     const onMove = (e: PointerEvent) => {
       if (s.pointers.has(e.pointerId)) s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (s.pinch && s.pointers.size === 2) {
         const [a, b] = [...s.pointers.values()];
         s.cam.zoom = Math.min(12, Math.max(0.3, (s.pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / s.pinch.d));
+        panFrom(s.pinch, (a.x + b.x) / 2 - s.pinch.mx, (a.y + b.y) / 2 - s.pinch.my);
         s.moved = true;
+        s.lastInteract = performance.now();
+        kick();
         return;
       }
       if (s.drag) {
@@ -1551,15 +1567,7 @@ export function AtlasView(props: Props) {
         s.lastInteract = performance.now();
       kick();
         if (s.drag.pan) {
-          // Pan in screen plane: convert screen delta to world delta (approximate, ignoring perspective).
-          const k = s.cam.zoom * s.baseZoom;
-          const { yaw, pitch } = s.cam;
-          // Rows of the world->view rotation: screen-right and screen-up in world space.
-          const rx = [Math.cos(yaw), 0, Math.sin(yaw)];
-          const uy = [Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), -Math.cos(yaw) * Math.sin(pitch)];
-          s.cam.tx = s.drag.tx - (dx * rx[0] - dy * uy[0]) / k;
-          s.cam.ty = s.drag.ty - (dx * rx[1] - dy * uy[1]) / k;
-          s.cam.tz = s.drag.tz - (dx * rx[2] - dy * uy[2]) / k;
+          panFrom(s.drag, dx, dy);
         } else {
           s.cam.yaw = s.drag.yaw + dx * 0.006;
           s.cam.pitch = Math.max(-1.35, Math.min(1.35, s.drag.pitch + dy * 0.006));
@@ -1708,7 +1716,7 @@ export function AtlasView(props: Props) {
 
       {tip && (
         <div className="atlas-tip" style={centerStyle} role="status">
-          <span>{coarse ? 'Drag to turn the brain, pinch to zoom, tap a point to open it.' : 'Drag to turn the brain, scroll to zoom, Shift-drag to move, click a point to open it.'}</span>
+          <span>{coarse ? 'Drag to turn the brain, pinch to zoom, two fingers to move it, tap a point to open it.' : 'Drag to turn the brain, scroll to zoom, Shift-drag to move, click a point to open it.'}</span>
           <button onClick={dismissTip}>Got it</button>
         </div>
       )}

@@ -54,7 +54,7 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 | Action | How |
 | --- | --- |
 | Turn the brain | Drag |
-| Move it | Shift + drag, or right-drag |
+| Move it | Shift + drag or right-drag; on a phone, two fingers |
 | Zoom | Scroll, pinch, or the ＋ / − buttons |
 | Show the whole brain again | ⛶ button |
 | Open a note | Click (or tap) its point |
