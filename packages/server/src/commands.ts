@@ -21,6 +21,8 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo orphans                       Notes nothing links to, and dead ends
   octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
   octavo set <note> <key> [value]      Set a property (no value removes it)
+  octavo islands [add <folder> [--title NAME] | remove <name-or-folder>]
+                                       List islands, or keep a folder apart in the brain views
   octavo publish <folder> [--all | --folder F | --tag T] [--title T]
                                        Build a static website from notes marked "publish: true"
                                        (or everything, a folder or a tag) into <folder>
@@ -51,6 +53,7 @@ export const NOTE_COMMANDS = new Set([
   'query',
   'set',
   'publish',
+  'islands',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -183,6 +186,34 @@ export async function runNoteCommand(
         const s = await vault.restoreVersion(args[0], args[1]);
         console.log(`Restored ${s.path} to version ${args[1]}`);
         break;
+      }
+      case 'islands': {
+        const [action, ...rest] = args;
+        const target = rest.join(' ').trim();
+        const show = (list: { name: string; folder: string; color: string }[]) =>
+          list.length ? list.map((i) => `  ${i.name}  (${i.folder}/, ${vault.list({ folder: i.folder }).length} notes, ${i.color})`).join('\n') : '  (none)';
+        if (!action || action === 'list') {
+          out(vault.islands(), () => `Islands:\n${show(vault.islands())}`);
+          break;
+        }
+        if (action === 'add') {
+          if (!target) throw new Error('Usage: octavo islands add <folder> [--title NAME]');
+          const folder = target.replace(/^\/+|\/+$/g, '');
+          if (!vault.folders().some((f) => f.toLowerCase() === folder.toLowerCase())) throw new Error(`No folder called "${folder}" in the vault`);
+          const saved = await vault.setIslands([...vault.islands(), { folder, name: opts.title }]);
+          out(saved, () => `Islands:\n${show(saved)}`);
+          break;
+        }
+        if (action === 'remove') {
+          const want = target.toLowerCase().replace(/^\/+|\/+$/g, '');
+          const current = vault.islands();
+          const keep = current.filter((i) => i.name.toLowerCase() !== want && i.folder.toLowerCase() !== want && i.id !== want);
+          if (!want || keep.length === current.length) throw new Error(`No island called "${target}"`);
+          const saved = await vault.setIslands(keep);
+          out(saved, () => `Islands:\n${show(saved)}`);
+          break;
+        }
+        throw new Error('Usage: octavo islands [list | add <folder> [--title NAME] | remove <name-or-folder>]');
       }
       case 'publish': {
         need(args, 1, 'publish <output-folder> [--all | --folder F | --tag T] [--title T]');
