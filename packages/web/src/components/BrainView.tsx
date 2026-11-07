@@ -1251,6 +1251,17 @@ export function BrainView(props: Props) {
       return next;
     });
 
+  /** Show only this region or island. */
+  const solo = (k: string) =>
+    setHidden(
+      new Set(
+        [
+          ...REGIONS.filter((r) => regionCounts[r.key] > 0).map((r) => r.key as string),
+          ...islands.filter((i) => (islandCounts.get(i.id) ?? 0) > 0).map((i) => islandGroup(i.id)),
+        ].filter((x) => x !== k),
+      ),
+    );
+
   const total = props.data ? props.data.nodes.filter((n) => !n.unresolved).length : 0;
   const freeRight = `calc(${props.rightInset * 100}% + 12px)`;
 
@@ -1288,20 +1299,22 @@ export function BrainView(props: Props) {
               }}
             />
           </label>
-          <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show">
-            {hidden.size > 0 && (
-              <button className="atlas-pill all" onClick={() => setHidden(new Set())}>
-                Show all
-              </button>
-            )}
-            {REGIONS.filter((r) => regionCounts[r.key] > 0).map((r) => (
+          {/* Floats above the row, so its appearing never shifts the pills under a finger mid double-tap. */}
+          {hidden.size > 0 && (
+            <button className="atlas-pill all atlas-showall" onClick={() => setHidden(new Set())}>
+              Show all
+            </button>
+          )}
+          <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show, double-tap to show only one">
+            {REGIONS.filter((r) => regionCounts[r.key] > 0 || hidden.has(r.key)).map((r) => (
               <button
                 key={r.key}
                 className={`atlas-pill${hidden.has(r.key) ? ' off' : ''}`}
                 style={{ ['--region' as string]: r.color }}
-                title={`${r.name} (${r.subtitle}): tap to hide or show`}
+                title={`${r.name} (${r.subtitle}): tap to hide or show, double-tap to show only this`}
                 aria-pressed={!hidden.has(r.key)}
                 onClick={() => toggle(r.key)}
+                onDoubleClick={() => solo(r.key)}
               >
                 <i aria-hidden="true" />
                 {r.name}
@@ -1309,7 +1322,7 @@ export function BrainView(props: Props) {
               </button>
             ))}
             {islands
-              .filter((i) => (islandCounts.get(i.id) ?? 0) > 0)
+              .filter((i) => (islandCounts.get(i.id) ?? 0) > 0 || hidden.has(islandGroup(i.id)))
               .map((i) => {
                 const g = islandGroup(i.id);
                 return (
@@ -1317,9 +1330,10 @@ export function BrainView(props: Props) {
                     key={g}
                     className={`atlas-pill island${hidden.has(g) ? ' off' : ''}`}
                     style={{ ['--region' as string]: i.color }}
-                    title={`${i.name} (island: ${i.folder}): tap to hide or show`}
+                    title={`${i.name} (island: ${i.folder}): tap to hide or show, double-tap to show only this`}
                     aria-pressed={!hidden.has(g)}
                     onClick={() => toggle(g)}
+                    onDoubleClick={() => solo(g)}
                   >
                     <i aria-hidden="true" />
                     {i.name}

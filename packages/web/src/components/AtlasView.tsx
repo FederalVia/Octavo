@@ -1537,24 +1537,47 @@ export function AtlasView(props: Props) {
         tz: s.cam.tz,
       };
     };
-    /** Move the camera target so the scene follows a screen-space drag of (dx, dy) from a start position. */
-    const panFrom = (start: { tx: number; ty: number; tz: number }, dx: number, dy: number) => {
-      // Convert screen delta to world delta (approximate, ignoring perspective).
-      const k = s.cam.zoom * s.baseZoom;
+    /**
+     * The world-space vector from the camera target to the point drawn at screen offset (ox, oy) from the view's
+     * centre, at scale k (approximate: exact on the plane through the target, ignoring perspective elsewhere).
+     */
+    const screenToWorld = (ox: number, oy: number, k: number) => {
       const { yaw, pitch } = s.cam;
       // Rows of the world->view rotation: screen-right and screen-up in world space.
-      const rx = [Math.cos(yaw), 0, Math.sin(yaw)];
-      const uy = [Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), -Math.cos(yaw) * Math.sin(pitch)];
-      s.cam.tx = start.tx - (dx * rx[0] - dy * uy[0]) / k;
-      s.cam.ty = start.ty - (dx * rx[1] - dy * uy[1]) / k;
-      s.cam.tz = start.tz - (dx * rx[2] - dy * uy[2]) / k;
+      const cyw = Math.cos(yaw);
+      const syw = Math.sin(yaw);
+      const sp = Math.sin(pitch);
+      const cp = Math.cos(pitch);
+      return [(ox * cyw - oy * syw * sp) / k, (-oy * cp) / k, (ox * syw + oy * cyw * sp) / k];
+    };
+    /** Move the camera target so the scene follows a screen-space drag of (dx, dy) from a start position. */
+    const panFrom = (start: { tx: number; ty: number; tz: number }, dx: number, dy: number) => {
+      const v = screenToWorld(dx, dy, s.cam.zoom * s.baseZoom);
+      s.cam.tx = start.tx - v[0];
+      s.cam.ty = start.ty - v[1];
+      s.cam.tz = start.tz - v[2];
+    };
+    /**
+     * Zoom from `zoom0` (with the camera target at `start`) to the current zoom so that the point that was under
+     * screen position (x0, y0) is now under (x1, y1): pinch and wheel zoom towards the fingers or the cursor.
+     */
+    const zoomAbout = (start: { tx: number; ty: number; tz: number }, zoom0: number, x0: number, y0: number, x1: number, y1: number) => {
+      const r = canvas.getBoundingClientRect();
+      const ox = (x: number) => x - r.left - cx();
+      const oy = (y: number) => y - r.top - cy();
+      const a = screenToWorld(ox(x0), oy(y0), zoom0 * s.baseZoom);
+      const b = screenToWorld(ox(x1), oy(y1), s.cam.zoom * s.baseZoom);
+      s.cam.tx = start.tx + a[0] - b[0];
+      s.cam.ty = start.ty + a[1] - b[1];
+      s.cam.tz = start.tz + a[2] - b[2];
     };
     const onMove = (e: PointerEvent) => {
       if (s.pointers.has(e.pointerId)) s.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (s.pinch && s.pointers.size === 2) {
         const [a, b] = [...s.pointers.values()];
         s.cam.zoom = Math.min(12, Math.max(0.3, (s.pinch.zoom * Math.hypot(a.x - b.x, a.y - b.y)) / s.pinch.d));
-        panFrom(s.pinch, (a.x + b.x) / 2 - s.pinch.mx, (a.y + b.y) / 2 - s.pinch.my);
+        // The point between the fingers stays between them as they spread and move.
+        zoomAbout(s.pinch, s.pinch.zoom, s.pinch.mx, s.pinch.my, (a.x + b.x) / 2, (a.y + b.y) / 2);
         s.moved = true;
         s.lastInteract = performance.now();
         kick();
@@ -1604,7 +1627,11 @@ export function AtlasView(props: Props) {
       s.lastInteract = performance.now();
       kick();
       s.camGoal = null;
-      s.cam.zoom = Math.min(12, Math.max(0.3, s.cam.zoom * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+      const zoom0 = s.cam.zoom;
+      const start = { tx: s.cam.tx, ty: s.cam.ty, tz: s.cam.tz };
+      s.cam.zoom = Math.min(12, Math.max(0.3, zoom0 * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015))));
+      // Zoom towards the cursor.
+      zoomAbout(start, zoom0, e.clientX, e.clientY, e.clientX, e.clientY);
     };
     const onLeave = () => {
       s.hover = null;
@@ -1662,17 +1689,27 @@ export function AtlasView(props: Props) {
     st.current.kick();
   }, [props.selected, props.rightInset, props.paused, layout, labels, hidden, filter, showTrail, bridges]);
 
-  const toggle = (k: string) =>
+  const toggle = (k: string) => {
+    dismissTip();
     setHidden((h) => {
       const next = new Set(h);
       if (next.has(k)) next.delete(k);
       else next.add(k);
       return next;
     });
+  };
 
   /** Show only this region or island. */
   const solo = (k: string) =>
-    setHidden(new Set([...REGIONS.map((x) => x.key as string), ...(layout?.islands.map((i) => i.group as string) ?? [])].filter((x) => x !== k)));
+    setHidden(
+      new Set(
+        [
+          // Only what has a pill: hiding an empty region would bring its pill back, switched off.
+          ...REGIONS.filter((x) => (layout?.counts[x.key] ?? 0) > 0).map((x) => x.key as string),
+          ...(layout?.islands.map((i) => i.group as string) ?? []),
+        ].filter((x) => x !== k),
+      ),
+    );
 
   const submitFilter = () => {
     const q = st.current.filter;
@@ -1774,13 +1811,14 @@ export function AtlasView(props: Props) {
               }}
             />
           </label>
+          {/* Floats above the row, so its appearing never shifts the pills under a finger mid double-tap. */}
+          {[...hidden].some((k) => !k.startsWith('island:') || layout.islands.some((i) => i.group === k)) && (
+            <button className="atlas-pill all atlas-showall" onClick={() => setHidden(new Set())}>
+              Show all
+            </button>
+          )}
           <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show, double-tap to show only one">
-            {[...hidden].some((k) => !k.startsWith('island:') || layout.islands.some((i) => i.group === k)) && (
-              <button className="atlas-pill all" onClick={() => setHidden(new Set())}>
-                Show all
-              </button>
-            )}
-            {REGIONS.map((r) => (
+            {REGIONS.filter((r) => layout.counts[r.key] > 0 || hidden.has(r.key)).map((r) => (
               <button
                 key={r.key}
                 className={`atlas-pill${hidden.has(r.key) ? ' off' : ''}`}
