@@ -53,6 +53,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Backlinks and unlinked mentions | ✅ | Under each note: *Linked from* / *Mentioned in* |
 | Outgoing links | ✅ | *Links to* under each note |
 | Graph view | ✅ | Two views: 3D anatomical **Atlas** and flat **Network** |
+| Time-lapse | ✅ | The atlas replays the vault growing, note by note, by `created:` / `date:` or file date; pause and scrub |
 | Islands | ✅ | Keep a separate subject apart: a folder becomes an island with its own area and colour in both views (right-click the folder, or Settings → Islands). Claude can manage them (`manage_islands`) |
 | Outline / table of contents | ✅ | ≡ button on each note |
 | Tags, including nested tags | ✅ | `#project/hooked` also matches `#project` |

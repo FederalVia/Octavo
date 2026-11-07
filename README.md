@@ -32,7 +32,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 ## Features
 
 - **Brain views**
-  - **Atlas**: a 3D brain with notes spread over six regions, a region dock with counts (tap to hide, double-tap to solo), find, Claude's trail, and a "bridges between regions" view.
+  - **Atlas**: a 3D brain with notes spread over six regions, a region dock with counts (tap to hide, double-tap to solo), find, Claude's trail, and a "bridges between regions" view, and a time-lapse of your brain growing.
   - **Network**: a flat force-directed graph, coloured by region.
 - **Markdown notes**: plain `.md` files in a folder you choose. They work with git, Obsidian and any text editor.
 - **Rich writing**: live preview, callouts, coloured highlights, tasks with due dates and custom marks, footnotes, LaTeX maths, Mermaid diagrams, `%%comments%%`, tables, code highlighting, and embedded images, audio, video and PDFs. Lists work like an outliner.

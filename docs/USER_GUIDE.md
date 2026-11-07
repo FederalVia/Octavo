@@ -60,6 +60,7 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 | Open a note | Click (or tap) its point |
 | Highlight a note's connections | Hover over it |
 
+- **Time-lapse**: the clock button under the eye (or command palette → *Play time-lapse*) replays your brain growing. Notes appear on the date they were created, taken from a `created:` or `date:` property if the note has one, otherwise from the file. Pause, drag the slider to scrub through time, or press × to go back.
 - **Region dock** (bottom): one pill per region (Projects, Knowledge, People, Sources, Journal, Hubs) with its note count. Tap a pill to hide or show that region; double-tap to show only that one. **Find** highlights notes whose names match; press Enter to fly to the first.
 - **View menu** (the eye button, top right): note names on or off, and **Claude's trail**, a fading line through the notes Claude read or changed in the last 30 minutes, so you can see the shape of a whole session after the glow has gone. The trail survives a reload. It also shows reads by Claude Desktop, which runs its own copy of Octavo. **Bridges between regions** dims the links inside each region and brightens the ones between regions. Links from notes tagged `#surprise` (or with `surprise: true` in their properties) are always drawn as bright dashed lines.
 
