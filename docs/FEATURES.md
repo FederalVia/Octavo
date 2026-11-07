@@ -112,6 +112,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query notes, set properties | ✅ | `octavo query 'TABLE status FROM #project'`, `octavo set <note> <key> [value]` |
+| Backups | ✅ | ⚙ Settings → Backup, or `octavo backup [file.zip] [--history]`: the whole vault as one zip |
 | CLI: terminal UI | ✅ | `octavo tui`: type to search, ↑↓ + Enter to read, number keys follow links, `e` edits in your editor, Ctrl+D / `d` today's journal |
 | CLI: install plugins/themes | 🚧 | |
 | AI access | ✅ | MCP server with 27 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |

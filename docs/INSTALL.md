@@ -242,6 +242,7 @@ octavo orphans                                       # unlinked notes and dead e
 octavo query 'TABLE status FROM #project'            # live query, as a table
 octavo islands add Theology                          # keep a folder apart in the brain views
 octavo tui                                           # browse and search in the terminal
+octavo backup ~/octavo-backup.zip                    # the whole vault as one zip (--history adds versions)
 ```
 
 `octavo tui` is a full-screen browser: type to search, ↑/↓ and Enter to open a note, number keys to follow its links, `e` to edit it in your `$EDITOR` (Notepad on Windows), `d` (or Ctrl+D in the list) for today's journal, Esc to go back, Ctrl+C (or `q` while reading) to quit.
