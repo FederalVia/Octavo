@@ -10,7 +10,7 @@ import {
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force';
-import type { GraphData, GraphNode } from '../api';
+import type { GraphData, GraphNode, Island } from '../api';
 import { REGIONS, classify, type RegionKey } from '../regions';
 
 /** Same colours as the atlas, so a region looks the same in both views. */
@@ -20,10 +20,21 @@ export const NETWORK_COLORS: Record<RegionKey, [number, number, number]> = Objec
 // v2: the layout changed (regions spread over the area), so positions saved by the old layout are ignored.
 const POS_KEY = 'octavo.networkPositions2';
 const OLD_POS_KEY = 'octavo.networkPositions';
+/** The islands the saved positions were laid out with. */
+const POS_ISL_KEY = 'octavo.networkPositions2.islands';
 const UNRESOLVED_RGB: [number, number, number] = [110, 112, 118];
 const rgba = (c: [number, number, number], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 /** A lighter tint of a region colour for label text. */
 const labelColor = (c: [number, number, number]) => `rgb(${c.map((v) => Math.round(v + (255 - v) * 0.55)).join(',')})`;
+/** "#rrggbb" (or "#rgb") to an RGB triple; a soft grey if it can't be read. */
+function hexRgb(hex: string | undefined): [number, number, number] {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex ?? '').trim());
+  if (!m) return [170, 170, 180];
+  const h = m[1].length === 3 ? m[1].replace(/./g, (c) => c + c) : m[1];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+/** Group key of an island (regions use their own key as group). */
+const islandGroup = (id: string) => `isl:${id}`;
 
 /** Imperative controls the app uses to make the brain react to events. */
 export interface BrainHandle {
@@ -38,6 +49,10 @@ export interface BrainHandle {
 interface Node extends GraphNode, SimulationNodeDatum {
   rgb: [number, number, number];
   region: RegionKey;
+  /** What the note is drawn, hidden and labelled as: its region key, or `isl:<id>` for an island's notes. */
+  group: string;
+  /** Island id when the note lives on an island (laid out apart from the six regions). */
+  isl?: string;
   born: number;
   firedAt: number;
   /** Linked to a big share of the vault (index notes): its links are drawn faint and barely pull. */
@@ -54,6 +69,8 @@ interface Link extends SimulationLinkDatum<Node> {
   source: Node;
   target: Node;
   mega: boolean;
+  /** Joins an island to the main map (or another island): no pull, drawn very faint. */
+  cross: boolean;
 }
 interface Pulse {
   link: Link;
@@ -148,22 +165,86 @@ function territories(counts: Record<RegionKey, number>, R: number, aspect: numbe
   };
 }
 
+interface IslandArea {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/**
+ * Where the islands go: each a round area sized by its note count, packed in columns beside the main
+ * ellipse on a wide screen (rows below it on a tall one), with open water between. Returns the main
+ * ellipse's aspect, reshaped so main map plus islands together fill the free screen area.
+ */
+function islandPlan(A: number, R: number, spacing: number, sizes: { id: string; n: number }[]) {
+  const areas = new Map<string, IslandArea>();
+  const radius = (n: number) => spacing * Math.sqrt(Math.max(n, 3) / Math.PI) * 1.05;
+  const gap = Math.max(spacing * 4.5, R * 0.24);
+  const items = [...sizes].sort((p, q) => q.n - p.n).map((it) => ({ id: it.id, r: radius(it.n) }));
+  const side = A >= 1;
+  /** Packs the islands into lines (columns or rows) no longer than `max`; returns the lines' total thickness. */
+  const pack = (max: number) => {
+    const lines: { items: typeof items; len: number; thick: number }[] = [];
+    for (const it of items) {
+      const d = it.r * 2;
+      const line = lines[lines.length - 1];
+      if (line && line.len + gap * 0.6 + d <= max) {
+        line.items.push(it);
+        line.len += gap * 0.6 + d;
+        line.thick = Math.max(line.thick, d);
+      } else lines.push({ items: [it], len: d, thick: d });
+    }
+    return { lines, thick: lines.reduce((a, l) => a + l.thick, 0) + gap * 0.6 * (lines.length - 1) + gap };
+  };
+  let a = Math.min(2, Math.max(0.5, A));
+  let plan = pack(1);
+  for (let i = 0; i < 4; i++) {
+    const sx = Math.sqrt(a);
+    plan = pack(side ? 2 * R / sx : 2 * R * sx);
+    const c = plan.thick;
+    // Solve for the main ellipse's aspect u² so that ellipse + island band has the screen's aspect A.
+    const u = side ? (-c + Math.sqrt(c * c + 16 * R * R * A)) / (4 * R) : (c + Math.sqrt(c * c + (16 * R * R) / A)) / ((4 * R) / A);
+    a = Math.min(2, Math.max(0.5, u * u));
+  }
+  const sx = Math.sqrt(a);
+  const sy = 1 / sx;
+  let off = (side ? R * sx : R * sy) + gap;
+  for (const line of plan.lines) {
+    let at = -line.len / 2;
+    for (const it of line.items) {
+      const along = at + it.r;
+      const across = off + line.thick / 2;
+      areas.set(it.id, side ? { x: across, y: along, r: it.r } : { x: along, y: across, r: it.r });
+      at += it.r * 2 + gap * 0.6;
+    }
+    off += line.thick + gap * 0.6;
+  }
+  return { aspect: a, areas };
+}
+
 export function BrainView(props: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [filter, setFilter] = useState('');
-  const [hidden, setHidden] = useState<Set<RegionKey>>(() => new Set());
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const propsRef = useRef(props);
   propsRef.current = props;
   const zoomRef = useRef((_f: number) => {});
   const fitRef = useRef(() => {});
   const resizeRef = useRef(() => {});
 
+  const islands = useMemo<Island[]>(() => props.data?.islands ?? [], [props.data]);
   const regionCounts = useMemo(() => {
     const c = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
-    for (const n of props.data?.nodes ?? []) if (!n.unresolved) c[classify(n)]++;
+    const known = new Set(islands.map((i) => i.id));
+    for (const n of props.data?.nodes ?? []) if (!n.unresolved && !(n.island && known.has(n.island))) c[classify(n)]++;
     return c;
-  }, [props.data]);
+  }, [props.data, islands]);
+  const islandCounts = useMemo(() => {
+    const c = new Map<string, number>(islands.map((i) => [i.id, 0]));
+    for (const n of props.data?.nodes ?? []) if (!n.unresolved && n.island && c.has(n.island)) c.set(n.island, c.get(n.island)! + 1);
+    return c;
+  }, [props.data, islands]);
 
   const s = useRef({
     nodes: [] as Node[],
@@ -191,7 +272,13 @@ export function BrainView(props: Props) {
     /** The user has moved the camera: stop auto-fitting while the layout settles. */
     userCam: false,
     filter: '',
-    hidden: new Set<RegionKey>(),
+    hidden: new Set<string>(),
+    /** Colour of each group (region keys and `isl:<id>`), for batched drawing. */
+    groupRgb: new Map<string, [number, number, number]>(REGIONS.map((r) => [r.key, r.rgb])),
+    /** Islands on screen, for their heading labels. */
+    islands: [] as { group: string; name: string; rgb: [number, number, number] }[],
+    /** Islands signature: a change re-lays everything out. */
+    islandSig: '',
     width: 0,
     height: 0,
     dpr: 1,
@@ -216,11 +303,37 @@ export function BrainView(props: Props) {
     const data = props.data;
     if (!data) return;
     const now = performance.now();
-    const old = st.byId;
-    const first = old.size === 0;
     const total = data.nodes.filter((n) => !n.unresolved).length;
     const N = data.nodes.length;
     st.big = N > 600;
+
+    // Islands: notes kept apart from the six regions. Unresolved names only linked from one island live there too.
+    const islandList = (data.islands ?? []).filter((i) => i && i.id);
+    const islandById = new Map(islandList.map((i) => [i.id, i]));
+    const islandOf = new Map<string, string>();
+    for (const n of data.nodes) if (!n.unresolved && n.island && islandById.has(n.island)) islandOf.set(n.id, n.island);
+    if (islandOf.size) {
+      const seen = new Map<string, string | null>();
+      const note = (u: string, other: string) => {
+        const isl = islandOf.get(other) ?? null;
+        seen.set(u, seen.has(u) && seen.get(u) !== isl ? null : isl);
+      };
+      const unresolved = new Set(data.nodes.filter((n) => n.unresolved).map((n) => n.id));
+      for (const l of data.links) {
+        if (unresolved.has(l.target) && !unresolved.has(l.source)) note(l.target, l.source);
+        if (unresolved.has(l.source) && !unresolved.has(l.target)) note(l.source, l.target);
+      }
+      for (const [u, isl] of seen) if (isl) islandOf.set(u, isl);
+    }
+    const islandSig = islandList.map((i) => `${i.id}:${i.folder}`).join('|');
+    const fresh = st.byId.size === 0;
+    // Islands added, removed or changed: lay everything out afresh.
+    const relayout = !fresh && islandSig !== st.islandSig;
+    const old = relayout ? new Map<string, Node>() : st.byId;
+    const first = old.size === 0;
+    st.islandSig = islandSig;
+    st.groupRgb = new Map<string, [number, number, number]>(REGIONS.map((x) => [x.key, x.rgb]));
+    for (const i of islandList) st.groupRgb.set(islandGroup(i.id), hexRgb(i.color));
 
     // The free screen area's shape, so the layout fills a phone's tall screen as well as a wide monitor.
     const r = wrapRef.current?.getBoundingClientRect();
@@ -230,15 +343,41 @@ export function BrainView(props: Props) {
 
     // Spacing between notes in world units; small vaults get more room so every name fits.
     const spacing = 30 * Math.max(1, Math.pow(150 / Math.max(N, 1), 0.3));
-    const R = spacing * Math.sqrt(Math.max(N, 4) / Math.PI);
+    const nMain = N - islandOf.size;
+    const R = spacing * Math.sqrt(Math.max(nMain, 4) / Math.PI);
     const counts = Object.fromEntries(REGIONS.map((x) => [x.key, 0])) as Record<RegionKey, number>;
     const regionOf = new Map<string, RegionKey>();
+    const perIsland = new Map<string, GraphNode[]>();
     for (const n of data.nodes) {
       const k = classify(n);
       regionOf.set(n.id, k);
-      if (!n.unresolved) counts[k]++;
+      const isl = islandOf.get(n.id);
+      if (isl) {
+        if (!perIsland.has(isl)) perIsland.set(isl, []);
+        perIsland.get(isl)!.push(n);
+      } else if (!n.unresolved) counts[k]++;
     }
-    const spot = territories(counts, R, st.aspect);
+    // With islands, the main ellipse is reshaped to leave room for them beside it.
+    const plan = perIsland.size
+      ? islandPlan(st.aspect, R, spacing, [...perIsland.entries()].map(([id, l]) => ({ id, n: l.length })))
+      : null;
+    const spot = territories(counts, R, plan ? plan.aspect : st.aspect);
+    // Inside an island its busiest notes sit near the centre.
+    const islandRank = new Map<string, number>();
+    for (const l of perIsland.values()) {
+      const sorted = [...l].sort((p, q) => Number(!!p.unresolved) - Number(!!q.unresolved) || q.degree - p.degree);
+      sorted.forEach((n, i) => islandRank.set(n.id, i / Math.max(1, sorted.length)));
+    }
+    const islandSpot = (id: string, isl: string, rnd: () => number): [number, number] => {
+      const a = plan!.areas.get(isl)!;
+      const f = islandRank.get(id) ?? 1;
+      const rr = a.r * (f < 0.12 ? 0.32 * Math.sqrt(rnd()) : 0.3 + 0.7 * Math.sqrt(rnd()));
+      const th = rnd() * Math.PI * 2;
+      return [a.x + Math.cos(th) * rr, a.y + Math.sin(th) * rr];
+    };
+    st.islands = plan
+      ? islandList.filter((i) => perIsland.has(i.id)).map((i) => ({ group: islandGroup(i.id), name: i.name, rgb: hexRgb(i.color) }))
+      : [];
 
     const degrees = data.nodes.filter((n) => !n.unresolved).map((n) => n.degree).sort((a, b) => b - a);
     const hubCut = Math.max(4, degrees[Math.floor(degrees.length * 0.03)] ?? 4);
@@ -252,15 +391,25 @@ export function BrainView(props: Props) {
     }
     const nodes: Node[] = data.nodes.map((n) => {
       const region = regionOf.get(n.id)!;
-      const rgb = n.unresolved ? UNRESOLVED_RGB : NETWORK_COLORS[region];
-      const [ax, ay] = spot(region, seeded(n.id));
-      const extra = { rgb, region, ax, ay, mega: !n.unresolved && n.degree >= megaCut, hub: !n.unresolved && n.degree >= hubCut, text: undefined, textW: undefined };
+      const isl = islandOf.get(n.id);
+      const group = isl ? islandGroup(isl) : region;
+      const rgb = n.unresolved ? UNRESOLVED_RGB : st.groupRgb.get(group)!;
+      const [ax, ay] = isl ? islandSpot(n.id, isl, seeded(n.id)) : spot(region, seeded(n.id));
+      const extra = { rgb, region, group, isl, ax, ay, mega: !n.unresolved && n.degree >= megaCut, hub: !n.unresolved && n.degree >= hubCut, text: undefined, textW: undefined };
       const prev = old.get(n.id);
       if (prev) return Object.assign(prev, n, extra);
       // New thoughts appear near a connected node if there is one.
       const anchorId = first ? undefined : firstNeighbor.get(n.id);
-      const anchor = anchorId ? old.get(anchorId) : undefined;
+      const anchor0 = anchorId ? old.get(anchorId) : undefined;
+      // Never start next to a note on the other side of the water.
+      const anchor = anchor0 && anchor0.isl === isl ? anchor0 : undefined;
       if (!first) st.lastBorn = now;
+      const keep = relayout ? st.byId.get(n.id) : undefined;
+      if (keep) {
+        // Re-layout after the islands changed: keep the note's identity (and spot, unless it changed sides).
+        const moved = keep.isl !== isl;
+        return Object.assign(keep, n, extra, moved ? { x: ax, y: ay, vx: 0, vy: 0 } : {});
+      }
       return {
         ...n,
         ...extra,
@@ -276,7 +425,7 @@ export function BrainView(props: Props) {
       const a = byId.get(l.source);
       const b = byId.get(l.target);
       if (!a || !b || a === b) continue;
-      links.push({ source: a, target: b, mega: a.mega || b.mega });
+      links.push({ source: a, target: b, mega: a.mega || b.mega, cross: a.isl !== b.isl });
     }
     st.neighbors = new Map();
     st.adjacency = new Map();
@@ -296,7 +445,7 @@ export function BrainView(props: Props) {
     {
       const per = new Map<string, Node[]>();
       for (const n of [...nodes].sort((a, b) => b.degree - a.degree)) {
-        const key = n.unresolved ? 'u' : n.region;
+        const key = n.unresolved ? 'u' : n.group;
         if (!per.has(key)) per.set(key, []);
         per.get(key)!.push(n);
       }
@@ -311,7 +460,7 @@ export function BrainView(props: Props) {
     const live = new Set(links);
     st.pulses = st.pulses.filter((p) => live.has(p.link));
     // Fainter lines the more of them there are; lines to index notes fainter still.
-    const plain = links.filter((l) => !l.mega).length;
+    const plain = links.filter((l) => !l.mega && !l.cross).length;
     st.linkAlpha = Math.min(0.32, Math.max(0.07, 1.1 / Math.sqrt(Math.max(plain, 1) / 6)));
     st.meanDegree = Math.max(1, (2 * links.length) / Math.max(1, N)) + 1;
     st.sizes = { leaf: N > 800 ? 1.8 : N > 250 ? 2.3 : N > 60 ? 3 : 3.8, font: 12 };
@@ -319,9 +468,11 @@ export function BrainView(props: Props) {
     st.sim?.stop();
     // Start from the positions saved last time (big vaults otherwise take a while to lay out).
     let restored = 0;
-    if (first) {
+    if (fresh) {
       try {
         localStorage.removeItem(OLD_POS_KEY);
+        // Positions saved under other islands would put notes on the wrong side of the water.
+        if ((localStorage.getItem(POS_ISL_KEY) ?? '') !== islandSig) throw new Error('islands changed');
         const saved = JSON.parse(localStorage.getItem(POS_KEY) ?? '{}') as Record<string, [number, number]>;
         for (const n of nodes) {
           const p = saved[n.id];
@@ -347,7 +498,8 @@ export function BrainView(props: Props) {
         forceLink<Node, Link>(links)
           .distance(spacing * 1.1)
           // Lines to index notes barely pull, or every note would collapse onto them.
-          .strength((l) => (l.mega ? 0.004 : 0.5 / Math.min(linkCount.get(l.source)!, linkCount.get(l.target)!))),
+          // Lines across the water don't pull at all: an island stays an island.
+          .strength((l) => (l.cross ? 0 : l.mega ? 0.004 : 0.5 / Math.min(linkCount.get(l.source)!, linkCount.get(l.target)!))),
       )
       .force('charge', forceManyBody<Node>().strength(-spacing * 0.35).distanceMax(spacing * 4).theta(st.big ? 1.1 : 0.9))
       .force('collide', forceCollide<Node>().radius((d) => spacing * (d.mega ? 0.9 : d.hub ? 0.55 : 0.38)).iterations(1))
@@ -805,6 +957,8 @@ export function BrainView(props: Props) {
         const out: Record<string, [number, number]> = {};
         for (const n of st.nodes) if (n.x != null) out[n.id] = [Math.round(n.x), Math.round(n.y!)];
         localStorage.setItem(POS_KEY, JSON.stringify(out));
+        if (st.islandSig) localStorage.setItem(POS_ISL_KEY, st.islandSig);
+        else localStorage.removeItem(POS_ISL_KEY);
       } catch {
         /* storage full or blocked */
       }
