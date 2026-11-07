@@ -239,6 +239,7 @@ octavo move "Website" "Archive/Website"              # updates every link
 octavo history "Website"                             # saved versions
 octavo restore "Website" 1793928299164
 octavo orphans                                       # unlinked notes and dead ends
+octavo recent 3d                                     # notes changed in the last 3 days
 octavo query 'TABLE status FROM #project'            # live query, as a table
 octavo islands add Theology                          # keep a folder apart in the brain views
 octavo tui                                           # browse and search in the terminal
@@ -248,7 +249,7 @@ octavo backup ~/octavo-backup.zip                    # the whole vault as one zi
 
 `octavo tui` is a full-screen browser: type to search, ↑/↓ and Enter to open a note, number keys to follow its links, `e` to edit it in your `$EDITOR` (Notepad on Windows), `d` (or Ctrl+D in the list) for today's journal, Esc to go back, Ctrl+C (or `q` while reading) to quit.
 
-All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `tags`, `history` and `orphans` accept `--json`.
+All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `tags`, `history`, `orphans` and `recent` accept `--json`.
 
 | Option | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
