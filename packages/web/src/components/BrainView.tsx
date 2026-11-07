@@ -10,7 +10,7 @@ import {
   type SimulationNodeDatum,
   type SimulationLinkDatum,
 } from 'd3-force';
-import type { GraphData, GraphNode, Island } from '../api';
+import { api, type GraphData, type GraphNode, type Island, type NotePin } from '../api';
 import { REGIONS, classify, type RegionKey } from '../regions';
 
 /** Same colours as the atlas, so a region looks the same in both views. */
@@ -64,6 +64,13 @@ interface Node extends GraphNode, SimulationNodeDatum {
   /** Cached label text and its width at the label font. */
   text?: string;
   textW?: number;
+  /** Placed by hand (saved in the vault): held at a spot, or beside another note. */
+  pinned?: boolean;
+  /** Where a hand-placed note should be, in world units (it glides there). */
+  pinX?: number;
+  pinY?: number;
+  /** For a note placed beside another: that note and the offset from it. */
+  pinNear?: Node;
 }
 interface Link extends SimulationLinkDatum<Node> {
   source: Node;
@@ -96,6 +103,9 @@ interface Props {
   /** Covered by a full-screen panel (phones): stop drawing. */
   paused?: boolean;
 }
+
+/** Whether dropped notes stay where they're dropped (per device). */
+const PIN_MODE_KEY = 'octavo.network.pinMode';
 
 /** Pre-rendered glow sprites, one per hue, for cheap drawing. */
 const glowCache = new Map<string, HTMLCanvasElement>();
@@ -249,6 +259,24 @@ export function BrainView(props: Props) {
     return c;
   }, [props.data, islands]);
 
+  // Hand placement: "keep notes where you drop them", and the right-click menu.
+  const [pinMode, setPinMode] = useState(() => {
+    try {
+      return localStorage.getItem(PIN_MODE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const pinModeRef = useRef(pinMode);
+  pinModeRef.current = pinMode;
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string | null; name: string; pinned: boolean } | null>(null);
+  const menuActionRef = useRef<(action: 'pin' | 'unpin' | 'clear', id: string | null) => void>(() => {});
+  const [pinError, setPinError] = useState('');
+  const savePins = (change: Record<string, NotePin | null> | null) => {
+    setPinError('');
+    (change ? api.setPins(change) : api.clearPins()).catch((err: Error) => setPinError(`Couldn’t save the placement: ${err.message}`));
+  };
+
   const s = useRef({
     nodes: [] as Node[],
     /** Nodes by importance (degree), for picking which names to show. */
@@ -296,6 +324,9 @@ export function BrainView(props: Props) {
     sizes: { leaf: 2, font: 12 },
     linkAlpha: 0.2,
     meanDegree: 4,
+    /** World units per brain unit (hand placements are saved in brain units, so they scale with the vault). */
+    R: 1,
+    pins: {} as Record<string, NotePin>,
   });
   s.current.filter = filter.trim().toLowerCase();
   s.current.hidden = hidden;
@@ -348,6 +379,7 @@ export function BrainView(props: Props) {
     const spacing = 30 * Math.max(1, Math.pow(150 / Math.max(N, 1), 0.3));
     const nMain = N - islandOf.size;
     const R = spacing * Math.sqrt(Math.max(nMain, 4) / Math.PI);
+    st.R = R;
     const counts = Object.fromEntries(REGIONS.map((x) => [x.key, 0])) as Record<RegionKey, number>;
     const regionOf = new Map<string, RegionKey>();
     const perIsland = new Map<string, GraphNode[]>();
@@ -460,6 +492,28 @@ export function BrainView(props: Props) {
     }
     st.links = links;
     st.byId = byId;
+    // Hand-placed notes: held where they were put (or beside their note); everything else is free again.
+    const pins = data.pins ?? {};
+    const pinsChanged = JSON.stringify(pins) !== JSON.stringify(st.pins);
+    st.pins = pins;
+    for (const n of nodes) {
+      const p = pins[n.id];
+      n.pinNear = undefined;
+      if (!p) {
+        if (n.pinned && n !== st.drag) n.fx = n.fy = null;
+        n.pinned = false;
+        continue;
+      }
+      n.pinned = true;
+      if ('near' in p) {
+        n.pinNear = byId.get(p.near);
+        n.pinX = p.dx * R;
+        n.pinY = p.dy * R;
+      } else {
+        n.pinX = p.x * R;
+        n.pinY = p.y * R;
+      }
+    }
     const live = new Set(links);
     st.pulses = st.pulses.filter((p) => live.has(p.link));
     // Fainter lines the more of them there are; lines to index notes fainter still.
@@ -510,6 +564,27 @@ export function BrainView(props: Props) {
       // Island notes are held a little firmer, so an island with few inner links still reads as one place.
       .force('x', forceX<Node>((d) => d.ax).strength((d) => (d.unresolved ? (d.isl ? 0.05 : 0.01) : d.mega || d.isl ? 0.3 : 0.22)))
       .force('y', forceY<Node>((d) => d.ay).strength((d) => (d.unresolved ? (d.isl ? 0.05 : 0.01) : d.mega || d.isl ? 0.3 : 0.22)))
+      // Hand-placed notes glide to their spot and stay there.
+      .force('pins', () => {
+        for (const n of st.nodes) {
+          if (!n.pinned || n === st.drag) continue;
+          const tx = n.pinNear ? (n.pinNear.x ?? 0) + n.pinX! : n.pinX!;
+          const ty = n.pinNear ? (n.pinNear.y ?? 0) + n.pinY! : n.pinY!;
+          if (n.fx == null || n.fy == null) {
+            n.fx = n.x;
+            n.fy = n.y;
+          }
+          const ex = tx - n.fx!;
+          const ey = ty - n.fy!;
+          if (Math.abs(ex) + Math.abs(ey) < 0.5) {
+            n.fx = tx;
+            n.fy = ty;
+          } else {
+            n.fx! += ex * 0.18;
+            n.fy! += ey * 0.18;
+          }
+        }
+      })
       .velocityDecay(0.5)
       // Settle within a few seconds and then stop for good: no endless jiggle, no work while idle.
       .alphaMin(0.01)
@@ -527,7 +602,7 @@ export function BrainView(props: Props) {
       else st.fitted = false;
       st.userCam = false;
     } else {
-      sim.alpha(0.15);
+      sim.alpha(pinsChanged ? 0.35 : 0.15);
     }
     st.settling = true;
     // The drawing resolution depends on the vault size.
@@ -844,12 +919,19 @@ export function BrainView(props: Props) {
       // Nodes. Plain ones are batched by colour (one fill per region); special ones are drawn singly.
       const special: Node[] = [];
       const batches = new Map<string, Path2D>();
+      let pinRings: Path2D | null = null;
       const m = 40;
       for (const n of st.nodes) {
         if (n.x == null || !visible(n)) continue;
         const sx = ox + n.x * k;
         const sy = oy + n.y! * k;
         if (sx < -m || sy < -m || sx > W + m || sy > H + m) continue;
+        if (n.pinned) {
+          // A thin ring marks a note placed by hand.
+          const rr = (nodePx(n) + 2.5) / k;
+          (pinRings ??= new Path2D()).moveTo(n.x + rr, n.y!);
+          pinRings.arc(n.x, n.y!, rr, 0, Math.PI * 2);
+        }
         const isSel = n.id === selectedId;
         const recent = now - n.born < 1300 || now - n.firedAt < 1500;
         if (isSel || n === st.hover || n === focus || recent || focusSet?.has(n.id) || (filterOn && matches(n))) {
@@ -868,6 +950,12 @@ export function BrainView(props: Props) {
         ctx.globalAlpha = baseAlpha * (key === 'u' ? 0.55 : 0.95);
         ctx.fillStyle = rgba(key === 'u' ? UNRESOLVED_RGB : st.groupRgb.get(key) ?? UNRESOLVED_RGB, 1);
         ctx.fill(path);
+      }
+      if (pinRings) {
+        ctx.globalAlpha = baseAlpha * 0.7;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1 / k;
+        ctx.stroke(pinRings);
       }
       for (const n of special) {
         const isSel = n.id === selectedId;
@@ -1051,6 +1139,8 @@ export function BrainView(props: Props) {
 
     // --- pointer handling: mouse drags notes or pans; one finger pans, two fingers pinch; a tap opens a note.
     const onDown = (e: PointerEvent) => {
+      if (e.button === 2) return; // right-click opens the note menu instead
+      setMenu(null);
       canvas.setPointerCapture(e.pointerId);
       st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       st.camTarget = null;
@@ -1112,10 +1202,10 @@ export function BrainView(props: Props) {
         st.cam.y = st.pan.cy + dy;
       } else if (e.pointerType === 'mouse') {
         const n = hitTest(e.clientX, e.clientY, false);
-        if (n !== st.hover) {
-          st.hover = n;
-          canvas.style.cursor = n ? 'pointer' : 'grab';
-        }
+        st.hover = n;
+        // Compared with the cursor itself: after a drag the hover can be cleared while the cursor stayed a hand.
+        const want = n ? 'pointer' : 'grab';
+        if (canvas.style.cursor !== want) canvas.style.cursor = want;
       }
     };
     const onUp = (e: PointerEvent) => {
@@ -1132,8 +1222,28 @@ export function BrainView(props: Props) {
       if (!had) return;
       const clicked = !st.moved && e.type === 'pointerup' ? hitTest(e.clientX, e.clientY, e.pointerType !== 'mouse') : null;
       if (st.drag) {
-        st.drag.fx = null;
-        st.drag.fy = null;
+        const n = st.drag;
+        // Dropped with "keep where dropped" on, Shift held, or already placed by hand: it stays there.
+        if (st.moved && e.type === 'pointerup' && (pinModeRef.current || e.shiftKey || n.pinned) && n.fx != null) {
+          const R = st.R || 1;
+          const near = n.pinNear;
+          let pin: NotePin;
+          if (near?.x != null && Math.abs(n.fx - near.x) < R * 0.45 && Math.abs(n.fy! - near.y!) < R * 0.45) {
+            n.pinX = n.fx - near.x;
+            n.pinY = n.fy! - near.y!;
+            pin = { near: near.id, dx: n.pinX / R, dy: n.pinY / R };
+          } else {
+            n.pinNear = undefined;
+            n.pinX = n.fx;
+            n.pinY = n.fy!;
+            pin = { x: n.fx / R, y: n.fy! / R };
+          }
+          n.pinned = true;
+          savePins({ [n.id]: pin });
+        } else {
+          n.fx = null;
+          n.fy = null;
+        }
         st.sim?.alphaTarget(0);
         st.drag = null;
       }
@@ -1158,6 +1268,35 @@ export function BrainView(props: Props) {
     };
     const onLeave = () => {
       st.hover = null;
+    };
+    // Right-click a note: place it here, or let the layout place it again.
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      const n = hitTest(e.clientX, e.clientY, false);
+      const r = canvas.getBoundingClientRect();
+      if (!n && !Object.keys(st.pins).length) return setMenu(null);
+      setMenu({ x: Math.max(8, Math.min(e.clientX - r.left, r.width - 290)), y: Math.max(8, Math.min(e.clientY - r.top, r.height - 140)), id: n && !n.unresolved ? n.id : null, name: n?.name ?? '', pinned: !!n?.pinned });
+    };
+    menuActionRef.current = (action, id) => {
+      if (action === 'clear') return void savePins(null);
+      const n = id ? st.byId.get(id) : undefined;
+      if (!n) return;
+      if (action === 'unpin') {
+        n.pinned = false;
+        n.pinNear = undefined;
+        n.fx = n.fy = null;
+        st.sim?.alpha(0.3);
+        st.settling = true;
+        savePins({ [n.id]: null });
+      } else if (n.x != null) {
+        const R = st.R || 1;
+        n.pinned = true;
+        n.pinNear = undefined;
+        n.pinX = n.x;
+        n.pinY = n.y!;
+        savePins({ [n.id]: { x: n.x / R, y: n.y! / R } });
+      }
+      schedule();
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -1185,6 +1324,7 @@ export function BrainView(props: Props) {
     canvas.addEventListener('pointerup', onUp);
     canvas.addEventListener('pointercancel', onUp);
     canvas.addEventListener('pointerleave', onLeave);
+    canvas.addEventListener('contextmenu', onContextMenu);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -1196,6 +1336,7 @@ export function BrainView(props: Props) {
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('pointerleave', onLeave);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('wheel', onWheel);
       document.removeEventListener('visibilitychange', onVisibility);
       st.sim?.stop();
@@ -1280,7 +1421,58 @@ export function BrainView(props: Props) {
             <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
           </svg>
         </button>
+        <button
+          className={`atlas-tool pin-mode${pinMode ? ' on' : ''}`}
+          aria-pressed={pinMode}
+          aria-label="Keep notes where you drop them"
+          title={
+            pinMode
+              ? 'On: notes stay where you drop them. Right-click a note to let the layout place it again.'
+              : 'Off: dragged notes spring back (hold Shift while dropping to keep one there). Click to keep every dropped note where you put it.'
+          }
+          onClick={() => {
+            const next = !pinMode;
+            setPinMode(next);
+            try {
+              localStorage.setItem(PIN_MODE_KEY, next ? '1' : '0');
+            } catch {
+              /* storage blocked */
+            }
+          }}
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 4h6l-1 6 4 3v2H6v-2l4-3-1-6zM12 15v6" />
+          </svg>
+        </button>
       </div>
+      {menu && (
+        <div className="brain-menu" role="menu" style={{ left: menu.x, top: menu.y }} onPointerLeave={() => setMenu(null)}>
+          {menu.id && (
+            <>
+              <div className="brain-menu-title">{menu.name}</div>
+              {menu.pinned ? (
+                <button role="menuitem" onClick={() => (menuActionRef.current('unpin', menu.id), setMenu(null))}>
+                  Let the layout place it
+                </button>
+              ) : (
+                <button role="menuitem" onClick={() => (menuActionRef.current('pin', menu.id), setMenu(null))}>
+                  Keep it here
+                </button>
+              )}
+            </>
+          )}
+          {Object.keys(props.data?.pins ?? {}).length > 0 && (
+            <button role="menuitem" onClick={() => (menuActionRef.current('clear', null), setMenu(null))}>
+              Let the layout place every note ({Object.keys(props.data?.pins ?? {}).length} placed by hand)
+            </button>
+          )}
+        </div>
+      )}
+      {pinError && (
+        <div className="brain-pin-error" role="alert" onClick={() => setPinError('')}>
+          {pinError}
+        </div>
+      )}
       {total > 0 && (
         <div className="atlas-dock" style={{ right: freeRight }}>
           <label className={`atlas-find${filter ? ' active' : ''}`}>

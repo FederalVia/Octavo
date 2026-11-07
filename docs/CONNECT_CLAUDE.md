@@ -150,6 +150,7 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `rename_note` | Rename or move; updates every link to it | ✓ |
 | `set_note_region` | Pin one note, a list of notes or a whole folder to a region (`region:` in its properties), or back to automatic | ✓ |
 | `manage_islands` | List, add or remove islands: folders kept apart from the six regions in the brain views | ✓ |
+| `place_note` | Move notes to a spot in the network view, or beside another note, where they stay; unpin or clear | ✓ |
 | `set_property` | Set or remove one property (frontmatter field) on a note | ✓ |
 | `add_to_canvas` | Add text, note and link cards to a canvas (created if needed), connect them with labelled arrows, optionally in a group | ✓ |
 | `merge_notes` | Merge one note into another; links to it are updated and it moves to `.trash` | ✓ |

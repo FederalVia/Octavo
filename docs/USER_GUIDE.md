@@ -80,7 +80,13 @@ An island keeps a separate subject apart. If your vault is mostly about one thin
 
 ![Network view](images/network.png)
 
-A flat map of your notes. Each region gets its own area (Projects, Knowledge, People, Sources and Journal around the edge, Hubs in the middle), in the same colours as the brain, and only the most important names are labelled until you zoom in. Scroll or pinch to zoom (between your fingers on a phone), drag the background or use one finger to pan, and drag points with a mouse to move them. Hover a point to see its connections; click or tap it to open the note. The dock at the bottom works like the brain's: **Search the mind…** highlights matching notes (Enter opens the best match), and the region pills hide or show a region. The layout settles in a few seconds and then stops moving, so it costs nothing while you read.
+A flat map of your notes. Each region gets its own area (Projects, Knowledge, People, Sources and Journal around the edge, Hubs in the middle), in the same colours as the brain, and only the most important names are labelled until you zoom in. Scroll or pinch to zoom (between your fingers on a phone), drag the background or use one finger to pan, and drag points with a mouse to move them. A dragged point springs back when you let go, unless you want it to stay: Hover a point to see its connections; click or tap it to open the note. The dock at the bottom works like the brain's: **Search the mind…** highlights matching notes (Enter opens the best match), and the region pills hide or show a region. The layout settles in a few seconds and then stops moving, so it costs nothing while you read.
+
+- **Keep notes where you drop them:** turn on the pin button (under the zoom buttons), or hold **Shift** while you let go. The note stays there, marked with a thin ring, and moving it again keeps it wherever you drop it next.
+- **Undo a placement:** right-click the note → **Let the layout place it**, or **Let the layout place every note** to undo them all.
+- **Claude can do it too:** ask it to "put the theology notes together in the top corner" or "move my project notes next to Home". It uses the `place_note` tool, and you see the notes glide there. A note Claude puts *beside* another follows that note around.
+- Placements are saved in the vault (`.octavo/layout.json`), so every device sees them. They scale with the map as the vault grows. On a phone you see the placements but can't drag notes, since one finger pans.
+
 
 ## Brain regions
 

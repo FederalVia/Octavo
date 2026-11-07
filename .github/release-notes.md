@@ -1,15 +1,11 @@
 Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
 
-## New in 0.6.3
+## New in 0.6.4
 
-- **Time-lapse:** the clock button in the brain view replays your notes appearing in the order you wrote them.
-- **Quick sketch:** type `/sketch` in a note for a small drawing pad (finger, mouse or pen). Insert saves it as a drawing and embeds it.
-- **Backups:** ⚙ Settings → Backup downloads the whole vault as one zip, and can make one automatically every day in a folder next to the vault.
-- **Brain dock:** double-tap a region to show only that one, now reliable on phones; empty regions no longer get a pill.
-- **Zoom where you point:** pinch zooms between your fingers and the mouse wheel zooms towards the cursor.
-- **Terminal:** `octavo tui` to browse notes in a terminal, `octavo backup`, `octavo theme add` for CSS themes, `octavo recent 3d`, and `octavo islands`.
-- **iPhone:** tabs no longer sit under the notch, bigger buttons to tap, wide tables scroll sideways, double-tap a canvas to add a card, and `[[links]]` in properties can be tapped.
-- **Claude:** the vault overview lists islands, and `list_notes` can show only what changed recently (`since: "3d"`).
+- **Place notes by hand in the network view:** turn on the pin button (under the zoom buttons), or hold Shift as you drop, and a dragged note stays where you put it. Right-click a note to let the layout place it again.
+- **Claude can move notes too:** ask it to gather related notes together or put a note next to another. It uses the new `place_note` tool, and you see the notes glide there.
+- Placements are saved in the vault, so your phone and other devices see them.
+- Fixed: after dragging a note, the mouse pointer stayed a hand over empty space.
 
 ## Download
 

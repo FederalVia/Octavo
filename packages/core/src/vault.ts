@@ -17,6 +17,7 @@ import type {
   IndexedNote,
   LinkRef,
   NoteDetail,
+  NotePin,
   NoteSummary,
   SearchResult,
   TagCount,
@@ -192,6 +193,27 @@ function slug(s: string): string {
 }
 
 /** Check and tidy an island list. With `strict`, bad entries are errors instead of being skipped. */
+/** Validate hand placements read from disk or given by a caller; anything malformed is dropped. */
+export function normalizePins(raw: unknown): Record<string, NotePin> {
+  const out: Record<string, NotePin> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const num = (v: unknown, lim: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(-lim, Math.min(lim, Math.round(v * 1e4) / 1e4)) : null);
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!k || !v || typeof v !== 'object') continue;
+    const o = v as Record<string, unknown>;
+    if (typeof o.near === 'string' && o.near) {
+      const dx = num(o.dx ?? 0.06, 0.5);
+      const dy = num(o.dy ?? 0, 0.5);
+      if (dx !== null && dy !== null) out[k] = { near: o.near, dx, dy };
+    } else {
+      const x = num(o.x, 3);
+      const y = num(o.y, 3);
+      if (x !== null && y !== null) out[k] = { x, y };
+    }
+  }
+  return out;
+}
+
 function normalizeIslands(list: unknown[], strict = false): Island[] {
   const out: Island[] = [];
   const seenIds = new Set<string>();
@@ -264,6 +286,7 @@ export class Vault extends EventEmitter {
       await fsp.rename(legacy, current).catch(() => {});
     }
     await vault.loadIslands();
+    await vault.loadPins();
     await vault.rescan(false);
     if (opts.watch !== false) vault.startWatching();
     return vault;
@@ -411,6 +434,8 @@ export class Vault extends EventEmitter {
       this.watcher = fs.watch(this.root, { recursive: true }, (_type, filename) => {
         if (!filename) return this.scheduleRescan();
         const rel = filename.toString().split(path.sep).join('/');
+        // Islands and hand-placed notes may be changed by another Octavo process (e.g. Claude Desktop's).
+        if (rel === '.octavo/layout.json' || rel === '.octavo/islands.json') return this.scheduleSettingsReload();
         if (rel.split('/').some((s) => s.startsWith('.') || s === 'node_modules')) return;
         if (rel.toLowerCase().endsWith('.md')) this.scheduleFile(rel);
         else this.scheduleRescan();
@@ -433,6 +458,20 @@ export class Vault extends EventEmitter {
         this.refreshFile(rel, true).catch((err) => console.error('[octavo] refresh failed:', err));
       }, 75),
     );
+  }
+
+  private settingsTimer: ReturnType<typeof setTimeout> | null = null;
+  private scheduleSettingsReload() {
+    if (this.settingsTimer) clearTimeout(this.settingsTimer);
+    this.settingsTimer = setTimeout(async () => {
+      this.settingsTimer = null;
+      const before = JSON.stringify([this.islandList, this.pinMap]);
+      await this.loadIslands();
+      await this.loadPins();
+      if (JSON.stringify([this.islandList, this.pinMap]) === before) return; // our own write
+      this.graphCache = null;
+      this.emitEvent({ type: 'rescan' });
+    }, 150);
   }
 
   private scheduleRescan() {
@@ -662,7 +701,9 @@ export class Vault extends EventEmitter {
         nodes.get(target)!.degree++;
       }
     }
-    return (this.graphCache = { nodes: [...nodes.values()], links: [...links.values()], islands: this.islands() });
+    const pins: Record<string, NotePin> = {};
+    for (const [k, v] of Object.entries(this.pinMap)) if (nodes.has(k) && !('near' in v && !nodes.has(v.near))) pins[k] = v;
+    return (this.graphCache = { nodes: [...nodes.values()], links: [...links.values()], islands: this.islands(), pins });
   }
 
   /**
@@ -1069,6 +1110,7 @@ export class Vault extends EventEmitter {
     await fsp.rename(this.abs(from), this.abs(to));
     this.unindex(from);
     await this.refreshFile(to, false);
+    await this.renamePins(from, to);
     this.emitEvent({ type: 'rename', from, to });
 
     // Apply rewrites.
@@ -1497,6 +1539,87 @@ export class Vault extends EventEmitter {
     this.graphCache = null;
     this.emitEvent({ type: 'rescan' });
     return this.islands();
+  }
+
+  // ---------------------------------------------------------------- hand-placed notes (network view)
+
+  private pinMap: Record<string, NotePin> = {};
+
+  private layoutPath(): string {
+    return path.join(this.root, '.octavo', 'layout.json');
+  }
+
+  private async loadPins(): Promise<void> {
+    try {
+      const raw = JSON.parse(await fsp.readFile(this.layoutPath(), 'utf8'));
+      this.pinMap = normalizePins(raw?.pins);
+    } catch {
+      this.pinMap = {};
+    }
+  }
+
+  private async savePins(): Promise<void> {
+    await fsp.mkdir(path.dirname(this.layoutPath()), { recursive: true });
+    await fsp.writeFile(this.layoutPath(), JSON.stringify({ pins: this.pinMap }, null, 2) + '\n');
+    this.graphCache = null;
+    this.emitEvent({ type: 'rescan' });
+  }
+
+  /** Notes placed by hand in the network view, by path. */
+  pins(): Record<string, NotePin> {
+    return structuredClone(this.pinMap);
+  }
+
+  /**
+   * Place notes by hand (or `null` to let the layout place them again). Keys and `near` may be note names or
+   * paths. A note can't be placed next to itself or next to a note that is itself placed next to it.
+   */
+  async setPins(changes: Record<string, NotePin | null>): Promise<Record<string, NotePin>> {
+    const next = { ...this.pinMap };
+    for (const [key, value] of Object.entries(changes ?? {})) {
+      const note = this.requireNote(key).path;
+      if (value === null) {
+        delete next[note];
+        continue;
+      }
+      const [pin] = Object.values(normalizePins({ [note]: value }));
+      if (!pin) throw new EditMatchError(`Give a spot (x, y between about -1.5 and 1.5) or a note to go next to, for ${note}`);
+      if ('near' in pin) {
+        const near = this.requireNote(pin.near).path;
+        if (near === note) throw new EditMatchError('A note can’t be placed next to itself');
+        // Follow the chain of "next to" placements: it must not lead back to this note.
+        for (let at: string | undefined = near, hops = 0; at && hops < 50; hops++) {
+          const p: NotePin | undefined = next[at];
+          at = p && 'near' in p ? p.near : undefined;
+          if (at === note) throw new EditMatchError(`${near} is already placed next to ${note}`);
+        }
+        next[note] = { near, dx: pin.dx, dy: pin.dy };
+      } else next[note] = pin;
+    }
+    this.pinMap = next;
+    await this.savePins();
+    return this.pins();
+  }
+
+  /** Let the layout place every note again. */
+  async clearPins(): Promise<void> {
+    this.pinMap = {};
+    await this.savePins();
+  }
+
+  private async renamePins(from: string, to: string): Promise<void> {
+    let changed = false;
+    const next: Record<string, NotePin> = {};
+    for (const [k, v] of Object.entries(this.pinMap)) {
+      const key = k === from ? to : k;
+      const val = 'near' in v && v.near === from ? { ...v, near: to } : v;
+      if (key !== k || val !== v) changed = true;
+      next[key] = val;
+    }
+    if (!changed) return;
+    this.pinMap = next;
+    await fsp.writeFile(this.layoutPath(), JSON.stringify({ pins: this.pinMap }, null, 2) + '\n').catch(() => {});
+    this.graphCache = null;
   }
 
   /** Pin a note to a region with `region:` in its properties, or `null` to go back to automatic placement. */

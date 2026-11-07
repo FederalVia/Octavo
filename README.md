@@ -46,7 +46,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 - **Islands and separate brains**: keep a separate subject apart in its own corner of the brain, or keep whole separate vaults, each with its own Claude connection.
 - **Optional note locking**: password-protect individual notes with end-to-end encryption. Off by default.
 - **Safety net**: version history for every note, deletes go to a recoverable trash (and links to deleted notes offer to restore them), you get a conflict warning instead of losing edits, and one-click zip backups.
-- **Claude memory over MCP**: 27 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, orphans…) over stdio or HTTP.
+- **Claude memory over MCP**: 28 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, orphans…) over stdio or HTTP.
 - **Phone**: open it on your phone on home Wi-Fi, or from anywhere with Access from Anywhere (your PC, your router, a free certificate; no cloud service). Installable as an app, with offline reading.
 - **CLI**: `octavo tui` to browse in a terminal, plus `octavo new / read / append / search / daily / task / tasks / query / set / publish / islands / move / history / backup …`
 - **Runs anywhere**: desktop app (Windows, Mac, Linux), in the browser, or self-hosted with Docker.
