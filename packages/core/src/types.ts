@@ -106,7 +106,16 @@ export interface GraphData {
   links: { source: string; target: string }[];
   /** Islands defined for this vault (empty when there are none). */
   islands?: Island[];
+  /** Notes placed by hand in the network view (see NotePin), by path. */
+  pins?: Record<string, NotePin>;
 }
+
+/**
+ * Where a note was placed by hand in the network view, so it stays there instead of where the layout puts it.
+ * Positions are in brain units: the main brain spans about -1..1 across, (0, 0) is its centre, y grows downward.
+ * Either a fixed spot (`x`, `y`), or beside another note (`near` plus an offset), following it when it moves.
+ */
+export type NotePin = { x: number; y: number } | { near: string; dx: number; dy: number };
 
 export interface TagCount {
   tag: string;

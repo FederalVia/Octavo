@@ -286,6 +286,17 @@ export function createApp(opts: AppOptions): express.Express {
     }
   });
 
+  // Notes placed by hand in the network view (they're also in /graph as `pins`).
+  api.put('/pins', async (req, res, next) => {
+    try {
+      if (req.body?.clear === true) await vault.clearPins();
+      else await vault.setPins(req.body?.pins ?? {});
+      res.json({ pins: vault.pins() });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   api.get('/related/*path', (req, res, next) => {
     try {
       res.json({ related: vault.related(notePathParam(req), 20) });

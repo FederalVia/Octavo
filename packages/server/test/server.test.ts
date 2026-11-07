@@ -193,7 +193,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property', 'read_canvas', 'add_to_canvas', 'manage_islands']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property', 'read_canvas', 'add_to_canvas', 'manage_islands', 'place_note']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -312,6 +312,22 @@ describe('HTTP server', () => {
       r = await call('list_notes', {});
       assert.match(r.text, /Secret\.md 🔒 locked/);
       assert.equal(srv.vault.isEncrypted('Secret'), true);
+
+      // Placing notes by hand in the network view: beside another note (spread in a ring), at a spot, list, unpin, clear.
+      r = await call('place_note', { notes: [{ note: 'Ada', x: 0.4, y: -0.2 }, { note: 'Secret', near: 'Ada' }] });
+      assert.equal(r.isError, false, r.text);
+      assert.deepEqual(srv.vault.pins()['People/Ada.md'], { x: 0.4, y: -0.2 });
+      assert.equal((srv.vault.pins()['Secret.md'] as { near: string }).near, 'People/Ada.md');
+      r = await call('place_note', { action: 'list' });
+      assert.match(r.text, /Secret\.md: beside People\/Ada\.md/);
+      r = await call('place_note', { notes: [{ note: 'Ada' }] });
+      assert.equal(r.isError, true);
+      r = await call('place_note', { notes: [{ note: 'Secret', unpin: true }] });
+      assert.equal(srv.vault.pins()['Secret.md'], undefined);
+      const g = await (await fetch(`${srv.url}/api/graph`, { headers: { Authorization: `Bearer ${TOKEN}` } })).json();
+      assert.deepEqual(g.pins, { 'People/Ada.md': { x: 0.4, y: -0.2 } });
+      r = await call('place_note', { action: 'clear' });
+      assert.deepEqual(srv.vault.pins(), {});
     } finally {
       await client.close();
     }

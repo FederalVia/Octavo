@@ -102,7 +102,12 @@ export interface GraphData {
   links: { source: string; target: string }[];
   /** Islands defined for the vault (absent or empty when there are none). */
   islands?: Island[];
+  /** Notes placed by hand in the network view, by path. */
+  pins?: Record<string, NotePin>;
 }
+
+/** A hand placement in brain units (the main brain spans about -1..1): a spot, or beside another note. */
+export type NotePin = { x: number; y: number } | { near: string; dx: number; dy: number };
 
 export interface TagCount {
   tag: string;
@@ -244,6 +249,8 @@ export const api = {
   graphText: () => requestText('GET', 'api/graph'),
   islands: () => request<{ islands: Island[] }>('GET', 'api/islands'),
   setIslands: (islands: Partial<Island>[]) => request<{ islands: Island[] }>('PUT', 'api/islands', { islands }),
+  setPins: (pins: Record<string, NotePin | null>) => request<{ pins: Record<string, NotePin> }>('PUT', 'api/pins', { pins }),
+  clearPins: () => request<{ pins: Record<string, NotePin> }>('PUT', 'api/pins', { clear: true }),
   autoBackup: () => request<AutoBackup>('GET', 'api/autobackup'),
   setAutoBackup: (change: { on?: boolean; keep?: number }) => request<AutoBackup>('PUT', 'api/autobackup', change),
   backupNow: () => request<AutoBackup>('POST', 'api/autobackup/now'),

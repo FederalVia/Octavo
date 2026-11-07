@@ -53,6 +53,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Backlinks and unlinked mentions | ✅ | Under each note: *Linked from* / *Mentioned in* |
 | Outgoing links | ✅ | *Links to* under each note |
 | Graph view | ✅ | Two views: 3D anatomical **Atlas** and flat **Network** |
+| Place notes by hand (network) | ✅ | Drop a note with the pin button on (or Shift held) and it stays there; right-click to undo; Claude places notes with `place_note` (at a spot or beside another note). Saved in the vault |
 | Time-lapse | ✅ | The atlas replays the vault growing, note by note, by `created:` / `date:` or file date; pause and scrub |
 | Islands | ✅ | Keep a separate subject apart: a folder becomes an island with its own area and colour in both views (right-click the folder, or Settings → Islands). Claude can manage them (`manage_islands`) |
 | Outline / table of contents | ✅ | ≡ button on each note |
@@ -116,7 +117,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Backups | ✅ | ⚙ Settings → Backup, or `octavo backup [file.zip] [--history]`: the whole vault as one zip. Optional daily automatic backups into `<vault> backups` next to the vault, keeping the newest 7 |
 | CLI: terminal UI | ✅ | `octavo tui`: type to search, ↑↓ + Enter to read, number keys follow links, `e` edits in your editor, Ctrl+D / `d` today's journal |
 | CLI: install plugins/themes | 🟡 | Themes: `octavo theme add <file.css or https URL>` installs a CSS theme/snippet and switches it on; `on` / `off` / `remove`. Plugins aren't supported yet |
-| AI access | ✅ | MCP server with 27 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
+| AI access | ✅ | MCP server with 28 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)

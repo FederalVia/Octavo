@@ -2529,3 +2529,11 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
   .atlas-lapse { top: calc(66px + env(safe-area-inset-top)); }
   .atlas-lapse-date { min-width: 0; font-size: 12px; }
 }
+
+/* hand-placed notes (network view) */
+.atlas-tool.pin-mode.on { color: var(--accent); background: rgba(40, 38, 46, 0.92); box-shadow: inset 0 0 0 1px var(--accent-soft, rgba(255,255,255,0.25)); }
+.brain-menu { position: absolute; z-index: 30; min-width: 200px; max-width: 280px; background: var(--bg-elevated); border: 1px solid var(--glass-border); border-radius: 10px; padding: 6px; box-shadow: 0 12px 40px rgba(0,0,0,0.45); display: flex; flex-direction: column; font-size: 13px; }
+.brain-menu-title { padding: 4px 8px 6px; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brain-menu button { text-align: left; background: none; border: 0; color: var(--text); font: inherit; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.brain-menu button:hover { background: var(--bg-hover); }
+.brain-pin-error { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 30; background: var(--bg-elevated); border: 1px solid var(--danger); color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }

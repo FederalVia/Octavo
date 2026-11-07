@@ -422,6 +422,70 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
 
 
   server.registerTool(
+    'place_note',
+    {
+      title: 'Place notes by hand in the network view',
+      description:
+        'Move notes to a spot of your choosing in the network view (the flat map of the vault), where they stay instead of where the automatic layout puts them; the user sees them glide there. Give each note EITHER "near" (another note to sit beside; it follows that note) with an optional "side", OR "x"/"y" in brain units: the main brain spans about -1 to 1 across, (0, 0) is its centre, x grows rightward, y grows downward. "unpin: true" lets the layout place a note again; action "list" shows current placements, "clear" unpins everything. Use it to gather related notes into a cluster, or when the user asks to move notes around.',
+      inputSchema: {
+        action: z.enum(['place', 'list', 'clear']).optional().describe('Default "place"'),
+        notes: z
+          .array(
+            z.object({
+              note: z.string().describe('Note name or path'),
+              near: z.string().optional().describe('Put it beside this note'),
+              side: z.enum(['right', 'left', 'above', 'below']).optional().describe('Which side of "near" (default: around it, so several notes near one form a ring)'),
+              x: z.number().optional(),
+              y: z.number().optional(),
+              unpin: z.boolean().optional().describe('Let the layout place this note again'),
+            }),
+          )
+          .max(200)
+          .optional(),
+      },
+    },
+    safe(async ({ action, notes }) => {
+      const describe = () => {
+        const pins = Object.entries(vault.pins());
+        if (!pins.length) return 'No notes are placed by hand; the layout places everything.';
+        return pins
+          .map(([p, v]) => ('near' in v ? `- ${p}: beside ${v.near} (offset ${v.dx}, ${v.dy})` : `- ${p}: at x ${v.x}, y ${v.y}`))
+          .join('\n');
+      };
+      if (action === 'list') return text(describe());
+      if (action === 'clear') {
+        await vault.clearPins();
+        return text('Cleared: the layout places every note again.');
+      }
+      if (!notes?.length) throw new Error('Give the notes to place');
+      const changes: Record<string, import('@octavo/core').NotePin | null> = {};
+      const ring = new Map<string, number>();
+      const STEP = 0.07;
+      for (const n of notes) {
+        if (n.unpin) changes[n.note] = null;
+        else if (n.near) {
+          let dx = STEP;
+          let dy = 0;
+          if (n.side) [dx, dy] = { right: [STEP, 0], left: [-STEP, 0], above: [0, -STEP], below: [0, STEP] }[n.side];
+          else {
+            // Several notes beside the same one spread around it instead of piling up.
+            const i = ring.get(n.near) ?? 0;
+            ring.set(n.near, i + 1);
+            const a = i * 2.4; // golden angle: an even spread for any number
+            const r = STEP * (1 + 0.35 * Math.floor(i / 6));
+            dx = Math.cos(a) * r;
+            dy = Math.sin(a) * r;
+          }
+          changes[n.note] = { near: n.near, dx, dy };
+        } else if (typeof n.x === 'number' && typeof n.y === 'number') changes[n.note] = { x: n.x, y: n.y };
+        else throw new Error(`${n.note}: give "near", or both "x" and "y", or "unpin"`);
+      }
+      await vault.setPins(changes);
+      return text(`Done. Placed by hand now:\n${describe()}`);
+    }),
+  );
+
+  server.registerTool(
     'add_to_canvas',
     {
       title: 'Add cards and arrows to a canvas',
