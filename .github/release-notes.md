@@ -1,5 +1,9 @@
 Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
 
+## New in 0.6.5
+
+- **Drawings show as pictures while editing too:** `![[sketch.excalidraw]]` used to appear as a link in edit mode; now it is drawn like in reading view. Tap it to open the drawing.
+
 ## New in 0.6.4
 
 - **Place notes by hand in the network view:** turn on the pin button (under the zoom buttons), or hold Shift as you drop, and a dragged note stays where you put it. Right-click a note to let the layout place it again.
