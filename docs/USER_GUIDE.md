@@ -295,6 +295,10 @@ Under each note, **Mentioned in** lists notes that use its name in plain text wi
 
 Before a note changes, Octavo keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.octavo/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
 
+## Backups
+
+**⚙ Settings → Backup → Download .zip** saves the whole vault as one zip file: every note, attachment, canvas, drawing and setting (islands, bookmarks, templates). Version history is left out unless you turn on **Include version history**. To restore, unzip it anywhere and open that folder as your vault. From a terminal, `octavo backup` does the same (`octavo backup D:\Backups\notes.zip --history`). The backup must be saved outside the vault folder.
+
 ## Locked (encrypted) notes
 
 You can lock any note with a password: diary entries, health records, anything private. This is **optional and off by default**. Turn it on in **⚙ Settings → Lock notes with a password**, and a 🔐 button appears on each note. The setting is stored in the vault, so it applies on every device. Notes that are already locked still open, with a password prompt, even if the setting is off.

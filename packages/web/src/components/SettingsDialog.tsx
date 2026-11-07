@@ -1,8 +1,54 @@
 import { IslandsSection } from './IslandsSection';
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
-import { api, saveAllForOffline } from '../api';
+import { api, getToken, saveAllForOffline } from '../api';
 import { ACCENTS, applyAppearance, applySnippets, getAccent, getTheme, type ThemeChoice } from '../appearance';
+
+/** Download the whole vault as one zip file. */
+function BackupSection() {
+  const [history, setHistory] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');
+  const download = async () => {
+    setBusy(true);
+    setStatus('');
+    try {
+      const token = getToken();
+      const res = await fetch(`api/backup.zip${history ? '?history=1' : ''}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error ?? res.statusText);
+      const blob = await res.blob();
+      const name = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1];
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name ? decodeURIComponent(name) : 'Octavo backup.zip';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      setStatus(`Saved (${(blob.size / 1024 / 1024).toFixed(1)} MB).`);
+    } catch (err) {
+      setStatus((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section>
+      <h4>Backup</h4>
+      <div className="setting-row">
+        <div>
+          <b>Download a backup</b>
+          <span className="muted small">Every note, attachment, canvas, drawing and setting in one .zip file. Unzip it anywhere to get the vault folder back.</span>
+        </div>
+        <button className="btn" disabled={busy} onClick={() => void download()}>
+          {busy ? 'Zipping…' : 'Download .zip'}
+        </button>
+      </div>
+      <Toggle label="Include version history" help="Older versions of every note. Can make the file much bigger." checked={history} onChange={setHistory} />
+      {status && <p className="muted small settings-note">{status}</p>}
+    </section>
+  );
+}
 
 /** Theme, accent colour and CSS snippets. */
 function AppearanceSection({ snippetsOn, setSnippetsOn }: { snippetsOn: string[]; setSnippetsOn: (names: string[]) => void }) {
@@ -594,6 +640,8 @@ export function SettingsDialog(p: Props) {
         </section>
 
         <OfflineSection />
+
+        <BackupSection />
 
         <section>
           <h4>About</h4>
