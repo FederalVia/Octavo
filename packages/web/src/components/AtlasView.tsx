@@ -106,9 +106,20 @@ interface Geometry {
   /** Where each island floats (ids of islands that have notes, sorted, joined: a different set means a new layout). */
   islandKey: string;
   islands: Map<string, IslandGeo>;
-  /** Farthest any island reaches from the brain's centre, horizontally (0 without islands). */
+  /** Island sizes the islands were placed for (to re-place them when the view's shape changes). */
+  islandSizes: { id: string; count: number }[];
+  /** Beside the brain (wide views) or below it (tall views). */
+  mode: IslandMode;
+  /** Farthest any island reaches from the vertical axis through the brain's centre (0 without islands). */
   reach: number;
+  /** Height the camera looks at and turns around by default (0 unless islands sit below the brain). */
+  homeY: number;
+  /** Half the height of brain and islands together, measured from homeY (below mode only). */
+  halfSpan: number;
 }
+
+/** Where islands float: on a ring beside the brain (wide views), or below it (tall views, e.g. a phone held upright). */
+type IslandMode = 'ring' | 'below';
 
 interface IslandGeo {
   x: number;
@@ -135,12 +146,15 @@ const START_YAW = -Math.PI / 2 + 0.38;
  * space in between. One island sits to the right of the brain as first seen, a second to the left; more are
  * spread evenly around. Each cloud's radius grows with the square root of its note count.
  */
-function placeIslands(R: number, sizes: { id: string; count: number }[]): { islands: Map<string, IslandGeo>; reach: number } {
+type IslandPlacement = Pick<Geometry, 'islands' | 'reach' | 'homeY' | 'halfSpan'>;
+
+function placeIslands(R: number, sizes: { id: string; count: number }[], mode: IslandMode): IslandPlacement {
   const islands = new Map<string, IslandGeo>();
-  if (!sizes.length) return { islands, reach: 0 };
+  if (!sizes.length) return { islands, reach: 0, homeY: 0, halfSpan: 0 };
   const gap = R * 0.32;
   const k = sizes.length;
   const radii = sizes.map((s) => Math.min(R * 0.62, Math.max(R * 0.13, R * 0.056 * Math.sqrt(s.count))));
+  if (mode === 'below') return placeBelow(R, sizes, radii, gap);
   // Screen-right at the start is the direction (cos yaw, 0, sin yaw) in world space.
   const angles = sizes.map((_, i) => START_YAW + (k === 2 ? i * Math.PI : (i * 2 * Math.PI) / k));
   // Distance from the centre to the brain's edge in that direction (the dust silhouette's ellipse).
@@ -167,7 +181,51 @@ function placeIslands(R: number, sizes: { id: string; count: number }[]): { isla
     islands.set(s.id, { x: Math.cos(angles[i]) * dist[i], y: R * 0.05, z: Math.sin(angles[i]) * dist[i], r: radii[i] });
     reach = Math.max(reach, dist[i] + radii[i]);
   });
-  return { islands, reach };
+  return { islands, reach, homeY: 0, halfSpan: 0 };
+}
+
+/**
+ * Tall views: islands float below the brain, centred on the vertical axis it turns around, so they stay below
+ * it from every side. Several sit side by side on a small ring (two: left and right as first seen). The camera
+ * then aims at the middle of brain and islands together.
+ */
+function placeBelow(R: number, sizes: { id: string; count: number }[], radii: number[], gap: number): IslandPlacement {
+  const islands = new Map<string, IslandGeo>();
+  const k = sizes.length;
+  const rMax = Math.max(...radii);
+  let ring = 0;
+  if (k > 1) {
+    for (let i = 0; i < k; i++) ring = Math.max(ring, (radii[i] + radii[(i + 1) % k] + gap * 0.6) / (2 * Math.sin(Math.PI / k)));
+  }
+  // The brain's underside (the notes reach about 0.88R, its dust a little further).
+  const y = -(R * 0.98 + gap + rMax);
+  sizes.forEach((s, i) => {
+    const a = START_YAW + (k === 2 ? i * Math.PI : (i * 2 * Math.PI) / k);
+    islands.set(s.id, { x: k > 1 ? Math.cos(a) * ring : 0, y, z: k > 1 ? Math.sin(a) * ring : 0, r: radii[i] });
+  });
+  const top = R * 1.0;
+  const bottom = y - rMax;
+  return { islands, reach: ring + rMax, homeY: (top + bottom) / 2, halfSpan: (top - bottom) / 2 };
+}
+
+/** Move the islands to where `mode` puts them (the view changed shape), carrying their notes and dust along. */
+function relocateIslands(L: Layout, mode: IslandMode) {
+  const geo = L.geo;
+  const next = placeIslands(geo.R, geo.islandSizes, mode);
+  const shift = new Map<string, [number, number, number]>();
+  for (const [id, g] of next.islands) {
+    const old = geo.islands.get(id);
+    if (old) shift.set(`island:${id}`, [g.x - old.x, g.y - old.y, g.z - old.z]);
+  }
+  for (const n of L.nodes) {
+    const d = shift.get(n.group);
+    if (!d) continue;
+    n.x += d[0];
+    n.y += d[1];
+    n.z += d[2];
+  }
+  Object.assign(geo, next, { mode });
+  L.islandDust = makeIslandDust(geo.islands);
 }
 
 /**
@@ -298,7 +356,7 @@ function seeded(str: string): () => number {
   };
 }
 
-function makeGeometry(counts: Record<RegionKey, number>, total: number, islandSizes: { id: string; count: number }[]): Geometry {
+function makeGeometry(counts: Record<RegionKey, number>, total: number, islandSizes: { id: string; count: number }[], mode: IslandMode): Geometry {
   // The brain grows slowly with the vault; notes fill its whole volume (see territory below).
   const R = Math.max(240, 150 + Math.cbrt(total) * 26);
   // Territories: each region owns the part of the brain nearest its anatomical centre, weighted by how
@@ -308,8 +366,7 @@ function makeGeometry(counts: Record<RegionKey, number>, total: number, islandSi
   const weight = Object.fromEntries(
     REGIONS.map((r) => [r.key, counts[r.key] ? Math.cbrt(counts[r.key] / total) * R * 0.9 : -Infinity]),
   ) as Record<RegionKey, number>;
-  const { islands, reach } = placeIslands(R, islandSizes);
-  return { R, present, weight, islandKey: islandSizes.map((s) => s.id).join('\n'), islands, reach };
+  return { R, present, weight, islandKey: islandSizes.map((s) => s.id).join('\n'), islandSizes, mode, ...placeIslands(R, islandSizes, mode) };
 }
 
 /** The region whose territory holds this point. */
@@ -396,7 +453,7 @@ function linkRank(a: number, b: number): number {
  * lists instead of re-placing every note, and the brain doesn't shift under you. After many changes the
  * territories are recomputed and everything is placed from scratch.
  */
-function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
+function buildLayout(data: GraphData, prev: Layout | null = null, mode: IslandMode = 'ring'): Layout {
   // Islands: only ids the graph defines count; a note naming an unknown island stays in its region.
   const islandDefs = new Map((data.islands ?? []).map((i) => [i.id, i]));
   const islandOf = (n: GraphNode) => (n.island && islandDefs.has(n.island) ? n.island : undefined);
@@ -453,7 +510,7 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
   }
   const reuse = prev && geo ? prev : null;
   if (!geo) {
-    geo = makeGeometry(counts, total, islandSizes);
+    geo = makeGeometry(counts, total, islandSizes, mode);
     drift = 0;
   }
   const R = geo.R;
@@ -646,14 +703,18 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
 /** Camera distance for perspective: further back when islands float around the brain, so one swinging towards
  *  you doesn't balloon. Exactly the old distance without islands. */
 function viewDistance(L: Layout): number {
-  return Math.max(L.R * 3.4, L.geo.reach * 2.4);
+  return Math.max(L.R * 3.4, L.geo.mode === 'ring' ? L.geo.reach * 2.4 : 0);
 }
 
 /** Pixels per world unit at zoom 1: the brain fills the view; with islands, they fit across it too. */
 function fitZoom(w: number, h: number, L: Layout | null): number {
   const R = L?.R ?? 300;
   const brain = (Math.min(w, h) * 0.5) / (R * 1.25);
-  if (!L || !L.geo.reach) return brain;
+  if (!L || !L.islands.length) return brain;
+  if (L.geo.mode === 'below') {
+    // Islands below: the brain keeps its width; brain and islands together share the height.
+    return Math.min(brain, (w * 0.5) / (Math.max(R * 1.25, L.geo.reach * 1.1)), (h * 0.5) / (L.geo.halfSpan * 1.1));
+  }
   // Islands sit in the brain's horizontal plane, so they need width; height still only needs the brain.
   return Math.min(brain, (w * 0.5) / (L.geo.reach * 1.12), (h * 0.5) / (R * 1.25));
 }
@@ -791,6 +852,8 @@ export function AtlasView(props: Props) {
     pulses: [] as { link: ALink; from: ANode; t: number }[],
     W: 0,
     H: 0,
+    /** The camera's default height (see Geometry.homeY) last applied; NaN before the first layout. */
+    homeY: NaN,
     baseZoom: 1,
     dpr: 1,
   });
@@ -808,7 +871,8 @@ export function AtlasView(props: Props) {
     const data = props.data;
     if (!data) return;
     const apply = () => {
-      const next = buildLayout(data, s.layout);
+      const box = wrapRef.current?.getBoundingClientRect();
+      const next = buildLayout(data, s.layout, box && box.height > box.width ? 'below' : 'ring');
       s.layout = next;
       s.pending = null;
       s.rings = s.rings.filter((r) => next.byId.has(r.node.id)).map((r) => ({ ...r, node: next.byId.get(r.node.id)! }));
@@ -955,7 +1019,7 @@ export function AtlasView(props: Props) {
       kick();
     };
     s.recenter = () => {
-      s.camGoal = { tx: 0, ty: 0, tz: 0, zoom: 1 };
+      s.camGoal = { tx: 0, ty: s.layout?.geo.homeY ?? 0, tz: 0, zoom: 1 };
       s.lastInteract = performance.now();
       kick();
     };
@@ -983,6 +1047,23 @@ export function AtlasView(props: Props) {
       const autoRotate = !coarse && n <= 800;
       const wobble = quality === 2 && n <= 600;
       const R = L?.R ?? 300;
+      if (L) {
+        // Tall views put islands below the brain, wide ones beside it: re-place them when the shape changes.
+        const mode: IslandMode = H > W ? 'below' : 'ring';
+        if (L.islands.length && L.geo.mode !== mode) relocateIslands(L, mode);
+        // The default view aims between brain and islands: follow it when that point moves.
+        const homeY = L.geo.homeY;
+        if (homeY !== s.homeY) {
+          const atHome = !Number.isNaN(s.homeY) && Math.abs(s.cam.ty - s.homeY) < 1 && !s.cam.tx && !s.cam.tz;
+          if (Number.isNaN(s.homeY)) s.cam.ty = homeY;
+          else if (!propsRef.current.selected && (atHome || s.camGoal)) {
+            const g = s.camGoal ?? s.cam;
+            s.camGoal = { tx: g.tx, ty: g.ty === s.homeY ? homeY : g.ty, tz: g.tz, zoom: g.zoom };
+            if (atHome) s.camGoal.ty = homeY;
+          }
+          s.homeY = homeY;
+        }
+      }
       s.baseZoom = fitZoom(W * (1 - propsRef.current.rightInset), H, L);
 
       // Camera easing and idle auto-rotation.
@@ -1310,6 +1391,23 @@ export function AtlasView(props: Props) {
         return rank(b) - rank(a) || b.degree - a.degree || a.depth - b.depth;
       });
       let hubLabels = 0;
+      // Islands on screen: other notes' names keep clear of them (and of their captions).
+      const discs: { x: number; y: number; r: number; group: Group }[] = [];
+      for (const isl of L.islands) {
+        const g = L.geo.islands.get(isl.id);
+        if (!g || s.hidden.has(isl.group)) continue;
+        project(g.x, g.y, g.z, tmp);
+        discs.push({ x: tmp[0], y: tmp[1], r: g.r * tmp[3] + 10, group: isl.group });
+      }
+      const clearOfIslands = (n: ANode, x: number, y: number, w: number, h: number) => {
+        for (const d of discs) {
+          if (d.group === n.group) continue;
+          const nx = Math.max(x, Math.min(d.x, x + w));
+          const ny = Math.max(y, Math.min(d.y, y + h));
+          if ((nx - d.x) ** 2 + (ny - d.y) ** 2 < d.r * d.r) return false;
+        }
+        return true;
+      };
       // Each island's name, above its cloud: it reads as a place of its own.
       if (s.labels && !filterOn) {
         ctx.font = `600 12px ${SANS}`;
@@ -1351,7 +1449,7 @@ export function AtlasView(props: Props) {
         const x = n.sx + nodeSize(n) * 2 + 6;
         const w = ctx.measureText(text).width;
         // Generous spacing so names never stack into a column.
-        if (!fits(x - 8, n.sy - 12, w + 16, 24) && !isFocus) continue;
+        if (!isFocus && (!clearOfIslands(n, x - 4, n.sy - 8, w + 8, 16) || !fits(x - 8, n.sy - 12, w + 16, 24))) continue;
         if (plainHub && n.hub) hubLabels++;
         ctx.globalAlpha = isFocus ? 1 : 0.45 + fog * 0.5;
         // A dark outline keeps names readable over bright, dense regions.
@@ -1542,7 +1640,8 @@ export function AtlasView(props: Props) {
   useEffect(() => {
     const s = st.current;
     if (!props.selected) {
-      if (s.camGoal || s.cam.zoom > 1.05 || s.cam.tx || s.cam.ty || s.cam.tz) s.camGoal = { tx: 0, ty: 0, tz: 0, zoom: 1 };
+      const homeY = s.layout?.geo.homeY ?? 0;
+      if (s.camGoal || s.cam.zoom > 1.05 || s.cam.tx || s.cam.ty !== homeY || s.cam.tz) s.camGoal = { tx: 0, ty: homeY, tz: 0, zoom: 1 };
       s.kick();
       return;
     }
