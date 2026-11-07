@@ -272,6 +272,19 @@ export function createApp(opts: AppOptions): express.Express {
     res.type('json').send(graphJson.json);
   });
 
+  // Islands: parts of the vault drawn apart from the six regions.
+  api.get('/islands', (_req, res) => {
+    res.json({ islands: vault.islands() });
+  });
+
+  api.put('/islands', async (req, res, next) => {
+    try {
+      res.json({ islands: await vault.setIslands(req.body?.islands) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   api.get('/related/*path', (req, res, next) => {
     try {
       res.json({ related: vault.related(notePathParam(req), 20) });

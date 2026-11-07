@@ -81,11 +81,29 @@ export interface GraphNode {
   encrypted?: boolean;
   /** Number of links in + out. */
   degree: number;
+  /** Id of the island this note belongs to (see Island), drawn apart from the six regions. */
+  island?: string;
+}
+
+/**
+ * An island: a part of the vault kept apart from the six brain regions, like a separate subject
+ * (e.g. a "Theology" folder). Its notes get their own territory and colour in the brain views.
+ */
+export interface Island {
+  /** Stable id, derived from the name. */
+  id: string;
+  name: string;
+  /** Notes in this folder (and its subfolders) belong to the island. */
+  folder: string;
+  /** "#rrggbb" */
+  color: string;
 }
 
 export interface GraphData {
   nodes: GraphNode[];
   links: { source: string; target: string }[];
+  /** Islands defined for this vault (empty when there are none). */
+  islands?: Island[];
 }
 
 export interface TagCount {
