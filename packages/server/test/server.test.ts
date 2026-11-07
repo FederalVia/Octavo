@@ -251,6 +251,8 @@ describe('HTTP server', () => {
       assert.match(r.text, /^Added\. Islands:\n- Side project: folder Batch\/ \(\d+ notes\), colour #ff6ad5/);
       r = await call('get_note_region', { path: 'Batch/One' });
       assert.match(r.text, /is on the “Side project” island \(folder Batch\/\)/);
+      r = await call('get_vault_overview', {});
+      assert.match(r.text, /\nIslands \(kept apart\): Side project \d+ \(folder Batch\/\)/);
       const islandGraph = (await (await api('/api/graph')).json()) as { nodes: { id: string; island?: string }[]; islands: { id: string }[] };
       assert.equal(islandGraph.nodes.find((n) => n.id === 'Batch/One.md')?.island, 'side-project');
       assert.deepEqual(islandGraph.islands.map((i) => i.id), ['side-project']);

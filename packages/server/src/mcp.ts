@@ -56,11 +56,16 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   const regionLabel = (k: RegionKey) => REGION_INFO.find((r) => r.key === k)!.label;
   const regionCounts = () => {
     const counts = new Map<RegionKey, number>();
+    const islandCounts = new Map<string, number>();
     for (const n of vault.list()) {
-      const r = vault.regionOf(n.path).region;
-      counts.set(r, (counts.get(r) ?? 0) + 1);
+      const r = vault.regionOf(n.path);
+      if (r.island) islandCounts.set(r.island.name, (islandCounts.get(r.island.name) ?? 0) + 1);
+      else counts.set(r.region, (counts.get(r.region) ?? 0) + 1);
     }
-    return REGION_INFO.filter((r) => counts.get(r.key)).map((r) => `${r.label} ${counts.get(r.key)}`).join(', ') || 'none';
+    const regions = REGION_INFO.filter((r) => counts.get(r.key)).map((r) => `${r.label} ${counts.get(r.key)}`).join(', ') || 'none';
+    // Islands are kept apart from the regions in the brain views (see manage_islands).
+    const islands = vault.islands().map((i) => `${i.name} ${islandCounts.get(i.name) ?? 0} (folder ${i.folder}/)`);
+    return islands.length ? `${regions}\nIslands (kept apart): ${islands.join(', ')}` : regions;
   };
   /** The full text of a note, with its region, links and backlinks; also lights it up in the app's trail. */
   const noteText = async (path: string) => {
