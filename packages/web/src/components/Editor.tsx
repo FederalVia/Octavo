@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import QuickSketch from './QuickSketch';
 import { livePreview } from '../livePreview';
 import { EditorState, Compartment, Annotation, Transaction, type Extension } from '@codemirror/state';
 import {
@@ -84,6 +85,8 @@ interface Props {
   onUpload?: (file: File) => Promise<string>;
   /** Slash commands that need the app (e.g. picking a template). */
   onSlashCommand?: (command: 'template') => void;
+  /** Offer /sketch. Off in locked notes: the drawing file would be saved unencrypted. */
+  allowSketch?: boolean;
 }
 
 const externalUpdate = Annotation.define<boolean>();
@@ -197,6 +200,33 @@ export function Editor(props: Props) {
     });
   const extensions = useRef<Extension[]>([]);
   const lastDocKey = useRef(props.docKey);
+  /** The open quick-sketch pad: where its drawing goes and where the panel sits. */
+  const [sketch, setSketch] = useState<{ pos: number; docKey: string; anchor: { left: number; top: number; bottom: number } } | null>(null);
+  const openSketch = useRef((v: EditorView, pos: number) => {
+    const c = v.coordsAtPos(pos) ?? v.coordsAtPos(v.state.selection.main.head);
+    const r = v.contentDOM.getBoundingClientRect();
+    const anchor = c ? { left: c.left, top: c.top, bottom: c.bottom } : { left: r.left + 32, top: r.top, bottom: r.top + 24 };
+    // Hide the on-screen keyboard on phones while drawing.
+    v.contentDOM.blur();
+    setSketch({ pos, docKey: lastDocKey.current, anchor });
+  });
+  const sketchRef = useRef(sketch);
+  sketchRef.current = sketch;
+  const closeSketch = useCallback((path?: string) => {
+    const v = view.current;
+    const cur = sketchRef.current;
+    sketchRef.current = null;
+    setSketch(null);
+    if (v && cur && path && cur.docKey === lastDocKey.current) {
+      const at = Math.min(cur.pos, v.state.doc.length);
+      const line = v.state.doc.lineAt(at);
+      const before = at > line.from ? '\n' : '';
+      const text = `${before}![[${path.split('/').pop()}]]\n`;
+      v.dispatch({ changes: { from: at, insert: text }, selection: { anchor: at + text.length }, scrollIntoView: true, userEvent: 'input' });
+    }
+    if (v) requestAnimationFrame(() => v.focus());
+  }, []);
+  const cancelSketch = useCallback(() => closeSketch(), [closeSketch]);
 
   // Create the editor once.
   useEffect(() => {
@@ -247,6 +277,18 @@ export function Editor(props: Props) {
           { label: 'Comment', detail: '%%', insert: '%%|%%' },
           { label: 'Link to note', detail: '[[ ]]', insert: '[[|' },
           { label: 'Embed note', detail: '![[ ]]', insert: '![[|' },
+          ...(propsRef.current.allowSketch === false
+            ? []
+            : [
+                {
+                  label: 'Quick sketch',
+                  detail: 'draw',
+                  insert: (v: EditorView, from: number, to: number) => {
+                    v.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
+                    openSketch.current(v, from);
+                  },
+                },
+              ]),
           {
             label: 'Footnote',
             detail: '[^1]',
@@ -453,5 +495,10 @@ export function Editor(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.livePreview]);
 
-  return <div className="editor" ref={host} />;
+  return (
+    <>
+      <div className="editor" ref={host} />
+      {sketch && sketch.docKey === props.docKey && <QuickSketch anchor={sketch.anchor} onInsert={closeSketch} onCancel={cancelSketch} />}
+    </>
+  );
 }

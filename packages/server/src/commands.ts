@@ -24,6 +24,8 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
   octavo set <note> <key> [value]      Set a property (no value removes it)
   octavo backup [file.zip] [--history] The whole vault as one zip (default: "<vault> backup <date>.zip")
+  octavo theme [add <file.css|https-url> [--title NAME] | on | off | remove <name>]
+                                       List CSS themes/snippets, install one (switched on), or toggle it
   octavo islands [add <folder> [--title NAME] | remove <name-or-folder>]
                                        List islands, or keep a folder apart in the brain views
   octavo publish <folder> [--all | --folder F | --tag T] [--title T]
@@ -58,6 +60,7 @@ export const NOTE_COMMANDS = new Set([
   'publish',
   'islands',
   'backup',
+  'theme',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -200,6 +203,70 @@ export async function runNoteCommand(
         await fs.writeFile(file, b.zip);
         console.log(`Backed up ${b.files} files (${(b.bytes / 1024 / 1024).toFixed(1)} MB) to ${file}`);
         break;
+      }
+      case 'theme': {
+        const [action, ...rest] = args;
+        const target = rest.join(' ').trim();
+        const dir = path.join(vault.root, '.octavo', 'snippets');
+        const installed = async () => (await fs.readdir(dir).catch(() => [] as string[])).filter((n) => /^[^./\\][^/\\]*\.css$/i.test(n)).sort();
+        const enabled = async () => ((await vault.getConfig<string[] | null>('snippets', null)) ?? []).filter((n) => typeof n === 'string');
+        const find = async (name: string) => {
+          const want = name.toLowerCase().replace(/\.css$/, '');
+          const hit = (await installed()).find((n) => n.toLowerCase().replace(/\.css$/, '') === want);
+          if (!hit) throw new Error(`No theme called "${name}". Run "octavo theme" to list them.`);
+          return hit;
+        };
+        if (!action || action === 'list') {
+          const names = await installed();
+          const on = new Set(await enabled());
+          out(
+            names.map((name) => ({ name, on: on.has(name) })),
+            () => (names.length ? `Themes and CSS snippets (.octavo/snippets):\n${names.map((n) => `  ${on.has(n) ? '●' : '○'} ${n}`).join('\n')}` : 'No themes yet. Install one with: octavo theme add <file.css or https URL>'),
+          );
+          break;
+        }
+        if (action === 'add') {
+          if (!target) throw new Error('Usage: octavo theme add <file.css | https://…/theme.css> [--title NAME]');
+          let css: string;
+          let base: string;
+          if (/^https?:\/\//i.test(target)) {
+            const url = new URL(target);
+            if (url.protocol !== 'https:') throw new Error('Use an https:// address');
+            const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000) });
+            if (!res.ok) throw new Error(`Couldn’t download it (${res.status} ${res.statusText})`);
+            css = await res.text();
+            base = decodeURIComponent(url.pathname.split('/').pop() || 'theme');
+          } else {
+            css = await fs.readFile(path.resolve(target), 'utf8');
+            base = path.basename(target);
+          }
+          if (css.length > 200_000) throw new Error('That stylesheet is over 200 KB; Octavo only loads snippets up to 200 KB');
+          if (/^\s*</.test(css)) throw new Error('That isn’t a CSS file (it looks like a web page). Link to the raw .css file.');
+          const name = `${(opts.title ?? base).replace(/\.css$/i, '').replace(/[\\/:*?"<>|]+/g, '_').replace(/^[.\s]+/, '').trim() || 'theme'}.css`;
+          await fs.mkdir(dir, { recursive: true });
+          await fs.writeFile(path.join(dir, name), css);
+          const on = await enabled();
+          if (!on.includes(name)) await vault.setConfig('snippets', [...on, name]);
+          console.log(`Installed and switched on ${name}. Reload Octavo to see it (or toggle it in Settings → Appearance).`);
+          break;
+        }
+        if (action === 'on' || action === 'off') {
+          if (!target) throw new Error(`Usage: octavo theme ${action} <name>`);
+          const name = await find(target);
+          const on = (await enabled()).filter((n) => n !== name);
+          await vault.setConfig('snippets', action === 'on' ? [...on, name] : on);
+          console.log(`${name} is ${action}.`);
+          break;
+        }
+        if (action === 'remove') {
+          if (!target) throw new Error('Usage: octavo theme remove <name>');
+          const name = await find(target);
+          await fs.rm(path.join(dir, name));
+          await vault.setConfig('snippets', (await enabled()).filter((n) => n !== name));
+          console.log(`Removed ${name}.`);
+          break;
+        }
+        throw new Error('Usage: octavo theme [add <file|url> | on <name> | off <name> | remove <name>]');
       }
       case 'islands': {
         const [action, ...rest] = args;

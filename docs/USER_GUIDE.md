@@ -55,7 +55,7 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 | --- | --- |
 | Turn the brain | Drag |
 | Move it | Shift + drag or right-drag; on a phone, two fingers |
-| Zoom | Scroll, pinch, or the ＋ / − buttons |
+| Zoom | Scroll or pinch (zooms towards the cursor or between your fingers), or the ＋ / − buttons |
 | Show the whole brain again | ⛶ button |
 | Open a note | Click (or tap) its point |
 | Highlight a note's connections | Hover over it |
@@ -372,6 +372,7 @@ Sketch diagrams, mind maps and doodles with the built-in [Excalidraw](https://ex
 
 - Draw with the toolbar at the top (or its number keys): shapes, arrows, lines, free-hand pen, text and images. Everything keeps its hand-drawn look.
 - It saves as you go. **Done** (or ← Back to notes in the ☰ menu) takes you back.
+- **Quick sketch:** type `/sketch` while editing and a small drawing pad opens by the cursor (a bottom sheet on a phone). Draw with a finger, mouse or pen in six colours and three widths, with an eraser and undo. **Insert** saves it to `attachments/` as a drawing and embeds it, so you can open it later in the full editor. Not offered in locked notes, since the drawing file isn't encrypted.
 - `![[Name.excalidraw]]` in any note shows the drawing as a picture, matching your light or dark theme. Click it to edit. `[[Name.excalidraw]]` is a plain link to it.
 - **Open drawing…** finds existing drawings, and they appear in the file tree with ✎.
 - The ☰ menu can export a drawing as PNG or SVG.
@@ -488,7 +489,7 @@ The **Calendar** tab (▦) in the sidebar shows a month. Days with a journal not
 ## Appearance and hotkeys
 
 - **Settings → Appearance:** dark, light or match system, and an accent colour. These are saved on each device. The brain view always stays dark.
-- **CSS snippets:** put `.css` files in the brain's `.octavo/snippets` folder, then switch them on in **Settings → Appearance**. They apply to the whole app and are saved with the brain.
+- **CSS snippets:** put `.css` files in the brain's `.octavo/snippets` folder, then switch them on in **Settings → Appearance**. They apply to the whole app and are saved with the brain. From a terminal, `octavo theme add nord.css` (or an https:// link to a .css file) installs one and switches it on; `octavo theme`, `octavo theme off <name>` and `octavo theme remove <name>` list and manage them.
 - **Hotkeys:** **Settings → Editor → Hotkeys → Customize** (or command palette → *Customize hotkeys…*). Click a shortcut and press the keys you want; Backspace removes it. Hotkeys are saved with the brain, so they apply on every device.
 
 ## Opening Markdown files (desktop)
