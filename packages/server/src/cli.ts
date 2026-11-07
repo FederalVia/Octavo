@@ -7,6 +7,7 @@ import { recordAccess } from './activity.js';
 import { Vault } from '@octavo/core';
 import { startServer } from './index.js';
 import { parseTrustProxy } from './app.js';
+import { runTui } from './tui.js';
 import { createMcpServer } from './mcp.js';
 import { seedIfEmpty } from './seed.js';
 import { NOTE_COMMANDS, NOTE_COMMANDS_HELP, runNoteCommand } from './commands.js';
@@ -18,6 +19,7 @@ const HELP = `Octavo: a Markdown knowledge base that doubles as Claude's memory.
 Usage:
   octavo serve [options]   Run the web app, REST API and MCP endpoint (/mcp)
   octavo mcp   [options]   Run an MCP server over stdio (for Claude Desktop / Claude Code)
+  octavo tui   [options]   Browse and search the vault in the terminal
   octavo check-remote      Check whether your home network allows direct access from anywhere
   octavo qr <address>      Print a QR code that opens Octavo at <address> on your phone
                            (uses --token or OCTAVO_TOKEN), e.g. octavo qr https://octavo.tail1234.ts.net
@@ -82,7 +84,7 @@ async function main() {
   });
 
   const command = positionals[0] ?? 'serve';
-  if (values.help || !['serve', 'mcp', 'qr', 'check-remote', ...NOTE_COMMANDS].includes(command)) {
+  if (values.help || !['serve', 'mcp', 'qr', 'check-remote', 'tui', ...NOTE_COMMANDS].includes(command)) {
     console.log(HELP);
     process.exit(values.help ? 0 : 1);
   }
@@ -122,6 +124,16 @@ async function main() {
     if (token) console.log('  Treat this like a password. Anyone with it can read and edit your notes.');
     else console.log('  No access key set (OCTAVO_TOKEN), so the link has no key.');
     console.log('');
+    return;
+  }
+
+  if (command === 'tui') {
+    const vault = await Vault.open(vaultPath, { dailyFolder: values.daily, watch: false });
+    try {
+      await runTui(vault);
+    } finally {
+      vault.close();
+    }
     return;
   }
 

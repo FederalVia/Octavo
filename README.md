@@ -48,7 +48,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 - **Safety net**: version history for every note, deletes go to a recoverable trash (and links to deleted notes offer to restore them), and you get a conflict warning instead of losing edits.
 - **Claude memory over MCP**: 27 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, orphans…) over stdio or HTTP.
 - **Phone**: open it on your phone on home Wi-Fi, or from anywhere with Access from Anywhere (your PC, your router, a free certificate; no cloud service). Installable as an app, with offline reading.
-- **CLI**: `octavo new / read / append / search / daily / task / tasks / query / set / publish / move / history …`
+- **CLI**: `octavo tui` to browse in a terminal, plus `octavo new / read / append / search / daily / task / tasks / query / set / publish / islands / move / history …`
 - **Runs anywhere**: desktop app (Windows, Mac, Linux), in the browser, or self-hosted with Docker.
 
 See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what's planned.
