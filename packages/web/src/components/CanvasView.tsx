@@ -180,6 +180,9 @@ export function CanvasView({
   const undo = useRef<string[]>([]);
   const redo = useRef<string[]>([]);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
+  // Touch double-tap on empty canvas: browsers don't reliably send dblclick for touch (and iOS
+  // doesn't when the stage takes all gestures), so detect it from taps.
+  const lastTap = useRef<{ t: number; x: number; y: number; added?: number }>({ t: 0, x: 0, y: 0 });
   const dataRef = useRef<Data | null>(null);
   dataRef.current = data;
   const names = useMemo(() => new Set(notes.map((n) => n.name.toLowerCase())), [notes]);
@@ -400,6 +403,17 @@ export function CanvasView({
     const target = e.target as HTMLElement;
     if (target.closest('.cv-toolbar, .cv-node, textarea, .cv-edge-hit')) return;
     setEditing(null);
+    if (e.pointerType === 'touch' && pointers.current.size === 1) {
+      const t = lastTap.current;
+      const now = performance.now();
+      if (now - t.t < 350 && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 30) {
+        lastTap.current = { t: 0, x: 0, y: 0, added: now };
+        pointers.current.delete(e.pointerId);
+        addText(toWorld(e.clientX, e.clientY));
+        return;
+      }
+      lastTap.current = { t: now, x: e.clientX, y: e.clientY, added: t.added };
+    }
     if (e.shiftKey) {
       const p = toWorld(e.clientX, e.clientY);
       setDrag({ kind: 'marquee', sx: p.x, sy: p.y, x: p.x, y: p.y });
@@ -820,6 +834,7 @@ export function CanvasView({
         onDrop={onDrop}
         onDoubleClick={(e) => {
           if ((e.target as HTMLElement).closest('.cv-node, .cv-toolbar, .cv-edge-hit')) return;
+          if (performance.now() - (lastTap.current.added ?? -1e9) < 800) return; // already added by the touch double-tap
           addText(toWorld(e.clientX, e.clientY));
         }}
         style={{ backgroundPosition: `${view.x}px ${view.y}px`, backgroundSize: `${gridPx}px ${gridPx}px` }}
