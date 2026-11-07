@@ -1,5 +1,9 @@
 Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
 
+## New in 0.6.6
+
+- **Drawing editor on phones:** the Done button was pushed off the screen by the drawing tools. On phones it now sits in the middle of the bottom bar.
+
 ## New in 0.6.5
 
 - **Drawings show as pictures while editing too:** `![[sketch.excalidraw]]` used to appear as a link in edit mode; now it is drawn like in reading view. Tap it to open the drawing.

@@ -2537,3 +2537,6 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .brain-menu button { text-align: left; background: none; border: 0; color: var(--text); font: inherit; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
 .brain-menu button:hover { background: var(--bg-hover); }
 .brain-pin-error { position: absolute; left: 50%; top: 70px; transform: translateX(-50%); z-index: 30; background: var(--bg-elevated); border: 1px solid var(--danger); color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+
+/* drawing editor on phones: Done sits in the middle of Excalidraw's bottom bar */
+.drawing-view .dv-bottom-slot { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; }
