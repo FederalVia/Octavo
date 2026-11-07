@@ -1,5 +1,14 @@
 Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
 
+## New in 0.6.3
+
+- **Quick sketch:** type `/sketch` in a note for a small drawing pad (finger, mouse or pen). Insert saves it as a drawing and embeds it.
+- **Backups:** ⚙ Settings → Backup downloads the whole vault as one zip, and can make one automatically every day in a folder next to the vault.
+- **Brain dock:** double-tap a region to show only that one, now reliable on phones; empty regions no longer get a pill.
+- **Zoom where you point:** pinch zooms between your fingers and the mouse wheel zooms towards the cursor.
+- **Terminal:** `octavo tui` to browse notes in a terminal, `octavo backup`, `octavo theme add` for CSS themes, `octavo recent 3d`, and `octavo islands`.
+- **Claude:** the vault overview lists islands, and `list_notes` can show only what changed recently (`since: "3d"`).
+
 ## Download
 
 | Your computer | File |
