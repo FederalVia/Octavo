@@ -36,6 +36,8 @@ interface ANode {
   z: number;
   phase: number;
   firedAt: number;
+  /** Creation time (ms) for the time-lapse; -Infinity when unknown. Unresolved notes take their anchor's. */
+  created: number;
   /** Unresolved only: the note it floats beside. */
   anchor?: string;
   // Per-frame projection.
@@ -555,6 +557,7 @@ function buildLayout(data: GraphData, prev: Layout | null = null, mode: IslandMo
       z: pos.z,
       phase: pos.phase,
       firedAt: old?.firedAt ?? -1e9,
+      created: n.created ?? -Infinity,
       sx: 0,
       sy: 0,
       depth: 0,
@@ -850,6 +853,11 @@ export function AtlasView(props: Props) {
     filter: '',
     rings: [] as { node: ANode; start: number }[],
     pulses: [] as { link: ALink; from: ANode; t: number }[],
+    /** Time-lapse playback: notes created after `cutoff` are hidden. `pos` is 0..1 through [t0, t1]. */
+    lapse: null as null | { t0: number; t1: number; pos: number; playing: boolean; cutoff: number; last: number },
+    lapseLabel: null as HTMLElement | null,
+    lapseSlider: null as HTMLInputElement | null,
+    lapseEnd: () => {},
     W: 0,
     H: 0,
     /** The camera's default height (see Geometry.homeY) last applied; NaN before the first layout. */
@@ -987,7 +995,34 @@ export function AtlasView(props: Props) {
       out[3] = k;
     };
 
-    const visibleNode = (n: ANode) => !s.hidden.has(n.group);
+    const visibleNode = (n: ANode) => !s.hidden.has(n.group) && (!s.lapse || n.created <= s.lapse.cutoff);
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let lapseDay = '';
+    /** Advance the time-lapse; notes that just came into view get a brief brighten. */
+    const stepLapse = (now: number, L: Layout) => {
+      const lp = s.lapse!;
+      if (lp.playing) {
+        const dt = Math.min(0.1, (now - lp.last) / 1000);
+        lp.pos = Math.min(1, lp.pos + dt / (reduceMotion ? LAPSE_SECONDS / 2 : LAPSE_SECONDS));
+      }
+      lp.last = now;
+      // Reduced motion: whole steps (twelve of them) rather than a smooth sweep.
+      const pos = reduceMotion ? Math.ceil(lp.pos * 12) / 12 : lp.pos;
+      const prev = lp.cutoff;
+      lp.cutoff = lp.t0 + (lp.t1 - lp.t0) * pos;
+      if (lp.cutoff > prev && !reduceMotion) {
+        for (const n of L.nodes) if (n.created > prev && n.created <= lp.cutoff && !n.unresolved) n.firedAt = now;
+        s.lastFire = now;
+      }
+      const day = new Date(lp.cutoff).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      if (day !== lapseDay && s.lapseLabel) s.lapseLabel.textContent = lapseDay = day;
+      if (s.lapseSlider && lp.playing) s.lapseSlider.value = String(Math.round(lp.pos * 1000));
+      if (lp.playing && lp.pos >= 1) {
+        lp.playing = false;
+        // Hold the finished brain a moment, then back to the normal view.
+        setTimeout(() => s.lapse && !s.lapse.playing && s.lapse.pos >= 1 && s.lapseEnd(), 1500);
+      }
+    };
     const nodeSize = (n: ANode) => (n.unresolved ? 1.1 : 1.5 + Math.sqrt(n.degree) * 0.75);
 
     const fire = (id: string) => {
@@ -1115,6 +1150,8 @@ export function AtlasView(props: Props) {
         ctx.fillRect(tmp[0], tmp[1], 1.1, 1.1);
       }
       ctx.globalAlpha = 1;
+
+      if (s.lapse) stepLapse(now, L);
 
       // Project nodes.
       for (const n of L.nodes) {
@@ -1485,7 +1522,7 @@ export function AtlasView(props: Props) {
       const rotating = !coarse && n <= 800 && !s.drag && !propsRef.current.selected && now - s.lastInteract > 6000;
       const wobble = quality === 2 && n <= 600;
       const glowing = now - s.lastFire < 1600;
-      if (s.drag || s.camGoal || s.pulses.length || s.rings.length || glowing || rotating || wobble || now - s.lastInteract < 6500) kick();
+      if (s.lapse?.playing || s.drag || s.camGoal || s.pulses.length || s.rings.length || glowing || rotating || wobble || now - s.lastInteract < 6500) kick();
     };
     // The trail fades slowly: refresh it now and then even when idle.
     const trailTimer = setInterval(kick, 15_000);

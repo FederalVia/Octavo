@@ -81,6 +81,8 @@ export interface GraphNode {
   encrypted?: boolean;
   /** Number of links in + out. */
   degree: number;
+  /** Creation time (ms): frontmatter `created`/`date` when it parses as a date, else the file's ctime. Not set on unresolved nodes. */
+  created?: number;
   /** Id of the island this note belongs to (see Island), drawn apart from the six regions. */
   island?: string;
 }

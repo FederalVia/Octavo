@@ -637,6 +637,7 @@ export class Vault extends EventEmitter {
         name: n.name,
         tags: n.tags,
         degree: 0,
+        created: createdAt(n),
         ...(region ? { region } : {}),
         ...(island ? { island: island.id } : {}),
         ...(n.encrypted ? { encrypted: true } : {}),
@@ -1659,4 +1660,14 @@ export class Vault extends EventEmitter {
     const bullet = [`- **${time}** ${lines[0]}`, ...lines.slice(1).map((l) => `  ${l}`)].join('\n');
     return this.append(daily.path, bullet, { separator: 'line' });
   }
+}
+
+/** Note creation time: frontmatter `created` (or `date`) when it parses as a date, else the file's ctime. */
+function createdAt(n: IndexedNote): number {
+  for (const key of ['created', 'date']) {
+    const v = n.frontmatter[key];
+    const t = v instanceof Date ? v.getTime() : typeof v === 'string' && v.trim() ? Date.parse(v.trim()) : typeof v === 'number' && v > 1e11 ? v : NaN;
+    if (Number.isFinite(t)) return t;
+  }
+  return n.ctime;
 }
