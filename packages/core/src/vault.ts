@@ -178,7 +178,7 @@ function encodeMdHref(rel: string): string {
 }
 
 /** Colours offered for new islands: distinct from the six region colours. */
-export const ISLAND_COLORS = ['#f1e7cf', '#ff6ad5', '#6ee7a8', '#ffcf5c', '#8fd3ff', '#d9a07a', '#c4f27a', '#ff8f70'];
+export const ISLAND_COLORS = ['#ff6ad5', '#6ee7a8', '#ffcf5c', '#8fd3ff', '#ff8f70', '#c4f27a', '#d9a07a', '#f1e7cf'];
 
 function slug(s: string): string {
   return (

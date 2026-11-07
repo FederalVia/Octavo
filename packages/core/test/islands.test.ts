@@ -26,7 +26,7 @@ test('a folder becomes an island: graph nodes, regionOf, properties, persistence
     assert.equal(vault.graph().nodes.find((n) => n.id === 'Theology/Grace.md')?.island, undefined);
 
     const saved = await vault.setIslands([{ folder: 'Theology' }]);
-    assert.deepEqual(saved, [{ id: 'theology', name: 'Theology', folder: 'Theology', color: '#f1e7cf' }]);
+    assert.deepEqual(saved, [{ id: 'theology', name: 'Theology', folder: 'Theology', color: '#ff6ad5' }]);
 
     const g = vault.graph();
     const island = (id: string) => g.nodes.find((n) => n.id === id)?.island;
@@ -66,7 +66,7 @@ test('island list is validated: names, ids, colours, duplicates, bad folders', a
       saved.map((i) => [i.id, i.name, i.folder, i.color]),
       [
         ['faith-reason', 'Faith & Reason', 'Theology', '#abcdef'],
-        ['faith-reason-2', 'Faith & Reason', 'People', '#ff6ad5'],
+        ['faith-reason-2', 'Faith & Reason', 'People', '#6ee7a8'],
       ],
     );
     // The deepest matching folder wins.

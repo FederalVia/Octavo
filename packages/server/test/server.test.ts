@@ -248,7 +248,7 @@ describe('HTTP server', () => {
       r = await call('manage_islands', { action: 'add', folder: 'Nowhere' });
       assert.match(r.text, /No folder called “Nowhere”/);
       r = await call('manage_islands', { action: 'add', folder: 'Batch', name: 'Side project' });
-      assert.match(r.text, /^Added\. Islands:\n- Side project: folder Batch\/ \(\d+ notes\), colour #f1e7cf/);
+      assert.match(r.text, /^Added\. Islands:\n- Side project: folder Batch\/ \(\d+ notes\), colour #ff6ad5/);
       r = await call('get_note_region', { path: 'Batch/One' });
       assert.match(r.text, /is on the “Side project” island \(folder Batch\/\)/);
       const islandGraph = (await (await api('/api/graph')).json()) as { nodes: { id: string; island?: string }[]; islands: { id: string }[] };
