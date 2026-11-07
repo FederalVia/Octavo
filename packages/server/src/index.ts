@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { scheduleAutoBackups } from './backup.js';
 import { watchActivity } from './activity.js';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -91,6 +92,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
   }
   // Reads by Claude Desktop's separate Octavo process show up in this app's atlas trail.
   const stopActivity = watchActivity(vault.root, (p) => vault.noteAccessed(p));
+  const stopBackups = scheduleAutoBackups(vault);
   const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
   return {
     url: `http://${displayHost}:${port}`,
@@ -100,6 +102,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
     close: () =>
       new Promise<void>((resolve) => {
         stopActivity();
+        stopBackups();
         vault.close();
         server.closeAllConnections?.();
         server.close(() => resolve());
