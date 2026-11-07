@@ -1,3 +1,4 @@
+import { IslandsSection } from './IslandsSection';
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
 import { api, saveAllForOffline } from '../api';
@@ -580,6 +581,11 @@ export function SettingsDialog(p: Props) {
               <option value="network">Network</option>
             </select>
           </div>
+        </section>
+
+        <section>
+          <h4>Islands</h4>
+          <IslandsSection />
         </section>
 
         <section>

@@ -2414,3 +2414,10 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
   .brain .atlas-find input { width: 0; }
   .brain .atlas-find:focus-within input, .brain .atlas-find.active input { width: 140px; }
 }
+
+/* settings: islands */
+.island-row { align-items: center; gap: 10px; }
+.island-color { width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: none; cursor: pointer; flex: none; }
+.island-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.island-name { font: inherit; font-weight: 600; padding: 4px 8px; max-width: 260px; }
+.island-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
