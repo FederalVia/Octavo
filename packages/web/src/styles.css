@@ -2421,3 +2421,79 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .island-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .island-name { font: inherit; font-weight: 600; padding: 4px 8px; max-width: 260px; }
 .island-add { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+/* ---------------------------------------------------------------- iPhone pass */
+/* Accent swatches sit in a row (the generic `.setting-row > div` rule stacked them). */
+.setting-row > .accent-swatches { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+/* Safe areas: when the tab bar is shown it is the top of the panel, so it (not the header) clears the notch. */
+.tab-bar { padding-top: calc(6px + env(safe-area-inset-top)); }
+.tab-bar + .panel-header { padding-top: 0; height: 48px; }
+.drawer { padding-bottom: env(safe-area-inset-bottom); }
+.atlas-tools { top: calc(14px + env(safe-area-inset-top)); }
+.cv-toolbar { left: calc(10px + env(safe-area-inset-left)); right: calc(10px + env(safe-area-inset-right)); }
+.settings-head { position: sticky; top: -18px; z-index: 2; margin: -18px -18px 0; padding: 12px 18px 8px; background: var(--bg-elevated); }
+@media (max-width: 560px) {
+  /* Dialogs sit near the top so the on-screen keyboard doesn't cover them; settings use the visible height. */
+  .overlay { padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); }
+  .settings-dialog { max-height: calc(100vh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+  .switcher-list { max-height: 42vh; }
+}
+@media (max-width: 800px) {
+  /* Wide tables scroll sideways instead of squeezing every column to one word per line. */
+  .markdown .table-wrap > table { width: max-content; min-width: 100%; }
+  .markdown .table-wrap th, .markdown .table-wrap td { max-width: 15em; }
+  .markdown pre, .markdown code { overflow-wrap: normal; }
+  .markdown a, .markdown p { overflow-wrap: anywhere; }
+}
+/* Finger-sized targets (≥40px) on touch screens. */
+@media (pointer: coarse) {
+  .panel-header .icon-btn, .drawer .tabs .icon-btn { min-width: 40px; height: 40px; }
+  .panel-header { gap: 0; }
+  .note-tab { padding: 2px 2px 3px 10px; }
+  .note-tab-close { min-width: 32px; min-height: 32px; font-size: 16px; }
+  .note-tab-new { min-width: 40px; font-size: 16px; }
+  .drawer .tabs .tab { min-height: 40px; }
+  .tb-btn, .toolbar .tb-btn { width: 38px; height: 38px; font-size: 17px; }
+  .seg-btn { min-height: 34px; padding: 6px 12px; }
+  .calendar .cal-day, .calendar button.cal-wk { min-height: 38px; }
+  .calendar .icon-btn { min-width: 40px; height: 40px; }
+  .properties-edit { padding: 6px 12px; font-size: 13px; }
+  .accent-swatch { width: 32px; height: 32px; }
+  .cv-toolbar button { min-height: 38px; min-width: 38px; }
+  .cv-toolbar .cv-swatch { width: 28px; height: 28px; min-width: 0; }
+  .modal .icon-btn, .settings-dialog .icon-btn { min-width: 40px; height: 40px; }
+  .drawer input[type='checkbox'], .settings-dialog input[type='checkbox']:not(.switch) { width: 20px; height: 20px; }
+}
+
+/* view polish */
+/* "Show all" floats just above the dock's pill row instead of joining it, so its appearing or going never
+   shifts the pills (a double-tap's second tap lands on the pill it started on). */
+.atlas-showall {
+  position: absolute; left: 0; bottom: calc(100% + 8px); height: 30px !important; padding: 0 12px;
+  font-size: 12.5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* quick sketch */
+.qs-backdrop { position: fixed; inset: 0; z-index: 60; }
+.quick-sketch { position: fixed; z-index: 61; touch-action: manipulation; width: min(560px, calc(100vw - 24px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35); outline: none; font-family: var(--font-ui); font-size: 13px; }
+.quick-sketch.sheet { left: 0; right: 0; bottom: 0; width: auto; border-radius: 14px 14px 0 0; border-bottom: 0; padding: 10px 12px calc(12px + env(safe-area-inset-bottom)); animation: qs-up 0.18s ease-out; }
+@keyframes qs-up { from { transform: translateY(40px); opacity: 0; } }
+.qs-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.qs-group { display: flex; align-items: center; gap: 2px; }
+.qs-swatch, .qs-tool { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 4px; border: 1px solid transparent; border-radius: 7px; background: none; color: var(--text-muted); cursor: pointer; }
+.qs-swatch:hover, .qs-tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.qs-swatch.on, .qs-tool.on { border-color: var(--accent); color: var(--text); background: var(--bg-hover); }
+.qs-tool:disabled { opacity: 0.4; cursor: default; }
+.qs-tool.qs-text { padding: 0 8px; font-size: 12px; }
+.qs-swatch span { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1px var(--border); }
+.qs-dot { display: block; border-radius: 50%; background: currentColor; }
+.qs-pad { position: relative; height: 230px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); overflow: hidden; }
+.quick-sketch.sheet .qs-pad { height: min(300px, 45vh); }
+.qs-pad canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.qs-pad canvas.erasing { cursor: cell; }
+.qs-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-faint); pointer-events: none; }
+.qs-actions { display: flex; align-items: center; gap: 8px; }
+.qs-actions .btn { min-height: 32px; }
+.qs-note, .qs-error { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qs-error { color: var(--danger); white-space: normal; }
+@media (pointer: coarse) { .qs-swatch, .qs-tool { min-width: 36px; height: 36px; } }

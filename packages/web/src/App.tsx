@@ -1937,6 +1937,7 @@ export function App() {
                 return r.path;
               }}
               onSlashCommand={() => setPalette('templates')}
+              allowSketch={!detail?.encrypted}
             />
           </div>
           {mode === 'preview' && detail && (
