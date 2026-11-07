@@ -7,6 +7,7 @@ import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
 import type { EditorState, Range } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view';
+import { renderDrawingEmbed } from './drawingEmbed';
 
 export interface LivePreviewOptions {
   onOpenLink: (target: string, heading?: string) => void;
@@ -83,6 +84,41 @@ class ImageWidget extends WidgetType {
     if (this.width) img.width = this.width;
     img.loading = 'lazy';
     return img;
+  }
+}
+
+/** `![[sketch.excalidraw]]` drawn as a picture, as in the reading view; tapping it opens the drawing. */
+class DrawingWidget extends WidgetType {
+  constructor(
+    readonly target: string,
+    readonly open: (target: string) => void,
+  ) {
+    super();
+  }
+  eq(o: DrawingWidget) {
+    return o.target === this.target;
+  }
+  toDOM(view: EditorView) {
+    const el = document.createElement('div');
+    el.className = 'embed-drawing cm-lp-drawing';
+    el.dataset.target = this.target;
+    el.setAttribute('role', 'button');
+    el.title = 'Open drawing';
+    el.innerHTML = '<div class="embed-loading"></div>';
+    (el.firstChild as HTMLElement).textContent = `✎ ${this.target.split('/').pop()!.replace(/\.excalidraw$/i, '')}`;
+    el.addEventListener('mousedown', (e) => e.preventDefault());
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.open(this.target);
+    });
+    void renderDrawingEmbed(el).then(() => view.requestMeasure());
+    return el;
+  }
+  get estimatedHeight() {
+    return 220;
+  }
+  ignoreEvent() {
+    return true;
   }
 }
 
@@ -210,6 +246,10 @@ function build(view: EditorView, opts: LivePreviewOptions): DecorationSet {
           const pipe = inner.indexOf('|');
           const target = pipe === -1 ? inner : inner.slice(0, pipe);
           const label = pipe === -1 ? '' : inner.slice(pipe + 1);
+          if (m[1] && /\.excalidraw$/i.test(target.trim())) {
+            decos.push(Decoration.replace({ widget: new DrawingWidget(target.trim(), (t) => opts.onOpenLink(t)) }).range(start, end));
+            continue;
+          }
           if (m[1] && IMAGE.test(target.trim())) {
             const width = /^\d+$/.test(label) ? Number(label) : undefined;
             decos.push(Decoration.replace({ widget: new ImageWidget(opts.fileUrl(target.trim()), target, width) }).range(start, end));
@@ -281,6 +321,7 @@ const lpTheme = {
   '.cm-lp-codeline': { backgroundColor: 'var(--code-bg)', fontFamily: 'var(--font-mono)' },
   '.cm-lp-done': { color: 'var(--text-faint)', textDecoration: 'line-through' },
   '.cm-lp-task': { margin: '0 0.35em 0 0', verticalAlign: 'middle', cursor: 'pointer' },
+  '.cm-lp-drawing': { display: 'block', margin: '6px 0', cursor: 'pointer' },
   '.cm-lp-image': { maxWidth: '100%', display: 'block', margin: '6px 0', borderRadius: '6px' },
   '.cm-lp-highlight': { backgroundColor: 'rgba(250, 204, 21, 0.28)', borderRadius: '3px', padding: '0 2px' },
   '.cm-lp-highlight.hl-red': { backgroundColor: 'rgba(248, 113, 113, 0.28)' },

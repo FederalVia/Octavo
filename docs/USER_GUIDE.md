@@ -382,7 +382,7 @@ Sketch diagrams, mind maps and doodles with the built-in [Excalidraw](https://ex
 - Draw with the toolbar at the top (or its number keys): shapes, arrows, lines, free-hand pen, text and images. Everything keeps its hand-drawn look.
 - It saves as you go. **Done** (or ← Back to notes in the ☰ menu) takes you back.
 - **Quick sketch:** type `/sketch` while editing and a small drawing pad opens by the cursor (a bottom sheet on a phone). Draw with a finger, mouse or pen in six colours and three widths, with an eraser and undo. **Insert** saves it to `attachments/` as a drawing and embeds it, so you can open it later in the full editor. Not offered in locked notes, since the drawing file isn't encrypted.
-- `![[Name.excalidraw]]` in any note shows the drawing as a picture, matching your light or dark theme. Click it to edit. `[[Name.excalidraw]]` is a plain link to it.
+- `![[Name.excalidraw]]` in any note shows the drawing as a picture (in reading view and while editing), matching your light or dark theme. Click it to edit. `[[Name.excalidraw]]` is a plain link to it.
 - **Open drawing…** finds existing drawings, and they appear in the file tree with ✎.
 - The ☰ menu can export a drawing as PNG or SVG.
 
