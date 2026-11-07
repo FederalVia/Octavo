@@ -2525,5 +2525,7 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .atlas-lapse-date { flex: none; min-width: 92px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .atlas-lapse input[type='range'] { flex: 1; min-width: 0; accent-color: var(--accent); }
 @media (max-width: 560px) {
+  /* Clear of the floating app toolbar, between it and the dock; the tools column stays free on the right. */
+  .atlas-lapse { top: calc(66px + env(safe-area-inset-top)); }
   .atlas-lapse-date { min-width: 0; font-size: 12px; }
 }
