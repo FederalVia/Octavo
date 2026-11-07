@@ -2,6 +2,7 @@
 
 - [The screen](#the-screen)
 - [Atlas view](#atlas-view)
+- [Islands](#islands)
 - [Network view](#network-view)
 - [Brain regions](#brain-regions)
 - [Reading and editing notes](#reading-and-editing-notes)
@@ -61,6 +62,18 @@ A 3D brain. Notes are grouped into [regions](#brain-regions).
 
 - **Region dock** (bottom): one pill per region (Projects, Knowledge, People, Sources, Journal, Hubs) with its note count. Tap a pill to hide or show that region; double-tap to show only that one. **Find** highlights notes whose names match; press Enter to fly to the first.
 - **View menu** (the eye button, top right): note names on or off, and **Claude's trail**, a fading line through the notes Claude read or changed in the last 30 minutes, so you can see the shape of a whole session after the glow has gone. The trail survives a reload. It also shows reads by Claude Desktop, which runs its own copy of Octavo. **Bridges between regions** dims the links inside each region and brightens the ones between regions. Links from notes tagged `#surprise` (or with `surprise: true` in their properties) are always drawn as bright dashed lines.
+
+## Islands
+
+An island keeps a separate subject apart. If your vault is mostly about one thing but has a folder about something unrelated (say, a `Theology` folder among software notes), make that folder an island: its notes get their own area and colour, set apart from the six regions, instead of being mixed into Knowledge.
+
+- **Make one:** right-click the folder in the file tree → **Keep apart as an island**, or ⚙ Settings → **Islands** → choose a folder → **Add**. Subfolders come along.
+- **In the brain** the island floats as its own small cluster beside the brain. **In the network view** it gets its own area beside the main map, with its name above it.
+- Each island has a pill in the dock with its note count. Tap it to hide or show the island, like a region.
+- Links between an island and the rest are still there, drawn faint.
+- A single note somewhere else can join an island with `region: Theology` (the island's name) in its properties.
+- Rename an island or change its colour in Settings. **Remove** puts its notes back in the regions; nothing is moved or changed in your files.
+- Claude can list, add and remove islands too (`manage_islands`). Islands are saved in the vault (`.octavo/islands.json`), so every device sees them.
 
 ## Network view
 
