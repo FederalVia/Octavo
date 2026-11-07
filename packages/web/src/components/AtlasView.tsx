@@ -724,6 +724,8 @@ function fitZoom(w: number, h: number, L: Layout | null): number {
 
 /** How long a note that isn't laid out yet stays waiting to light up. */
 const PENDING_FIRE_MS = 15_000;
+/** Length of a time-lapse playback. */
+const LAPSE_SECONDS = 12;
 
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif';
 
@@ -997,7 +999,6 @@ export function AtlasView(props: Props) {
 
     const visibleNode = (n: ANode) => !s.hidden.has(n.group) && (!s.lapse || n.created <= s.lapse.cutoff);
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let lapseDay = '';
     /** Advance the time-lapse; notes that just came into view get a brief brighten. */
     const stepLapse = (now: number, L: Layout) => {
       const lp = s.lapse!;
@@ -1015,7 +1016,7 @@ export function AtlasView(props: Props) {
         s.lastFire = now;
       }
       const day = new Date(lp.cutoff).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-      if (day !== lapseDay && s.lapseLabel) s.lapseLabel.textContent = lapseDay = day;
+      if (s.lapseLabel && s.lapseLabel.textContent !== day) s.lapseLabel.textContent = day;
       if (s.lapseSlider && lp.playing) s.lapseSlider.value = String(Math.round(lp.pos * 1000));
       if (lp.playing && lp.pos >= 1) {
         lp.playing = false;
@@ -1758,6 +1759,64 @@ export function AtlasView(props: Props) {
     if (hit) props.onSelect(hit.id);
   };
 
+  // ------------------------------------------------------------ time-lapse
+  // 0 = off, 1 = playing, 2 = paused (scrubbing).
+  const [lapse, setLapse] = useState<0 | 1 | 2>(0);
+  const stopLapse = () => {
+    st.current.lapse = null;
+    setLapse(0);
+    st.current.kick();
+  };
+  st.current.lapseEnd = stopLapse;
+  const playLapse = () => {
+    const s = st.current;
+    const L = s.layout;
+    if (!L) return false;
+    if (s.lapse) {
+      // Resume (from the start again if it had finished).
+      if (s.lapse.pos >= 1) s.lapse.pos = 0;
+      s.lapse.playing = true;
+      s.lapse.last = performance.now();
+    } else {
+      let t0 = Infinity;
+      let t1 = -Infinity;
+      for (const n of L.nodes) {
+        if (n.unresolved || !Number.isFinite(n.created)) continue;
+        if (n.created < t0) t0 = n.created;
+        if (n.created > t1) t1 = n.created;
+      }
+      if (t0 > t1) return false;
+      // Start a little before the first note so the brain begins empty.
+      const lead = Math.max(864e5, (t1 - t0) * 0.02);
+      s.lapse = { t0: t0 - lead, t1, pos: 0, playing: true, cutoff: t0 - lead, last: performance.now() };
+    }
+    setLapse(1);
+    s.kick();
+    return true;
+  };
+  const pauseLapse = () => {
+    if (st.current.lapse) st.current.lapse.playing = false;
+    setLapse(2);
+  };
+  useEffect(() => {
+    // "Play time-lapse" from the command palette (the atlas may have only just mounted: wait for its layout).
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onPlay = () => {
+      let tries = 0;
+      const attempt = () => {
+        if (!playLapseRef.current() && ++tries < 40) timer = setTimeout(attempt, 100);
+      };
+      attempt();
+    };
+    window.addEventListener('octavo:timelapse', onPlay);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('octavo:timelapse', onPlay);
+    };
+  }, []);
+  const playLapseRef = useRef(playLapse);
+  playLapseRef.current = playLapse;
+
   st.current.dismissTip = () => dismissTipRef.current();
   const freeRight = `calc(${props.rightInset * 100}% + 12px)`;
   const toolsStyle = { right: freeRight };
@@ -1817,6 +1876,23 @@ export function AtlasView(props: Props) {
             </div>
           )}
         </div>
+        <button
+          className={`atlas-tool${lapse ? ' on' : ''}`}
+          aria-label={lapse ? 'Stop the time-lapse' : 'Play time-lapse: watch the brain grow'}
+          title={lapse ? 'Stop time-lapse' : 'Time-lapse: watch the brain grow'}
+          onClick={() => (lapse ? stopLapse() : playLapse())}
+        >
+          {lapse ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <rect x="5" y="5" width="14" height="14" rx="2" />
+            </svg>
+          ) : (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+          )}
+        </button>
         <button className="atlas-tool" aria-label="Zoom in" onClick={() => st.current.zoomBy(1.4)}>
           ＋
         </button>
@@ -1829,6 +1905,46 @@ export function AtlasView(props: Props) {
           </svg>
         </button>
       </div>
+
+      {lapse !== 0 && (
+        <div className="atlas-lapse" style={centerStyle} role="group" aria-label="Time-lapse">
+          <button
+            className="atlas-lapse-play"
+            aria-label={lapse === 1 ? 'Pause' : 'Play'}
+            onClick={() => (lapse === 1 ? pauseLapse() : playLapse())}
+          >
+            {lapse === 1 ? (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <rect x="5" y="4" width="5" height="16" rx="1" />
+                <rect x="14" y="4" width="5" height="16" rx="1" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M7 4l13 8-13 8z" />
+              </svg>
+            )}
+          </button>
+          <span className="atlas-lapse-date" aria-live="off" ref={(el) => void (st.current.lapseLabel = el)} />
+          <input
+            type="range"
+            min={0}
+            max={1000}
+            defaultValue={0}
+            aria-label="Time-lapse position"
+            ref={(el) => void (st.current.lapseSlider = el)}
+            onChange={(e) => {
+              const lp = st.current.lapse;
+              if (!lp) return;
+              lp.pos = Number(e.target.value) / 1000;
+              if (lp.playing) pauseLapse();
+              st.current.kick();
+            }}
+          />
+          <button className="atlas-lapse-close" aria-label="Stop the time-lapse" onClick={stopLapse}>
+            ×
+          </button>
+        </div>
+      )}
 
       {layout && (
         <div className="atlas-dock" style={dockStyle}>

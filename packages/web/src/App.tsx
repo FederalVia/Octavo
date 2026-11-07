@@ -1476,6 +1476,7 @@ export function App() {
     { id: 'insights', label: 'Find orphans and dead ends', keywords: 'insights unlinked', run: () => openDrawer('insights') },
     { id: 'files', label: 'Show file explorer', hint: `${mod}+\\`, run: () => openDrawer('files') },
     { id: 'view', label: viewMode === 'atlas' ? 'Switch to network view' : 'Switch to atlas view', keywords: 'graph brain', run: () => setViewMode((v) => (v === 'atlas' ? 'network' : 'atlas')) },
+    { id: 'timelapse', label: 'Play time-lapse', keywords: 'atlas brain grow history created timeline', run: () => { setViewMode('atlas'); setTimeout(() => window.dispatchEvent(new Event('octavo:timelapse')), 50); } },
     { id: 'live-preview', label: livePreviewOn ? 'Show raw Markdown while editing (source mode)' : 'Show formatting while editing (live preview)', keywords: 'live preview source mode wysiwyg', run: () => setLivePreviewOn((v) => !v) },
     { id: 'vim', label: vimMode ? 'Turn off Vim keybindings' : 'Turn on Vim keybindings', run: () => setVimMode((v) => !v) },
     { id: 'lines', label: lineNumbers ? 'Hide line numbers' : 'Show line numbers', run: () => setLineNumbers((v: boolean) => !v) },
