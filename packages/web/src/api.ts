@@ -78,6 +78,15 @@ export interface GraphNode {
 }
 
 /** A part of the vault kept apart from the six regions, e.g. a "Theology" folder. */
+/** Daily automatic backups into a folder next to the vault. */
+export interface AutoBackup {
+  on: boolean;
+  keep: number;
+  folder: string;
+  last: { name: string; at: string } | null;
+  error?: string;
+}
+
 export interface Island {
   id: string;
   name: string;
@@ -233,6 +242,9 @@ export const api = {
   graphText: () => requestText('GET', 'api/graph'),
   islands: () => request<{ islands: Island[] }>('GET', 'api/islands'),
   setIslands: (islands: Partial<Island>[]) => request<{ islands: Island[] }>('PUT', 'api/islands', { islands }),
+  autoBackup: () => request<AutoBackup>('GET', 'api/autobackup'),
+  setAutoBackup: (change: { on?: boolean; keep?: number }) => request<AutoBackup>('PUT', 'api/autobackup', change),
+  backupNow: () => request<AutoBackup>('POST', 'api/autobackup/now'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
   snippets: () => request<{ folder: string; snippets: { name: string; css: string }[] }>('GET', 'api/snippets'),
   periodic: (period: 'day' | 'week' | 'month', date?: string) =>

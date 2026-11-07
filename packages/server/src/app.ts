@@ -1,4 +1,4 @@
-import { BackupTooLargeError, backupName, buildBackup } from './backup.js';
+import { BackupTooLargeError, autoBackupStatus, backupName, buildBackup, getAutoBackupConfig, runAutoBackup } from './backup.js';
 import { clipNote, readPage, WebReadError } from './webread.js';
 import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
@@ -369,6 +369,36 @@ export function createApp(opts: AppOptions): express.Express {
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(backupName(vault))}`);
       res.setHeader('X-Octavo-Files', String(b.files));
       res.send(b.zip);
+    } catch (err) {
+      if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
+      else next(err);
+    }
+  });
+
+  // Automatic daily backups into "<vault> backups" next to the vault (see backup.ts).
+  api.get('/autobackup', async (_req, res, next) => {
+    try {
+      res.json(await autoBackupStatus(vault));
+    } catch (err) {
+      next(err);
+    }
+  });
+  api.put('/autobackup', async (req, res, next) => {
+    try {
+      const cur = await getAutoBackupConfig(vault);
+      const on = typeof req.body?.on === 'boolean' ? req.body.on : cur.on;
+      const keep = Number.isInteger(req.body?.keep) && req.body.keep >= 1 && req.body.keep <= 365 ? req.body.keep : cur.keep;
+      await vault.setConfig('autobackup', { on, keep });
+      if (on && !cur.on) await runAutoBackup(vault).catch(() => {});
+      res.json(await autoBackupStatus(vault));
+    } catch (err) {
+      next(err);
+    }
+  });
+  api.post('/autobackup/now', async (_req, res, next) => {
+    try {
+      await runAutoBackup(vault, { force: true });
+      res.json(await autoBackupStatus(vault));
     } catch (err) {
       if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
       else next(err);

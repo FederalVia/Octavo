@@ -299,6 +299,8 @@ Before a note changes, Octavo keeps a copy of the previous version (at most ever
 
 **⚙ Settings → Backup → Download .zip** saves the whole vault as one zip file: every note, attachment, canvas, drawing and setting (islands, bookmarks, templates). Version history is left out unless you turn on **Include version history**. To restore, unzip it anywhere and open that folder as your vault. From a terminal, `octavo backup` does the same (`octavo backup D:\Backups\notes.zip --history`). The backup must be saved outside the vault folder.
 
+**Back up automatically every day** (same section) makes a zip once a day while Octavo is running, in a folder next to the vault called `<vault name> backups`, and keeps the newest 7 (or 3, 14 or 30). **Back up now** makes one straight away. The folder can't be changed from the app, so a phone can switch this on but never choose where files are written on your PC.
+
 ## Locked (encrypted) notes
 
 You can lock any note with a password: diary entries, health records, anything private. This is **optional and off by default**. Turn it on in **⚙ Settings → Lock notes with a password**, and a 🔐 button appears on each note. The setting is stored in the vault, so it applies on every device. Notes that are already locked still open, with a password prompt, even if the setting is off.

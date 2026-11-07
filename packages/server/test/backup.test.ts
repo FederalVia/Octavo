@@ -58,3 +58,31 @@ test('backup: whole vault, history only when asked, no symlinks', async () => {
     vault.close();
   }
 });
+
+test('automatic backups: off by default, daily once switched on, keeps the newest N', async () => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-auto-'));
+  const dir = path.join(parent, 'Notes');
+  await fs.mkdir(dir);
+  await fs.writeFile(path.join(dir, 'A.md'), '# A\n');
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    const { runAutoBackup, autoBackupStatus, autoBackupFolder } = await import('../src/backup.js');
+    assert.equal(autoBackupFolder(vault), path.join(parent, 'Notes backups'));
+    assert.equal(await runAutoBackup(vault), null, 'off by default');
+    await vault.setConfig('autobackup', { on: true, keep: 2 });
+    const first = await runAutoBackup(vault, { now: new Date(2026, 10, 1) });
+    assert.ok(first && first.endsWith('Notes backup 2026-11-01.zip'));
+    assert.equal(await runAutoBackup(vault, { now: new Date(2026, 10, 1, 12) }), null, 'not twice a day');
+    await runAutoBackup(vault, { force: true, now: new Date(2026, 10, 2) });
+    await runAutoBackup(vault, { force: true, now: new Date(2026, 10, 3) });
+    const files = (await fs.readdir(path.join(parent, 'Notes backups'))).sort();
+    assert.equal(files.length, 2, `kept two: ${files.join(', ')}`);
+    assert.ok(!files.some((f) => f.endsWith('.part')));
+    const status = await autoBackupStatus(vault);
+    assert.equal(status.on, true);
+    assert.equal(status.keep, 2);
+    assert.ok(status.last);
+  } finally {
+    vault.close();
+  }
+});

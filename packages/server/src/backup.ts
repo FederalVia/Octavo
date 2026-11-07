@@ -59,3 +59,85 @@ export function backupName(vault: Vault, now = new Date()): string {
   const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   return `${path.basename(vault.root)} backup ${day}.zip`;
 }
+
+/**
+ * Automatic backups: when switched on (saved in the vault's `autobackup` config), a zip a day goes to a
+ * "<vault> backups" folder next to the vault, keeping the newest few. The folder is fixed on purpose, so a
+ * phone or remote client can switch this on but can never choose where on the PC files get written.
+ */
+export interface AutoBackupConfig {
+  on: boolean;
+  keep: number;
+}
+export interface AutoBackupStatus extends AutoBackupConfig {
+  folder: string;
+  last: { name: string; at: string } | null;
+  error?: string;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+const BACKUP_FILE = / backup \d{4}-\d{2}-\d{2}( \d+)?\.zip$/;
+
+export function autoBackupFolder(vault: Vault): string {
+  return path.join(path.dirname(path.resolve(vault.root)), `${path.basename(vault.root)} backups`);
+}
+
+export async function getAutoBackupConfig(vault: Vault): Promise<AutoBackupConfig> {
+  const c = (await vault.getConfig<Partial<AutoBackupConfig> | null>('autobackup', null)) ?? {};
+  const keep = Number(c.keep);
+  return { on: c.on === true, keep: Number.isInteger(keep) && keep >= 1 && keep <= 365 ? keep : 7 };
+}
+
+async function listBackups(folder: string): Promise<{ name: string; at: number }[]> {
+  const names = (await fs.readdir(folder).catch(() => [] as string[])).filter((n) => BACKUP_FILE.test(n));
+  const out = await Promise.all(names.map(async (name) => ({ name, at: (await fs.stat(path.join(folder, name)).catch(() => null))?.mtimeMs ?? 0 })));
+  return out.sort((a, b) => b.at - a.at);
+}
+
+let lastError = '';
+
+export async function autoBackupStatus(vault: Vault): Promise<AutoBackupStatus> {
+  const cfg = await getAutoBackupConfig(vault);
+  const folder = autoBackupFolder(vault);
+  const [newest] = await listBackups(folder);
+  return { ...cfg, folder, last: newest ? { name: newest.name, at: new Date(newest.at).toISOString() } : null, ...(lastError ? { error: lastError } : {}) };
+}
+
+/** Make today's backup if one is due (or `force`), then remove the oldest beyond `keep`. Returns the file written, if any. */
+export async function runAutoBackup(vault: Vault, opts: { force?: boolean; now?: Date } = {}): Promise<string | null> {
+  const cfg = await getAutoBackupConfig(vault);
+  if (!cfg.on && !opts.force) return null;
+  const folder = autoBackupFolder(vault);
+  const now = opts.now ?? new Date();
+  const existing = await listBackups(folder);
+  if (!opts.force && existing[0] && now.getTime() - existing[0].at < DAY - 60 * 60 * 1000) return null;
+  try {
+    const b = await buildBackup(vault);
+    await fs.mkdir(folder, { recursive: true });
+    const base = backupName(vault, now).replace(/\.zip$/, '');
+    let file = path.join(folder, `${base}.zip`);
+    for (let i = 2; existing.some((e) => path.join(folder, e.name) === file); i++) file = path.join(folder, `${base} ${i}.zip`);
+    await fs.writeFile(`${file}.part`, b.zip);
+    await fs.rename(`${file}.part`, file);
+    lastError = '';
+    const all = await listBackups(folder);
+    for (const old of all.slice(cfg.keep)) await fs.rm(path.join(folder, old.name), { force: true });
+    return file;
+  } catch (err) {
+    lastError = (err as Error).message;
+    throw err;
+  }
+}
+
+/** Check once a minute after start, then hourly; a backup is made at most once a day. */
+export function scheduleAutoBackups(vault: Vault): () => void {
+  const tick = () => void runAutoBackup(vault).catch(() => {});
+  const first = setTimeout(tick, 60_000);
+  const every = setInterval(tick, 60 * 60 * 1000);
+  first.unref?.();
+  every.unref?.();
+  return () => {
+    clearTimeout(first);
+    clearInterval(every);
+  };
+}

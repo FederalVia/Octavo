@@ -1,7 +1,7 @@
 import { IslandsSection } from './IslandsSection';
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
-import { api, getToken, saveAllForOffline } from '../api';
+import { api, getToken, saveAllForOffline, type AutoBackup } from '../api';
 import { ACCENTS, applyAppearance, applySnippets, getAccent, getTheme, type ThemeChoice } from '../appearance';
 
 /** Download the whole vault as one zip file. */
@@ -9,6 +9,21 @@ function BackupSection() {
   const [history, setHistory] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [auto, setAuto] = useState<AutoBackup | null>(null);
+  useEffect(() => {
+    api.autoBackup().then(setAuto).catch(() => {});
+  }, []);
+  const changeAuto = async (run: () => Promise<AutoBackup>) => {
+    setBusy(true);
+    setStatus('');
+    try {
+      setAuto(await run());
+    } catch (err) {
+      setStatus((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   const download = async () => {
     setBusy(true);
     setStatus('');
@@ -45,6 +60,39 @@ function BackupSection() {
         </button>
       </div>
       <Toggle label="Include version history" help="Older versions of every note. Can make the file much bigger." checked={history} onChange={setHistory} />
+      {auto && (
+        <>
+          <Toggle
+            label="Back up automatically every day"
+            help={`A zip a day in ${auto.folder}, keeping the newest ${auto.keep}.`}
+            checked={auto.on}
+            onChange={(on) => void changeAuto(() => api.setAutoBackup({ on }))}
+          />
+          {auto.on && (
+            <div className="setting-row">
+              <div>
+                <b>Keep</b>
+                <span className="muted small">
+                  {auto.last ? `Last backup: ${new Date(auto.last.at).toLocaleString()}` : 'No automatic backup yet.'}
+                  {auto.error ? ` Last attempt failed: ${auto.error}` : ''}
+                </span>
+              </div>
+              <div className="island-add">
+                <select className="input select" value={auto.keep} disabled={busy} onChange={(e) => void changeAuto(() => api.setAutoBackup({ keep: Number(e.target.value) }))}>
+                  {[3, 7, 14, 30].concat([3, 7, 14, 30].includes(auto.keep) ? [] : [auto.keep]).map((n) => (
+                    <option key={n} value={n}>
+                      {n} days
+                    </option>
+                  ))}
+                </select>
+                <button className="btn" disabled={busy} onClick={() => void changeAuto(api.backupNow)}>
+                  Back up now
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
       {status && <p className="muted small settings-note">{status}</p>}
     </section>
   );
