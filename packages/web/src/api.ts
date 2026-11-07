@@ -73,11 +73,24 @@ export interface GraphNode {
   /** Tagged #surprise or `surprise: true`: its links are highlighted in the atlas. */
   surprise?: boolean;
   degree: number;
+  /** Id of the island the note belongs to (see Island): drawn apart from the six regions, in the island's colour. */
+  island?: string;
+}
+
+/** A part of the vault kept apart from the six regions, e.g. a "Theology" folder. */
+export interface Island {
+  id: string;
+  name: string;
+  folder: string;
+  /** "#rrggbb" */
+  color: string;
 }
 
 export interface GraphData {
   nodes: GraphNode[];
   links: { source: string; target: string }[];
+  /** Islands defined for the vault (absent or empty when there are none). */
+  islands?: Island[];
 }
 
 export interface TagCount {
@@ -218,6 +231,8 @@ export const api = {
   tags: () => request<{ tags: TagCount[] }>('GET', 'api/tags'),
   /** The graph (GraphData) as JSON text: compare it with the last one before parsing. */
   graphText: () => requestText('GET', 'api/graph'),
+  islands: () => request<{ islands: Island[] }>('GET', 'api/islands'),
+  setIslands: (islands: Partial<Island>[]) => request<{ islands: Island[] }>('PUT', 'api/islands', { islands }),
   daily: () => request<NoteSummary>('POST', 'api/daily'),
   snippets: () => request<{ folder: string; snippets: { name: string; css: string }[] }>('GET', 'api/snippets'),
   periodic: (period: 'day' | 'week' | 'month', date?: string) =>

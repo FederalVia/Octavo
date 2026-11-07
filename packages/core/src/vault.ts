@@ -13,6 +13,7 @@ import type {
   Backlink,
   GraphData,
   GraphNode,
+  Island,
   IndexedNote,
   LinkRef,
   NoteDetail,
@@ -176,6 +177,61 @@ function encodeMdHref(rel: string): string {
     .join('/');
 }
 
+/** Colours offered for new islands: distinct from the six region colours. */
+export const ISLAND_COLORS = ['#f1e7cf', '#ff6ad5', '#6ee7a8', '#ffcf5c', '#8fd3ff', '#d9a07a', '#c4f27a', '#ff8f70'];
+
+function slug(s: string): string {
+  return (
+    s
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'island'
+  );
+}
+
+/** Check and tidy an island list. With `strict`, bad entries are errors instead of being skipped. */
+function normalizeIslands(list: unknown[], strict = false): Island[] {
+  const out: Island[] = [];
+  const seenIds = new Set<string>();
+  const seenFolders = new Set<string>();
+  for (const [i, raw] of list.entries()) {
+    const bad = (why: string) => {
+      if (strict) throw new EditMatchError(`Island ${i + 1}: ${why}`);
+    };
+    if (!raw || typeof raw !== 'object') {
+      bad('not an object');
+      continue;
+    }
+    const o = raw as Record<string, unknown>;
+    let folder: string;
+    try {
+      folder = normalizeFolderPath(typeof o.folder === 'string' ? o.folder : '');
+    } catch {
+      bad('invalid folder');
+      continue;
+    }
+    if (!folder) {
+      bad('needs a folder');
+      continue;
+    }
+    const name = (typeof o.name === 'string' && o.name.trim() ? o.name.trim() : folder.split('/').pop()!).slice(0, 60);
+    let id = slug(name);
+    for (let n = 2; seenIds.has(id); n++) id = `${slug(name)}-${n}`;
+    if (seenFolders.has(folder.toLowerCase())) {
+      bad(`the folder “${folder}” is already an island`);
+      continue;
+    }
+    const color = typeof o.color === 'string' && /^#[0-9a-f]{6}$/i.test(o.color) ? o.color.toLowerCase() : ISLAND_COLORS[out.length % ISLAND_COLORS.length];
+    seenIds.add(id);
+    seenFolders.add(folder.toLowerCase());
+    out.push({ id, name, folder, color });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
 export class Vault extends EventEmitter {
   readonly root: string;
   readonly dailyFolder: string;
@@ -190,6 +246,7 @@ export class Vault extends EventEmitter {
   private rescanTimer: NodeJS.Timeout | null = null;
   /** graph() result, until any note is (re)indexed or removed. */
   private graphCache: GraphData | null = null;
+  private islandList: Island[] = [];
 
   private constructor(root: string, opts: VaultOptions) {
     super();
@@ -206,6 +263,7 @@ export class Vault extends EventEmitter {
     if ((await fsp.stat(legacy).catch(() => null)) && !(await fsp.stat(current).catch(() => null))) {
       await fsp.rename(legacy, current).catch(() => {});
     }
+    await vault.loadIslands();
     await vault.rescan(false);
     if (opts.watch !== false) vault.startWatching();
     return vault;
@@ -573,12 +631,14 @@ export class Vault extends EventEmitter {
     const links = new Map<string, { source: string; target: string }>();
     for (const n of this.notes.values()) {
       const region = typeof n.frontmatter.region === 'string' ? n.frontmatter.region : undefined;
+      const island = this.islandFor(n.path, region);
       nodes.set(n.path, {
         id: n.path,
         name: n.name,
         tags: n.tags,
         degree: 0,
         ...(region ? { region } : {}),
+        ...(island ? { island: island.id } : {}),
         ...(n.encrypted ? { encrypted: true } : {}),
         ...(n.frontmatter.surprise === true || n.tags.some((t) => t.toLowerCase() === 'surprise') ? { surprise: true } : {}),
       });
@@ -601,7 +661,7 @@ export class Vault extends EventEmitter {
         nodes.get(target)!.degree++;
       }
     }
-    return (this.graphCache = { nodes: [...nodes.values()], links: [...links.values()] });
+    return (this.graphCache = { nodes: [...nodes.values()], links: [...links.values()], islands: this.islands() });
   }
 
   /**
@@ -1381,11 +1441,61 @@ export class Vault extends EventEmitter {
   }
 
   /** Which brain region a note is drawn in, and why. */
-  regionOf(nameOrPath: string): { region: RegionKey; label: string; reason: string } {
+  regionOf(nameOrPath: string): { region: RegionKey; label: string; reason: string; island?: Island } {
     const n = this.requireNote(nameOrPath);
     const fm = typeof n.frontmatter?.region === 'string' ? (n.frontmatter.region as string) : undefined;
     const r = classifyRegion({ id: n.path, name: n.name, tags: n.tags, region: fm });
-    return { ...r, label: REGION_INFO.find((x) => x.key === r.region)!.label };
+    const island = this.islandFor(n.path, fm);
+    return { ...r, label: REGION_INFO.find((x) => x.key === r.region)!.label, ...(island ? { island } : {}) };
+  }
+
+  // ---------------------------------------------------------------- islands
+
+  /** Islands: parts of the vault drawn apart from the six regions. Stored in .octavo/islands.json. */
+  islands(): Island[] {
+    return this.islandList.map((i) => ({ ...i }));
+  }
+
+  /** The island a note belongs to: `region: <island name>` in its properties, else the deepest island folder. */
+  islandFor(notePath: string, frontmatterRegion?: string): Island | undefined {
+    if (!this.islandList.length) return undefined;
+    if (frontmatterRegion) {
+      const want = frontmatterRegion.trim().toLowerCase();
+      const named = this.islandList.find((i) => i.name.toLowerCase() === want || i.id === want);
+      if (named) return named;
+    }
+    const lower = notePath.toLowerCase();
+    let best: Island | undefined;
+    for (const i of this.islandList) {
+      const f = i.folder.toLowerCase();
+      if (lower.startsWith(f + '/') && (!best || f.length > best.folder.length)) best = i;
+    }
+    return best;
+  }
+
+  private islandsPath(): string {
+    return path.join(this.root, '.octavo', 'islands.json');
+  }
+
+  private async loadIslands(): Promise<void> {
+    try {
+      const raw = JSON.parse(await fsp.readFile(this.islandsPath(), 'utf8'));
+      this.islandList = normalizeIslands(Array.isArray(raw) ? raw : raw?.islands ?? []);
+    } catch {
+      this.islandList = [];
+    }
+  }
+
+  /** Replace the vault's islands (validated; ids derived from names). Returns the saved list. */
+  async setIslands(list: unknown): Promise<Island[]> {
+    if (!Array.isArray(list)) throw new EditMatchError('Islands must be a list');
+    const next = normalizeIslands(list, true);
+    await fsp.mkdir(path.dirname(this.islandsPath()), { recursive: true });
+    await fsp.writeFile(this.islandsPath(), JSON.stringify({ islands: next }, null, 2) + '\n');
+    this.islandList = next;
+    this.graphCache = null;
+    this.emitEvent({ type: 'rescan' });
+    return this.islands();
   }
 
   /** Pin a note to a region with `region:` in its properties, or `null` to go back to automatic placement. */

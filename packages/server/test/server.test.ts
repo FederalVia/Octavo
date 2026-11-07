@@ -193,7 +193,7 @@ describe('HTTP server', () => {
       assert.match(client.getInstructions() ?? '', /long-term memory/);
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name).sort();
-      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property', 'read_canvas', 'add_to_canvas']) {
+      for (const n of ['search_notes', 'read_note', 'write_note', 'append_to_note', 'log_to_journal', 'get_vault_overview', 'list_tasks', 'update_task', 'open_periodic_note', 'merge_notes', 'random_note', 'get_note_region', 'set_note_region', 'find_orphans', 'restore_note', 'query_notes', 'set_property', 'read_canvas', 'add_to_canvas', 'manage_islands']) {
         assert.ok(names.includes(n), `missing tool ${n}`);
       }
 
@@ -244,6 +244,22 @@ describe('HTTP server', () => {
       assert.match(r.text, /in the trash/);
       r = await call('restore_note', { path: 'Two' });
       assert.match(r.text, /Restored Batch\/Two\.md/);
+      // Islands.
+      r = await call('manage_islands', { action: 'add', folder: 'Nowhere' });
+      assert.match(r.text, /No folder called “Nowhere”/);
+      r = await call('manage_islands', { action: 'add', folder: 'Batch', name: 'Side project' });
+      assert.match(r.text, /^Added\. Islands:\n- Side project: folder Batch\/ \(\d+ notes\), colour #f1e7cf/);
+      r = await call('get_note_region', { path: 'Batch/One' });
+      assert.match(r.text, /is on the “Side project” island \(folder Batch\/\)/);
+      const islandGraph = (await (await api('/api/graph')).json()) as { nodes: { id: string; island?: string }[]; islands: { id: string }[] };
+      assert.equal(islandGraph.nodes.find((n) => n.id === 'Batch/One.md')?.island, 'side-project');
+      assert.deepEqual(islandGraph.islands.map((i) => i.id), ['side-project']);
+      const put = await api('/api/islands', { method: 'PUT', body: JSON.stringify({ islands: [{ folder: 'Batch' }, { folder: 'batch' }] }) });
+      assert.equal(put.status, 400, 'duplicate folders are rejected over REST too');
+      r = await call('manage_islands', { action: 'remove', name: 'Side project' });
+      assert.match(r.text, /^Removed\. Islands:\n\(none\)/);
+      assert.deepEqual(((await (await api('/api/islands')).json()) as { islands: unknown[] }).islands, []);
+
       // Canvases.
       r = await call('add_to_canvas', {
         canvas: 'Boards/Plan',

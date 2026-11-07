@@ -256,6 +256,7 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     },
     safe(async ({ path }) => {
       const r = vault.regionOf(path);
+      if (r.island) return text(`${vault.resolve(path)} is on the “${r.island.name}” island (folder ${r.island.folder}/), drawn apart from the six regions. Without the island it would be in the ${r.label} region (${r.region}): ${r.reason}.`);
       return text(`${vault.resolve(path)} is in the ${r.label} region (${r.region}): ${r.reason}.`);
     }),
   );
@@ -376,6 +377,40 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   if (opts.readOnly) return server;
+
+  server.registerTool(
+    'manage_islands',
+    {
+      title: 'Islands: keep parts of the vault apart',
+      description:
+        'Islands keep a separate subject apart in the brain views: every note in an island\'s folder gets its own territory and colour instead of being mixed into the six regions (e.g. a "Theology" folder in a vault that is mostly about software). A single note elsewhere can join an island with `region: <island name>` in its properties. Actions: "list" shows the islands; "add" makes a folder an island (name defaults to the folder name, colour is picked automatically or given as #rrggbb); "remove" takes an island by name or folder. Up to 12 islands.',
+      inputSchema: {
+        action: z.enum(['list', 'add', 'remove']),
+        folder: z.string().optional().describe('For add: the folder, e.g. "Theology"'),
+        name: z.string().optional().describe('For add: display name; for remove: the island to remove (name or folder)'),
+        color: z.string().optional().describe('For add: colour as #rrggbb'),
+      },
+    },
+    safe(async ({ action, folder, name, color }) => {
+      const current = vault.islands();
+      const describe = (list: typeof current) =>
+        list.length ? list.map((i) => `- ${i.name}: folder ${i.folder}/ (${vault.list({ folder: i.folder }).length} notes), colour ${i.color}`).join('\n') : '(none)';
+      if (action === 'list') return text(`Islands:\n${describe(current)}`);
+      if (action === 'add') {
+        if (!folder) throw new Error('add needs a folder');
+        const clean = folder.replace(/^\/+|\/+$/g, '');
+        if (!vault.folders().some((f) => f.toLowerCase() === clean.toLowerCase())) throw new Error(`No folder called “${clean}” in the vault`);
+        const saved = await vault.setIslands([...current, { folder: clean, name, color }]);
+        return text(`Added. Islands:\n${describe(saved)}`);
+      }
+      const want = (name ?? folder ?? '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+      const keep = current.filter((i) => i.name.toLowerCase() !== want && i.folder.toLowerCase() !== want && i.id !== want);
+      if (keep.length === current.length) throw new Error(`No island called “${name ?? folder}”`);
+      const saved = await vault.setIslands(keep);
+      return text(`Removed. Islands:\n${describe(saved)}`);
+    }),
+  );
+
 
   server.registerTool(
     'add_to_canvas',
