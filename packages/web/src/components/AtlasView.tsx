@@ -643,6 +643,21 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
   return { nodes, links, byId, neighbors, adjacency, counts, islandCounts, islands, groups, R, dust, islandDust, sampled, topHubCut, geo, drift };
 }
 
+/** Camera distance for perspective: further back when islands float around the brain, so one swinging towards
+ *  you doesn't balloon. Exactly the old distance without islands. */
+function viewDistance(L: Layout): number {
+  return Math.max(L.R * 3.4, L.geo.reach * 2.4);
+}
+
+/** Pixels per world unit at zoom 1: the brain fills the view; with islands, they fit across it too. */
+function fitZoom(w: number, h: number, L: Layout | null): number {
+  const R = L?.R ?? 300;
+  const brain = (Math.min(w, h) * 0.5) / (R * 1.25);
+  if (!L || !L.geo.reach) return brain;
+  // Islands sit in the brain's horizontal plane, so they need width; height still only needs the brain.
+  return Math.min(brain, (w * 0.5) / (L.geo.reach * 1.12), (h * 0.5) / (R * 1.25));
+}
+
 /** How long a note that isn't laid out yet stays waiting to light up. */
 const PENDING_FIRE_MS = 15_000;
 
@@ -686,7 +701,7 @@ function softDot(rgb: [number, number, number]): HTMLCanvasElement {
 }
 
 const STORE_KEY = 'octavo.atlas';
-function loadPrefs(): { labels: boolean; hidden: RegionKey[]; trail: boolean; bridges: boolean } {
+function loadPrefs(): { labels: boolean; hidden: string[]; trail: boolean; bridges: boolean } {
   try {
     return { labels: true, hidden: [], trail: true, bridges: false, ...JSON.parse(localStorage.getItem(STORE_KEY) ?? '{}') };
   } catch {
@@ -729,7 +744,8 @@ export function AtlasView(props: Props) {
   const propsRef = useRef(props);
   propsRef.current = props;
   const [labels, setLabels] = useState(() => loadPrefs().labels);
-  const [hidden, setHidden] = useState<Set<RegionKey>>(() => new Set(loadPrefs().hidden));
+  // Hidden groups: region keys, and `island:<id>` for islands (no region key contains a colon).
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set(loadPrefs().hidden));
   const [showTrail, setShowTrail] = useState(() => loadPrefs().trail);
   const [bridges, setBridges] = useState(() => loadPrefs().bridges);
   const [filter, setFilter] = useState('');
@@ -769,7 +785,7 @@ export function AtlasView(props: Props) {
     labels: true,
     showTrail: true,
     bridges: false,
-    hidden: new Set<RegionKey>(),
+    hidden: new Set<string>(),
     filter: '',
     rings: [] as { node: ANode; start: number }[],
     pulses: [] as { link: ALink; from: ANode; t: number }[],
@@ -887,7 +903,6 @@ export function AtlasView(props: Props) {
     /** Rotate + perspective-project a world point. Returns [sx, sy, depth, scale]. */
     const project = (x: number, y: number, z: number, out: number[]) => {
       const { yaw, pitch, zoom, tx, ty, tz } = s.cam;
-      const R = s.layout?.R ?? 300;
       const px = x - tx;
       const py = y - ty;
       const pz = z - tz;
@@ -899,7 +914,7 @@ export function AtlasView(props: Props) {
       const sp = Math.sin(pitch);
       const y2 = py * cp - z1 * sp;
       const z2 = py * sp + z1 * cp;
-      const D = R * 3.4;
+      const D = s.layout ? viewDistance(s.layout) : 300 * 3.4;
       const persp = D / (D - z2);
       const k = persp * zoom * s.baseZoom;
       out[0] = cx() + x1 * k;
@@ -908,7 +923,7 @@ export function AtlasView(props: Props) {
       out[3] = k;
     };
 
-    const visibleNode = (n: ANode) => !s.hidden.has(n.region);
+    const visibleNode = (n: ANode) => !s.hidden.has(n.group);
     const nodeSize = (n: ANode) => (n.unresolved ? 1.1 : 1.5 + Math.sqrt(n.degree) * 0.75);
 
     const fire = (id: string) => {
@@ -968,7 +983,7 @@ export function AtlasView(props: Props) {
       const autoRotate = !coarse && n <= 800;
       const wobble = quality === 2 && n <= 600;
       const R = L?.R ?? 300;
-      s.baseZoom = (Math.min(W * (1 - propsRef.current.rightInset), H) * 0.5) / (R * 1.25);
+      s.baseZoom = fitZoom(W * (1 - propsRef.current.rightInset), H, L);
 
       // Camera easing and idle auto-rotation.
       if (s.camGoal) {
@@ -1006,6 +1021,16 @@ export function AtlasView(props: Props) {
         project(d[0], d[1], d[2], tmp);
         const fog = 1 - Math.min(1, Math.max(0, (tmp[2] + R) / (2.4 * R)));
         ctx.globalAlpha = 0.08 + fog * 0.22;
+        ctx.fillRect(tmp[0], tmp[1], 1.1, 1.1);
+      }
+      // Each island's own faint outline.
+      const islandDustCount = quality === 2 ? L.islandDust.length : quality === 1 ? Math.ceil(L.islandDust.length / 3) : 0;
+      const islandStep = quality === 1 ? 3 : 1;
+      for (let di = 0; di < islandDustCount * islandStep && di < L.islandDust.length; di += islandStep) {
+        const d = L.islandDust[di];
+        project(d[0], d[1], d[2], tmp);
+        const fog = 1 - Math.min(1, Math.max(0, (tmp[2] + R) / (2.4 * R)));
+        ctx.globalAlpha = 0.07 + fog * 0.2;
         ctx.fillRect(tmp[0], tmp[1], 1.1, 1.1);
       }
       ctx.globalAlpha = 1;
@@ -1051,22 +1076,23 @@ export function AtlasView(props: Props) {
         ctx.beginPath();
         for (let li = 0; li < drawn; li++) {
           const l = linkList[li];
-          if (!l.a.visible || !l.b.visible) continue;
+          if (l.cross || !l.a.visible || !l.b.visible) continue;
           ctx.moveTo(l.a.sx * k, l.a.sy * k);
           ctx.lineTo(l.b.sx * k, l.b.sy * k);
         }
         ctx.stroke();
       } else {
-        // Lines take a tint of the region they start in: six batches, one per region colour.
-        // Lines to index-like hubs go in a much fainter pass (all of them show when the hub is hovered or open).
+        // Lines take a tint of the region (or island) they start in: one batch per colour.
+        // Lines to index-like hubs go in a much fainter pass (all of them show when the hub is hovered or open),
+        // and so do lines between an island and the rest (they cross open space).
         const showBridges = s.bridges;
-        for (const reg of REGIONS) {
+        for (const reg of L.groups) {
           ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.55, lineAlpha * (showBridges ? 0.45 : 1.35))})`;
           ctx.beginPath();
           for (let li = 0; li < drawn; li++) {
             const l = linkList[li];
-            if (l.mega || l.surprise || l.a.region !== reg.key || !l.a.visible || !l.b.visible) continue;
-            if (showBridges && l.a.region !== l.b.region && l.a.region !== 'stem' && l.b.region !== 'stem') continue;
+            if (l.mega || l.surprise || l.cross || l.a.group !== reg.key || !l.a.visible || !l.b.visible) continue;
+            if (showBridges && l.a.group !== l.b.group && l.a.group !== 'stem' && l.b.group !== 'stem') continue;
             ctx.moveTo(l.a.sx * k, l.a.sy * k);
             ctx.lineTo(l.b.sx * k, l.b.sy * k);
           }
@@ -1080,7 +1106,7 @@ export function AtlasView(props: Props) {
             ctx.strokeStyle = `rgba(${reg.rgb.join(',')}, ${Math.min(0.75, Math.max(0.28, lineAlpha * 4))})`;
             ctx.beginPath();
             for (const l of L.links) {
-              if (l.mega || l.surprise || l.a.region !== reg.key || l.b.region === reg.key || l.b.region === 'stem' || !l.a.visible || !l.b.visible) continue;
+              if (l.mega || l.surprise || l.cross || l.a.group !== reg.key || l.b.group === reg.key || l.b.group === 'stem' || !l.a.visible || !l.b.visible) continue;
               ctx.moveTo(l.a.sx * k, l.a.sy * k);
               ctx.lineTo(l.b.sx * k, l.b.sy * k);
             }
@@ -1105,7 +1131,19 @@ export function AtlasView(props: Props) {
           ctx.beginPath();
           for (let li = 0; li < drawn; li++) {
             const l = linkList[li];
-            if (!l.mega || !l.a.visible || !l.b.visible) continue;
+            if (!l.mega || l.cross || !l.a.visible || !l.b.visible) continue;
+            ctx.moveTo(l.a.sx * k, l.a.sy * k);
+            ctx.lineTo(l.b.sx * k, l.b.sy * k);
+          }
+          ctx.stroke();
+        }
+        if (L.islands.length) {
+          // Between an island and the rest: barely there, so no bright bridge spans the gap.
+          ctx.strokeStyle = `rgba(200, 196, 188, ${Math.min(0.05, lineAlpha * 0.28)})`;
+          ctx.beginPath();
+          for (let li = 0; li < drawn; li++) {
+            const l = linkList[li];
+            if (!l.cross || l.surprise || !l.a.visible || !l.b.visible) continue;
             ctx.moveTo(l.a.sx * k, l.a.sy * k);
             ctx.lineTo(l.b.sx * k, l.b.sy * k);
           }
@@ -1115,7 +1153,7 @@ export function AtlasView(props: Props) {
       ctx.restore();
       ctx.globalCompositeOperation = 'lighter';
       if (focusNode && focusNode.visible) {
-        const rgb = REGION_BY_KEY[focusNode.region].rgb.join(',');
+        const rgb = focusNode.rgb.join(',');
         ctx.strokeStyle = `rgba(${rgb}, 0.6)`;
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -1141,7 +1179,7 @@ export function AtlasView(props: Props) {
             continue;
           }
           const fade = Math.pow(1 - age / TRAIL_MS, 1.4);
-          const rgb = REGION_BY_KEY[n.region].rgb.join(',');
+          const rgb = n.rgb.join(',');
           if (prev && prev !== n) {
             ctx.strokeStyle = `rgba(${rgb}, ${0.55 * fade})`;
             ctx.lineWidth = 0.6 + 1.4 * fade;
@@ -1173,14 +1211,14 @@ export function AtlasView(props: Props) {
         const x = p.from.sx + (to.sx - p.from.sx) * p.t;
         const y = p.from.sy + (to.sy - p.from.sy) * p.t;
         ctx.globalAlpha = Math.sin(p.t * Math.PI);
-        ctx.drawImage(softDot(REGION_BY_KEY[p.from.region].rgb), x - 7, y - 7, 14, 14);
+        ctx.drawImage(softDot(p.from.rgb), x - 7, y - 7, 14, 14);
       }
       ctx.globalAlpha = 1;
 
       // Neurons, far to near. Crowded regions get dimmer halos so they don't wash out.
-      const densityDim = Object.fromEntries(
-        REGIONS.map((r) => [r.key, Math.min(0.8, 9 / Math.pow(Math.max(1, L.counts[r.key]), 0.55))]),
-      ) as Record<RegionKey, number>;
+      const densityDim: Record<string, number> = {};
+      for (const r of REGIONS) densityDim[r.key] = Math.min(0.8, 9 / Math.pow(Math.max(1, L.counts[r.key]), 0.55));
+      for (const i of L.islands) densityDim[i.group] = Math.min(0.8, 9 / Math.pow(Math.max(1, i.count), 0.55));
       // Small vaults get bigger, brighter points so the colours read; big ones stay fine-grained.
       const count = L.nodes.length;
       const sizeBoost = (count < 150 ? 1.6 : count < 600 ? 1.25 : count < 1500 ? 0.85 : 0.62) * (W < 600 && count > 300 ? 0.75 : 1);
@@ -1191,7 +1229,7 @@ export function AtlasView(props: Props) {
         .filter((n) => n.visible && n.sx > -margin && n.sy > -margin && n.sx < W + margin && n.sy < H + margin)
         .sort((a, b) => b.depth - a.depth);
       for (const n of order) {
-        const reg = REGION_BY_KEY[n.region];
+        const reg = n;
         const fog = fogOf(n);
         let alpha = 0.35 + fog * 0.65;
         const isFocus = n === focusNode || n.id === selectedId;
@@ -1201,7 +1239,7 @@ export function AtlasView(props: Props) {
         const fireAge = Math.max(0, (now - n.firedAt) / 1000);
         const boost = fireAge < 1.5 ? 1 - fireAge / 1.5 : 0;
         const r = nodeSize(n) * sizeBoost * Math.max(0.55, n.scale / s.baseZoom) * (isFocus ? 1.6 : 1) * (1 + boost);
-        const density = densityDim[n.region];
+        const density = densityDim[n.group];
         // Halos: everything at full quality; at lower quality only notes that matter right now.
         // In crowded vaults only the very busiest hubs keep a halo; dozens of halos together turn white.
         const bigHub = n.hub && (!crowded || n.degree >= L.topHubCut);
@@ -1247,7 +1285,7 @@ export function AtlasView(props: Props) {
           continue;
         }
         if (!ring.node.visible) continue;
-        ctx.strokeStyle = `rgba(${REGION_BY_KEY[ring.node.region].rgb.join(',')}, ${(1 - age / 1.8) * 0.9})`;
+        ctx.strokeStyle = `rgba(${ring.node.rgb.join(',')}, ${(1 - age / 1.8) * 0.9})`;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(ring.node.sx, ring.node.sy, 6 + age * 70, 0, Math.PI * 2);
@@ -1272,6 +1310,31 @@ export function AtlasView(props: Props) {
         return rank(b) - rank(a) || b.degree - a.degree || a.depth - b.depth;
       });
       let hubLabels = 0;
+      // Each island's name, above its cloud: it reads as a place of its own.
+      if (s.labels && !filterOn) {
+        ctx.font = `600 12px ${SANS}`;
+        ctx.textAlign = 'center';
+        for (const isl of L.islands) {
+          const g = L.geo.islands.get(isl.id);
+          if (!g || s.hidden.has(isl.group)) continue;
+          project(g.x, g.y, g.z, tmp);
+          const x = tmp[0];
+          const y = tmp[1] - g.r * tmp[3] - 16;
+          const w = ctx.measureText(isl.name).width;
+          if (x < -w || x > W + w || y < -20 || y > H + 20) continue;
+          placed.push([x - w / 2 - 6, y - 10, w + 12, 20]);
+          ctx.globalAlpha = focusNode ? 0.35 : 0.75;
+          ctx.lineWidth = 3;
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = 'rgba(14,13,17,0.75)';
+          ctx.strokeText(isl.name, x, y);
+          ctx.fillStyle = labelColor(isl.rgb);
+          ctx.fillText(isl.name, x, y);
+        }
+        ctx.font = `500 11.5px ${SANS}`;
+        ctx.textAlign = 'left';
+        ctx.globalAlpha = 1;
+      }
       for (const n of labelOrder) {
         const isFocus = n === focusNode || n.id === selectedId;
         const show =
@@ -1282,7 +1345,7 @@ export function AtlasView(props: Props) {
         if (!show) continue;
         const plainHub = !isFocus && !near?.has(n.id) && !(filterOn && matches(n));
         if (plainHub && n.hub && !zoomed && L.nodes.length > 60 && hubLabels >= (W < 600 ? 6 : 12)) continue;
-        const reg = REGION_BY_KEY[n.region];
+        const reg = n;
         const fog = fogOf(n);
         const text = n.name.length > 34 ? n.name.slice(0, 33) + '…' : n.name;
         const x = n.sx + nodeSize(n) * 2 + 6;
@@ -1492,13 +1555,17 @@ export function AtlasView(props: Props) {
     st.current.kick();
   }, [props.selected, props.rightInset, props.paused, layout, labels, hidden, filter, showTrail, bridges]);
 
-  const toggle = (k: RegionKey) =>
+  const toggle = (k: string) =>
     setHidden((h) => {
       const next = new Set(h);
       if (next.has(k)) next.delete(k);
       else next.add(k);
       return next;
     });
+
+  /** Show only this region or island. */
+  const solo = (k: string) =>
+    setHidden(new Set([...REGIONS.map((x) => x.key as string), ...(layout?.islands.map((i) => i.group as string) ?? [])].filter((x) => x !== k)));
 
   const submitFilter = () => {
     const q = st.current.filter;
@@ -1601,7 +1668,7 @@ export function AtlasView(props: Props) {
             />
           </label>
           <div className="atlas-regions" role="group" aria-label="Regions: tap to hide or show, double-tap to show only one">
-            {hidden.size > 0 && (
+            {[...hidden].some((k) => !k.startsWith('island:') || layout.islands.some((i) => i.group === k)) && (
               <button className="atlas-pill all" onClick={() => setHidden(new Set())}>
                 Show all
               </button>
@@ -1614,11 +1681,26 @@ export function AtlasView(props: Props) {
                 title={`${r.name}: ${r.label} region (${r.subtitle}). Double-tap to show only this.`}
                 aria-pressed={!hidden.has(r.key)}
                 onClick={() => toggle(r.key)}
-                onDoubleClick={() => setHidden(new Set(REGIONS.filter((x) => x.key !== r.key).map((x) => x.key)))}
+                onDoubleClick={() => solo(r.key)}
               >
                 <i aria-hidden="true" />
                 {r.name}
                 <em>{layout.counts[r.key]}</em>
+              </button>
+            ))}
+            {layout.islands.map((isl) => (
+              <button
+                key={isl.group}
+                className={`atlas-pill island${hidden.has(isl.group) ? ' off' : ''}`}
+                style={{ ['--region' as string]: isl.color }}
+                title={`${isl.name}: an island, kept apart from the brain. Double-tap to show only this.`}
+                aria-pressed={!hidden.has(isl.group)}
+                onClick={() => toggle(isl.group)}
+                onDoubleClick={() => solo(isl.group)}
+              >
+                <i aria-hidden="true" />
+                {isl.name}
+                <em>{isl.count}</em>
               </button>
             ))}
           </div>

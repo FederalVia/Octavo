@@ -176,11 +176,14 @@ interface IslandArea {
  * ellipse on a wide screen (rows below it on a tall one), with open water between. Returns the main
  * ellipse's aspect, reshaped so main map plus islands together fill the free screen area.
  */
-function islandPlan(A: number, R: number, spacing: number, sizes: { id: string; n: number }[]) {
+function islandPlan(A: number, R0: number, spacing: number, sizes: { id: string; n: number }[]) {
   const areas = new Map<string, IslandArea>();
+  // Links pull a cloud of notes in to about 80% of the area its slots cover: plan with the sizes it really takes.
+  const SHRINK = 0.8;
+  const R = R0 * SHRINK;
   const radius = (n: number) => spacing * Math.sqrt(Math.max(n, 3) / Math.PI) * 1.05;
-  const gap = Math.max(spacing * 4.5, R * 0.24);
-  const items = [...sizes].sort((p, q) => q.n - p.n).map((it) => ({ id: it.id, r: radius(it.n) }));
+  const gap = Math.max(spacing * 3.4, R0 * 0.15);
+  const items = [...sizes].sort((p, q) => q.n - p.n).map((it) => ({ id: it.id, r: radius(it.n) * SHRINK, slot: radius(it.n) }));
   const side = A >= 1;
   /** Packs the islands into lines (columns or rows) no longer than `max`; returns the lines' total thickness. */
   const pack = (max: number) => {
@@ -214,7 +217,7 @@ function islandPlan(A: number, R: number, spacing: number, sizes: { id: string; 
     for (const it of line.items) {
       const along = at + it.r;
       const across = off + line.thick / 2;
-      areas.set(it.id, side ? { x: across, y: along, r: it.r } : { x: along, y: across, r: it.r });
+      areas.set(it.id, side ? { x: across, y: along, r: it.slot } : { x: along, y: across, r: it.slot });
       at += it.r * 2 + gap * 0.6;
     }
     off += line.thick + gap * 0.6;
@@ -504,8 +507,9 @@ export function BrainView(props: Props) {
       .force('charge', forceManyBody<Node>().strength(-spacing * 0.35).distanceMax(spacing * 4).theta(st.big ? 1.1 : 0.9))
       .force('collide', forceCollide<Node>().radius((d) => spacing * (d.mega ? 0.9 : d.hub ? 0.55 : 0.38)).iterations(1))
       // A weak pull towards each note's region territory: regions stay spread over the whole area.
-      .force('x', forceX<Node>((d) => d.ax).strength((d) => (d.unresolved ? 0.01 : d.mega ? 0.3 : 0.22)))
-      .force('y', forceY<Node>((d) => d.ay).strength((d) => (d.unresolved ? 0.01 : d.mega ? 0.3 : 0.22)))
+      // Island notes are held a little firmer, so an island with few inner links still reads as one place.
+      .force('x', forceX<Node>((d) => d.ax).strength((d) => (d.unresolved ? (d.isl ? 0.05 : 0.01) : d.mega || d.isl ? 0.3 : 0.22)))
+      .force('y', forceY<Node>((d) => d.ay).strength((d) => (d.unresolved ? (d.isl ? 0.05 : 0.01) : d.mega || d.isl ? 0.3 : 0.22)))
       .velocityDecay(0.5)
       // Settle within a few seconds and then stop for good: no endless jiggle, no work while idle.
       .alphaMin(0.01)
@@ -518,7 +522,9 @@ export function BrainView(props: Props) {
       const t0 = performance.now();
       const limit = mostlyRestored ? 30 : isCoarse() ? 250 : 400;
       while (sim.alpha() > 0.12 && performance.now() - t0 < limit) sim.tick();
-      st.fitted = false;
+      // After the islands changed the camera glides to the new layout; on first load it starts there.
+      if (relayout) st.refit = true;
+      else st.fitted = false;
       st.userCam = false;
     } else {
       sim.alpha(0.15);
@@ -576,7 +582,7 @@ export function BrainView(props: Props) {
       const xs: number[] = [];
       const ys: number[] = [];
       for (const n of st.nodes) {
-        if (n.x == null || st.hidden.has(n.region)) continue;
+        if (n.x == null || st.hidden.has(n.group)) continue;
         xs.push(n.x);
         ys.push(n.y!);
       }
@@ -589,8 +595,10 @@ export function BrainView(props: Props) {
       const w = freeW() - MARGIN.side * 2;
       const h = st.height - MARGIN.top - MARGIN.bottom;
       const pad = 24;
-      const k = Math.min(6, Math.max(0.02, Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2) / (maxY - minY || 1))));
-      return { k, x: -((minX + maxX) / 2) * k, y: -((minY + maxY) / 2) * k };
+      // Room above the islands for their names.
+      const head = st.islands.some((i) => !st.hidden.has(i.group)) ? 26 : 0;
+      const k = Math.min(6, Math.max(0.02, Math.min((w - pad * 2) / (maxX - minX || 1), (h - pad * 2 - head) / (maxY - minY || 1))));
+      return { k, x: -((minX + maxX) / 2) * k, y: -((minY + maxY) / 2) * k + head / 2 };
     };
 
     const toWorld = (cx: number, cy: number) => {
@@ -607,7 +615,7 @@ export function BrainView(props: Props) {
       let bestD = Infinity;
       const slop = finger ? 14 : 5;
       for (const n of st.nodes) {
-        if (n.x == null || st.hidden.has(n.region)) continue;
+        if (n.x == null || st.hidden.has(n.group)) continue;
         const d = Math.hypot(n.x - p.x, n.y! - p.y) * st.cam.k;
         const reach = nodePx(n) + slop;
         // Prefer the closest edge, so a big hub doesn't swallow taps on its small neighbours.
@@ -734,7 +742,7 @@ export function BrainView(props: Props) {
       const oy = centerY() + cam.y;
       const k = cam.k;
       const grow = zoomGrow();
-      const visible = (n: Node) => !hiddenSet.has(n.region);
+      const visible = (n: Node) => !hiddenSet.has(n.group);
       const dim = !!focus || filterOn;
 
       // Links: one device pixel wide, drawn in device coordinates (a fast path in every browser),
@@ -761,16 +769,21 @@ export function BrainView(props: Props) {
           }
           ctx.stroke();
         };
-        for (const reg of REGIONS) {
-          ctx.strokeStyle = rgba(reg.rgb, a);
-          batch((l) => !l.mega && !l.source.unresolved && l.source.region === reg.key);
+        for (const [key, rgb] of st.groupRgb) {
+          ctx.strokeStyle = rgba(rgb, a);
+          batch((l) => !l.mega && !l.cross && !l.source.unresolved && l.source.group === key);
         }
         ctx.strokeStyle = `rgba(160,160,170,${a * 0.8})`;
-        batch((l) => !l.mega && !!l.source.unresolved);
+        batch((l) => !l.mega && !l.cross && !!l.source.unresolved);
         // Lines to index notes: a faint haze (left out on phones with big vaults, where they cost more than they show).
         if (!(coarse && st.big)) {
           ctx.strokeStyle = `rgba(190,180,220,${Math.min(a, 0.12) * 0.3})`;
-          batch((l) => l.mega);
+          batch((l) => l.mega && !l.cross);
+        }
+        // Lines between an island and the rest: barely there, so the water between stays open.
+        if (st.islands.length) {
+          ctx.strokeStyle = `rgba(200,200,215,${Math.min(a, 0.2) * 0.22})`;
+          batch((l) => l.cross);
         }
         ctx.restore();
       }
@@ -843,7 +856,7 @@ export function BrainView(props: Props) {
           special.push(n);
           continue;
         }
-        const key = n.unresolved ? 'u' : n.region;
+        const key = n.unresolved ? 'u' : n.group;
         let path = batches.get(key);
         if (!path) batches.set(key, (path = new Path2D()));
         const r = nodePx(n) / k;
@@ -853,7 +866,7 @@ export function BrainView(props: Props) {
       const baseAlpha = dim ? (filterOn ? 0.12 : 0.28) : 1;
       for (const [key, path] of batches) {
         ctx.globalAlpha = baseAlpha * (key === 'u' ? 0.55 : 0.95);
-        ctx.fillStyle = key === 'u' ? rgba(UNRESOLVED_RGB, 1) : rgba(NETWORK_COLORS[key as RegionKey], 1);
+        ctx.fillStyle = rgba(key === 'u' ? UNRESOLVED_RGB : st.groupRgb.get(key) ?? UNRESOLVED_RGB, 1);
         ctx.fill(path);
       }
       for (const n of special) {
@@ -897,6 +910,43 @@ export function BrainView(props: Props) {
       placed.length = 0;
       // Keep names off the toolbar, the zoom buttons and the dock.
       placed.push(0, 0, 400, MARGIN.top - 8, 0, H - MARGIN.bottom + 4, W, MARGIN.bottom, freeW() - 64, 0, 64, 170);
+      // Island names: a soft map heading above each island, placed before the note names.
+      if (st.islands.length) {
+        const box = new Map<string, { x0: number; x1: number; y0: number }>();
+        for (const n of st.nodes) {
+          if (!n.isl || n.x == null || !visible(n)) continue;
+          const b = box.get(n.group);
+          if (!b) box.set(n.group, { x0: n.x, x1: n.x, y0: n.y! });
+          else {
+            if (n.x < b.x0) b.x0 = n.x;
+            if (n.x > b.x1) b.x1 = n.x;
+            if (n.y! < b.y0) b.y0 = n.y!;
+          }
+        }
+        const hf = font + 1.5;
+        ctx.save();
+        ctx.font = `600 ${hf}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+        ctx.textAlign = 'center';
+        const lc = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+        if ('letterSpacing' in lc) lc.letterSpacing = '0.14em';
+        for (const isl of st.islands) {
+          const b = box.get(isl.group);
+          if (!b) continue;
+          const text = isl.name.toUpperCase();
+          const w = ctx.measureText(text).width;
+          const x = ox + ((b.x0 + b.x1) / 2) * k;
+          const y = Math.max(MARGIN.top + hf / 2, oy + b.y0 * k - 10 * grow - hf / 2);
+          if (x + w / 2 < 0 || x - w / 2 > W || y > H) continue;
+          placed.push(x - w / 2 - 6, y - hf * 0.8, w + 12, hf * 1.6);
+          ctx.globalAlpha = dim ? 0.45 : 0.82;
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(22,22,25,0.9)';
+          ctx.strokeText(text, x, y);
+          ctx.fillStyle = labelColor(isl.rgb);
+          ctx.fillText(text, x, y);
+        }
+        ctx.restore();
+      }
       const zoomRatio = k / st.kFit;
       // How many plain hub names fit: few at "fit" on a phone, more on big screens and when zoomed in.
       const small = st.nodes.length <= 60;
@@ -1119,6 +1169,18 @@ export function BrainView(props: Props) {
     };
   }, []);
 
+  // Forget hidden islands that no longer exist.
+  useEffect(() => {
+    const live = new Set(islands.map((i) => islandGroup(i.id)));
+    setHidden((h) => {
+      const stale = [...h].filter((g) => g.startsWith('isl:') && !live.has(g));
+      if (!stale.length) return h;
+      const next = new Set(h);
+      for (const g of stale) next.delete(g);
+      return next;
+    });
+  }, [islands]);
+
   // Hiding or showing a region re-frames what is left.
   const firstHidden = useRef(true);
   useEffect(() => {
@@ -1141,14 +1203,14 @@ export function BrainView(props: Props) {
     const q = s.current.filter;
     if (!q) return;
     const hit = s.current.nodes
-      .filter((n) => n.name.toLowerCase().includes(q) && !s.current.hidden.has(n.region))
+      .filter((n) => n.name.toLowerCase().includes(q) && !s.current.hidden.has(n.group))
       .sort((a, b) => Number(a.name.toLowerCase() !== q) - Number(b.name.toLowerCase() !== q) || b.degree - a.degree)[0];
     if (hit) {
       if (hit.unresolved) props.onSelectUnresolved(hit.name);
       else props.onSelect(hit.id);
     }
   };
-  const toggle = (k: RegionKey) =>
+  const toggle = (k: string) =>
     setHidden((h) => {
       const next = new Set(h);
       if (next.has(k)) next.delete(k);
@@ -1213,6 +1275,25 @@ export function BrainView(props: Props) {
                 <em>{regionCounts[r.key]}</em>
               </button>
             ))}
+            {islands
+              .filter((i) => (islandCounts.get(i.id) ?? 0) > 0)
+              .map((i) => {
+                const g = islandGroup(i.id);
+                return (
+                  <button
+                    key={g}
+                    className={`atlas-pill island${hidden.has(g) ? ' off' : ''}`}
+                    style={{ ['--region' as string]: i.color }}
+                    title={`${i.name} (island: ${i.folder}): tap to hide or show`}
+                    aria-pressed={!hidden.has(g)}
+                    onClick={() => toggle(g)}
+                  >
+                    <i aria-hidden="true" />
+                    {i.name}
+                    <em>{islandCounts.get(i.id)}</em>
+                  </button>
+                );
+              })}
           </div>
         </div>
       )}
