@@ -53,6 +53,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Backlinks and unlinked mentions | ✅ | Under each note: *Linked from* / *Mentioned in* |
 | Outgoing links | ✅ | *Links to* under each note |
 | Graph view | ✅ | Two views: 3D anatomical **Atlas** and flat **Network** |
+| Islands | ✅ | Keep a separate subject apart: a folder becomes an island with its own area and colour in both views (right-click the folder, or Settings → Islands). Claude can manage them (`manage_islands`) |
 | Outline / table of contents | ✅ | ≡ button on each note |
 | Tags, including nested tags | ✅ | `#project/hooked` also matches `#project` |
 | Orphan and dead-end notes | ✅ | Drawer → Insights (◇), and `octavo orphans` |
@@ -112,7 +113,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query notes, set properties | ✅ | `octavo query 'TABLE status FROM #project'`, `octavo set <note> <key> [value]` |
 | CLI: install plugins/themes, terminal UI | 🚧 | |
-| AI access | ✅ | MCP server with 26 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
+| AI access | ✅ | MCP server with 27 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)
