@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { NoteSummary } from '../api';
+import { api, type Island, type NoteSummary } from '../api';
 
 interface Folder {
   name: string;
@@ -63,6 +63,13 @@ export function FileTree(props: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; isFolder: boolean } | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [islands, setIslands] = useState<Island[]>([]);
+  const islandFolders = new Set(islands.map((i) => i.folder.toLowerCase()));
+  const toggleIsland = async (folder: string) => {
+    const current = (await api.islands()).islands;
+    const on = current.some((i) => i.folder.toLowerCase() === folder.toLowerCase());
+    setIslands((await api.setIslands(on ? current.filter((i) => i.folder.toLowerCase() !== folder.toLowerCase()) : [...current, { folder }])).islands);
+  };
 
   const toggle = (p: string) => {
     setCollapsed((prev) => {
@@ -111,6 +118,7 @@ export function FileTree(props: Props) {
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setMenu({ x: e.clientX, y: e.clientY, path: sub.path, isFolder: true });
+                  void api.islands().then((r) => setIslands(r.islands)).catch(() => {});
                 }}
               >
                 <span className={`chevron${isCollapsed ? '' : ' open'}`}>›</span>
@@ -172,7 +180,19 @@ export function FileTree(props: Props) {
           <div className="menu-backdrop" onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
           <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
             {menu.isFolder ? (
-              <button onClick={() => (props.onNewNote(menu.path), setMenu(null))}>New note here</button>
+              <>
+                <button onClick={() => (props.onNewNote(menu.path), setMenu(null))}>New note here</button>
+                <button
+                  onClick={() => {
+                    const folder = menu.path;
+                    setMenu(null);
+                    void toggleIsland(folder).catch((err) => alert(`Couldn’t change islands: ${(err as Error).message}`));
+                  }}
+                  title="Islands get their own area and colour in the brain views"
+                >
+                  {islandFolders.has(menu.path.toLowerCase()) ? 'Stop keeping it apart (island)' : 'Keep apart as an island'}
+                </button>
+              </>
             ) : (
               <>
                 <button onClick={() => (props.onOpen(menu.path), setMenu(null))}>Open</button>
