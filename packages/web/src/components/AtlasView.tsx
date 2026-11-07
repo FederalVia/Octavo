@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GraphData } from '../api';
+import type { GraphData, GraphNode } from '../api';
 import { REGIONS, REGION_BY_KEY, classify, type RegionKey } from '../regions';
 import type { BrainHandle } from './BrainView';
 
@@ -15,10 +15,18 @@ interface Props {
   paused?: boolean;
 }
 
+/** What a note belongs to for colour, visibility and link batches: one of the six regions, or an island
+ *  (`island:<id>`, a part of the vault kept apart from the brain). */
+type Group = RegionKey | `island:${string}`;
+
 interface ANode {
   id: string;
   name: string;
+  /** Underlying region (an island note keeps one too, but its group wins). */
   region: RegionKey;
+  group: Group;
+  /** Colour of the group. */
+  rgb: [number, number, number];
   degree: number;
   unresolved: boolean;
   hub: boolean;
@@ -45,6 +53,18 @@ interface ALink {
   mega?: boolean;
   /** From or to a note marked #surprise: always highlighted. */
   surprise?: boolean;
+  /** Between an island and anything outside it: crosses open space, so drawn very faintly. */
+  cross?: boolean;
+}
+
+/** An island as drawn: a small cloud of its own beside the brain. */
+interface IslandView {
+  id: string;
+  group: Group;
+  name: string;
+  color: string;
+  rgb: [number, number, number];
+  count: number;
 }
 
 interface Layout {
@@ -54,9 +74,17 @@ interface Layout {
   neighbors: Map<string, Set<string>>;
   adjacency: Map<string, ALink[]>;
   counts: Record<RegionKey, number>;
+  /** Notes per island group. */
+  islandCounts: Record<string, number>;
+  /** Islands with notes, in the dock's order. */
+  islands: IslandView[];
+  /** Every group with its colour: the six regions, then the islands (one link batch each). */
+  groups: { key: Group; rgb: [number, number, number] }[];
   /** Brain radius in world units. */
   R: number;
   dust: [number, number, number][];
+  /** Faint dust around each island, giving it an outline of its own. */
+  islandDust: [number, number, number][];
   /** Links in a stable random order: drawing the first N gives an even sample when there are too many. */
   sampled: ALink[];
   /** Degree of about the 8th busiest note: in crowded vaults only notes at least this busy keep a halo. */
@@ -75,6 +103,186 @@ interface Geometry {
   R: number;
   present: RegionDef[];
   weight: Record<RegionKey, number>;
+  /** Where each island floats (ids of islands that have notes, sorted, joined: a different set means a new layout). */
+  islandKey: string;
+  islands: Map<string, IslandGeo>;
+  /** Farthest any island reaches from the brain's centre, horizontally (0 without islands). */
+  reach: number;
+}
+
+interface IslandGeo {
+  x: number;
+  y: number;
+  z: number;
+  /** Radius of the island's cloud. */
+  r: number;
+}
+
+/** "#rrggbb" (or "#rgb") to an RGB triple; a neutral grey when it can't be read. */
+function hexRgb(hex: string): [number, number, number] {
+  let h = (hex ?? '').trim().replace(/^#/, '');
+  if (/^[0-9a-f]{3}$/i.test(h)) h = h.replace(/./g, (c) => c + c);
+  if (!/^[0-9a-f]{6}$/i.test(h)) return [200, 196, 188];
+  const v = parseInt(h, 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/** The initial camera yaw: the brain seen from its left side, front to the left. */
+const START_YAW = -Math.PI / 2 + 0.38;
+
+/**
+ * Where islands float: on a ring around the brain in its horizontal plane, outside its silhouette with clear
+ * space in between. One island sits to the right of the brain as first seen, a second to the left; more are
+ * spread evenly around. Each cloud's radius grows with the square root of its note count.
+ */
+function placeIslands(R: number, sizes: { id: string; count: number }[]): { islands: Map<string, IslandGeo>; reach: number } {
+  const islands = new Map<string, IslandGeo>();
+  if (!sizes.length) return { islands, reach: 0 };
+  const gap = R * 0.32;
+  const k = sizes.length;
+  const radii = sizes.map((s) => Math.min(R * 0.62, Math.max(R * 0.13, R * 0.056 * Math.sqrt(s.count))));
+  // Screen-right at the start is the direction (cos yaw, 0, sin yaw) in world space.
+  const angles = sizes.map((_, i) => START_YAW + (k === 2 ? i * Math.PI : (i * 2 * Math.PI) / k));
+  // Distance from the centre to the brain's edge in that direction (the dust silhouette's ellipse).
+  const edge = (a: number) => 1 / Math.sqrt((Math.cos(a) / (R * 0.97)) ** 2 + (Math.sin(a) / (R * 1.32)) ** 2);
+  const dist = angles.map((a, i) => edge(a) + gap + radii[i]);
+  // Neighbours on the ring must not touch: push the whole ring out until they're apart.
+  if (k > 1) {
+    for (let iter = 0; iter < 40; iter++) {
+      let ok = true;
+      for (let i = 0; i < k; i++) {
+        const j = (i + 1) % k;
+        const ax = Math.cos(angles[i]) * dist[i];
+        const az = Math.sin(angles[i]) * dist[i];
+        const bx = Math.cos(angles[j]) * dist[j];
+        const bz = Math.sin(angles[j]) * dist[j];
+        if (Math.hypot(ax - bx, az - bz) < radii[i] + radii[j] + gap) ok = false;
+      }
+      if (ok) break;
+      for (let i = 0; i < k; i++) dist[i] *= 1.06;
+    }
+  }
+  let reach = 0;
+  sizes.forEach((s, i) => {
+    islands.set(s.id, { x: Math.cos(angles[i]) * dist[i], y: R * 0.05, z: Math.sin(angles[i]) * dist[i], r: radii[i] });
+    reach = Math.max(reach, dist[i] + radii[i]);
+  });
+  return { islands, reach };
+}
+
+/**
+ * Arrange an island's notes inside its cloud: the busiest notes nearest the centre (each note keeps a fixed
+ * distance from it, by rank), then a few rounds pull linked notes together and push crowded ones apart.
+ */
+function arrangeIsland(members: ANode[], geo: IslandGeo, links: Map<string, string[]>) {
+  const n = members.length;
+  if (!n) return;
+  const ranked = [...members].sort((a, b) => b.degree - a.degree || (a.id < b.id ? -1 : 1));
+  const radial = new Map<ANode, number>();
+  const pos = new Map<ANode, [number, number, number]>();
+  ranked.forEach((m, i) => {
+    const rnd = seeded(m.id + '#island');
+    const f = Math.cbrt((i + 0.5) / n);
+    const d = geo.r * (n === 1 ? 0 : 0.1 + 0.9 * f) * (0.92 + rnd() * 0.16);
+    radial.set(m, d);
+    const u = rnd() * 2 - 1;
+    const th = rnd() * Math.PI * 2;
+    const s = Math.sqrt(1 - u * u);
+    pos.set(m, [s * Math.cos(th) * d, u * d, s * Math.sin(th) * d]);
+  });
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const spacing = (geo.r * 1.5) / Math.cbrt(n);
+  const iters = n <= 400 ? 40 : 10;
+  const repel = n <= 400;
+  for (let it = 0; it < iters; it++) {
+    const step = 1 - it / iters;
+    const move = new Map<ANode, [number, number, number]>();
+    for (const m of members) {
+      const p = pos.get(m)!;
+      const mv: [number, number, number] = [0, 0, 0];
+      for (const id of links.get(m.id) ?? []) {
+        const o = byId.get(id);
+        if (!o || o === m) continue;
+        const q = pos.get(o)!;
+        mv[0] += (q[0] - p[0]) * 0.06;
+        mv[1] += (q[1] - p[1]) * 0.06;
+        mv[2] += (q[2] - p[2]) * 0.06;
+      }
+      if (repel) {
+        for (const o of members) {
+          if (o === m) continue;
+          const q = pos.get(o)!;
+          const dx = p[0] - q[0];
+          const dy = p[1] - q[1];
+          const dz = p[2] - q[2];
+          const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.01;
+          if (d >= spacing * 1.6) continue;
+          const push = ((spacing * 1.6 - d) / d) * 0.12;
+          mv[0] += dx * push;
+          mv[1] += dy * push;
+          mv[2] += dz * push;
+        }
+      }
+      move.set(m, mv);
+    }
+    for (const m of members) {
+      const p = pos.get(m)!;
+      const mv = move.get(m)!;
+      const x = p[0] + mv[0] * step;
+      const y = p[1] + mv[1] * step;
+      const z = p[2] + mv[2] * step;
+      // Back to its own distance from the centre: hubs stay central, the cloud stays round.
+      const len = Math.sqrt(x * x + y * y + z * z) || 1;
+      const d = radial.get(m)!;
+      pos.set(m, [(x / len) * d, (y / len) * d, (z / len) * d]);
+    }
+  }
+  for (const m of members) {
+    const p = pos.get(m)!;
+    m.x = geo.x + p[0];
+    m.y = geo.y + p[1];
+    m.z = geo.z + p[2];
+  }
+}
+
+/** A new note joining an island that's already laid out: beside the notes it links to there, or a random spot. */
+function placeInIsland(m: ANode, geo: IslandGeo, near: ANode[]) {
+  const rnd = seeded(m.id + '#island');
+  if (near.length) {
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    for (const o of near) (x += o.x), (y += o.y), (z += o.z);
+    const j = geo.r * 0.18;
+    m.x = x / near.length + (rnd() - 0.5) * j;
+    m.y = y / near.length + (rnd() - 0.5) * j;
+    m.z = z / near.length + (rnd() - 0.5) * j;
+    return;
+  }
+  const u = rnd() * 2 - 1;
+  const th = rnd() * Math.PI * 2;
+  const s = Math.sqrt(1 - u * u);
+  const d = geo.r * (0.4 + 0.6 * rnd());
+  m.x = geo.x + s * Math.cos(th) * d;
+  m.y = geo.y + u * d;
+  m.z = geo.z + s * Math.sin(th) * d;
+}
+
+/** Faint dust in a shell around each island. */
+function makeIslandDust(islands: Map<string, IslandGeo>): [number, number, number][] {
+  const dust: [number, number, number][] = [];
+  for (const [id, g] of islands) {
+    const rnd = seeded('dust:' + id);
+    const count = Math.round(Math.min(260, 50 + g.r * 0.9));
+    for (let i = 0; i < count; i++) {
+      const u = rnd() * 2 - 1;
+      const th = rnd() * Math.PI * 2;
+      const s = Math.sqrt(1 - u * u);
+      const d = g.r * (0.8 + rnd() * 0.42) + 8;
+      dust.push([g.x + s * Math.cos(th) * d, g.y + u * d, g.z + s * Math.sin(th) * d]);
+    }
+  }
+  return dust;
 }
 
 /** Deterministic pseudo-random numbers from a string, so layouts are stable across reloads. */
@@ -90,7 +298,7 @@ function seeded(str: string): () => number {
   };
 }
 
-function makeGeometry(counts: Record<RegionKey, number>, total: number): Geometry {
+function makeGeometry(counts: Record<RegionKey, number>, total: number, islandSizes: { id: string; count: number }[]): Geometry {
   // The brain grows slowly with the vault; notes fill its whole volume (see territory below).
   const R = Math.max(240, 150 + Math.cbrt(total) * 26);
   // Territories: each region owns the part of the brain nearest its anatomical centre, weighted by how
@@ -100,7 +308,8 @@ function makeGeometry(counts: Record<RegionKey, number>, total: number): Geometr
   const weight = Object.fromEntries(
     REGIONS.map((r) => [r.key, counts[r.key] ? Math.cbrt(counts[r.key] / total) * R * 0.9 : -Infinity]),
   ) as Record<RegionKey, number>;
-  return { R, present, weight };
+  const { islands, reach } = placeIslands(R, islandSizes);
+  return { R, present, weight, islandKey: islandSizes.map((s) => s.id).join('\n'), islands, reach };
 }
 
 /** The region whose territory holds this point. */
@@ -188,6 +397,9 @@ function linkRank(a: number, b: number): number {
  * territories are recomputed and everything is placed from scratch.
  */
 function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
+  // Islands: only ids the graph defines count; a note naming an unknown island stays in its region.
+  const islandDefs = new Map((data.islands ?? []).map((i) => [i.id, i]));
+  const islandOf = (n: GraphNode) => (n.island && islandDefs.has(n.island) ? n.island : undefined);
   const regionOf = new Map<string, RegionKey>();
   for (const n of data.nodes) if (!n.unresolved) regionOf.set(n.id, classify(n));
   // Unresolved targets join the region of whoever links to them.
@@ -195,9 +407,29 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
     if (!regionOf.has(l.target) && regionOf.has(l.source)) regionOf.set(l.target, regionOf.get(l.source)!);
   }
 
+  const groupOf = new Map<string, Group>();
   const counts = Object.fromEntries(REGIONS.map((r) => [r.key, 0])) as Record<RegionKey, number>;
-  for (const n of data.nodes) if (!n.unresolved) counts[regionOf.get(n.id) ?? 'parietal']++;
+  const islandCounts: Record<string, number> = {};
+  for (const n of data.nodes) {
+    if (n.unresolved) continue;
+    const isl = islandOf(n);
+    if (isl) {
+      const g: Group = `island:${isl}`;
+      groupOf.set(n.id, g);
+      islandCounts[g] = (islandCounts[g] ?? 0) + 1;
+    } else {
+      const r = regionOf.get(n.id) ?? 'parietal';
+      groupOf.set(n.id, r);
+      counts[r]++;
+    }
+  }
+  // The brain's size and territories come from the notes in it: islands float outside and don't count.
   const total = Math.max(1, Object.values(counts).reduce((a, b) => a + b, 0));
+  const allNotes = total + Object.values(islandCounts).reduce((a, b) => a + b, 0);
+  const islandSizes = (data.islands ?? [])
+    .filter((i) => islandCounts[`island:${i.id}`])
+    .map((i) => ({ id: i.id, count: islandCounts[`island:${i.id}`] }));
+  const islandKey = islandSizes.map((s) => s.id).join('\n');
 
   // Keep the previous territories unless too much has changed since they were computed.
   let geo: Geometry | null = prev?.geo ?? null;
@@ -208,20 +440,20 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
     for (const n of data.nodes) {
       if (n.unresolved) continue;
       const old = prev.byId.get(n.id);
-      if (old && !old.unresolved && old.region === (regionOf.get(n.id) ?? 'parietal')) kept++;
+      if (old && !old.unresolved && old.group === groupOf.get(n.id)) kept++;
       else changed++;
     }
     let prevNotes = 0;
     for (const n of prev.nodes) if (!n.unresolved) prevNotes++;
     drift += changed + (prevNotes - kept);
     const g = geo;
-    // A region that had no notes has no territory yet.
+    // A region that had no notes has no territory yet; an island added or removed moves the others.
     const newRegion = REGIONS.some((r) => counts[r.key] > 0 && !g.present.includes(r));
-    if (newRegion || drift > Math.max(25, total * 0.1)) geo = null;
+    if (newRegion || g.islandKey !== islandKey || drift > Math.max(25, allNotes * 0.1)) geo = null;
   }
   const reuse = prev && geo ? prev : null;
   if (!geo) {
-    geo = makeGeometry(counts, total);
+    geo = makeGeometry(counts, total, islandSizes);
     drift = 0;
   }
   const R = geo.R;
@@ -232,20 +464,32 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
 
   const surprising = new Set(data.nodes.filter((n) => n.surprise).map((n) => n.id));
   // Index-like notes linked to a big share of the vault: their hundreds of lines would drown everything else.
-  const megaCut = Math.max(30, total * 0.05);
+  const megaCut = Math.max(30, allNotes * 0.05);
+
+  const islandRgb = new Map<string, [number, number, number]>();
+  for (const i of data.islands ?? []) islandRgb.set(`island:${i.id}`, hexRgb(i.color));
+  const rgbOf = (g: Group) => islandRgb.get(g) ?? REGION_BY_KEY[g as RegionKey].rgb;
 
   const nodes: ANode[] = [];
   const byId = new Map<string, ANode>();
+  /** Island notes still to be placed, per island. */
+  const unplaced = new Map<string, ANode[]>();
   for (const n of data.nodes) {
     if (n.unresolved) continue;
     const region = regionOf.get(n.id) ?? 'parietal';
+    const group = groupOf.get(n.id)!;
+    const isl = islandOf(n);
     const old = prev?.byId.get(n.id);
-    // Already placed in these territories: stay put. Otherwise a random spot in this region's territory.
-    const pos = reuse && old && !old.unresolved && old.region === region ? old : placeNote(n.id, region, geo);
+    const keep = reuse && old && !old.unresolved && old.group === group;
+    // Already placed in these territories (or this island): stay put. Otherwise a random spot in its region's
+    // territory; island notes are placed below, once all of them are known.
+    const pos = keep ? old : isl ? { x: 0, y: 0, z: 0, phase: seeded(n.id)() * Math.PI * 2 } : placeNote(n.id, region, geo);
     const node: ANode = {
       id: n.id,
       name: n.name,
       region,
+      group,
+      rgb: rgbOf(group),
       degree: n.degree,
       unresolved: false,
       hub: n.degree >= hubCut,
@@ -262,10 +506,51 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
     };
     nodes.push(node);
     byId.set(n.id, node);
+    if (isl && !keep) {
+      let list = unplaced.get(isl);
+      if (!list) unplaced.set(isl, (list = []));
+      list.push(node);
+    }
   }
-  // Unresolved: faint points floating just outside the note that (first) mentions them.
+  if (unplaced.size) {
+    // Links inside each island, to keep linked notes together.
+    const inside = new Map<string, string[]>();
+    for (const l of data.links) {
+      const a = byId.get(l.source);
+      const b = byId.get(l.target);
+      if (!a || !b || a === b || a.group !== b.group || !a.group.startsWith('island:')) continue;
+      let la = inside.get(a.id);
+      if (!la) inside.set(a.id, (la = []));
+      la.push(b.id);
+      let lb = inside.get(b.id);
+      if (!lb) inside.set(b.id, (lb = []));
+      lb.push(a.id);
+    }
+    for (const [isl, list] of unplaced) {
+      const g = geo.islands.get(isl);
+      if (!g) continue;
+      if (!reuse) arrangeIsland(list, g, inside);
+      else {
+        // An island that's already laid out: new notes go beside those they link to.
+        const placed = new Set(list);
+        for (const m of list) {
+          const near = (inside.get(m.id) ?? []).map((id) => byId.get(id)!).filter((o) => o && !placed.has(o));
+          placeInIsland(m, g, near);
+          placed.delete(m);
+        }
+      }
+    }
+  }
+  // Unresolved: faint points floating just outside the note that (first) mentions them. A note in the brain is
+  // preferred over an island note, so a name only islands mention floats by its island and no other.
   const firstSource = new Map<string, string>();
-  for (const l of data.links) if (!firstSource.has(l.target)) firstSource.set(l.target, l.source);
+  for (const l of data.links) {
+    const cur = firstSource.get(l.target);
+    if (cur === undefined) firstSource.set(l.target, l.source);
+    else if (byId.get(cur)?.group.startsWith('island:') && byId.has(l.source) && !byId.get(l.source)!.group.startsWith('island:')) {
+      firstSource.set(l.target, l.source);
+    }
+  }
   for (const n of data.nodes) {
     if (!n.unresolved) continue;
     const source = firstSource.get(n.id);
@@ -325,6 +610,7 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
     const b = byId.get(l.target);
     if (!a || !b) continue;
     const link: ALink = { a, b, mega: a.degree >= megaCut || b.degree >= megaCut, surprise: surprising.has(a.id) || surprising.has(b.id) };
+    if (a.group !== b.group && (a.group.startsWith('island:') || b.group.startsWith('island:'))) link.cross = true;
     links.push(link);
     ranks.push(linkRank(hashOf(a), hashOf(b)));
     connect(a, b, link);
@@ -332,6 +618,7 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
   }
 
   const dust = reuse ? reuse.dust : makeDust(R);
+  const islandDust = reuse ? reuse.islandDust : makeIslandDust(geo.islands);
 
   // A random but stable order: an edit adds or drops its own links without reshuffling the rest of the sample.
   // Each key packs the link's rank above its index, so a plain numeric sort (no comparator) orders them.
@@ -347,7 +634,13 @@ function buildLayout(data: GraphData, prev: Layout | null = null): Layout {
       .map((i) => links[i]);
   }
   const topHubCut = degrees[Math.min(degrees.length - 1, 7)] ?? Infinity;
-  return { nodes, links, byId, neighbors, adjacency, counts, R, dust, sampled, topHubCut, geo, drift };
+  const islands: IslandView[] = islandSizes.map((s) => {
+    const def = islandDefs.get(s.id)!;
+    const group: Group = `island:${s.id}`;
+    return { id: s.id, group, name: def.name, color: def.color, rgb: rgbOf(group), count: s.count };
+  });
+  const groups = [...REGIONS.map((r) => ({ key: r.key as Group, rgb: r.rgb })), ...islands.map((i) => ({ key: i.group, rgb: i.rgb }))];
+  return { nodes, links, byId, neighbors, adjacency, counts, islandCounts, islands, groups, R, dust, islandDust, sampled, topHubCut, geo, drift };
 }
 
 /** How long a note that isn't laid out yet stays waiting to light up. */
