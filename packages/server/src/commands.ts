@@ -4,6 +4,7 @@ import { importEnex, importNotion } from './importers.js';
 import { buildSite, writeSite } from './publish.js';
 import { backupName, buildBackup } from './backup.js';
 import fs from 'node:fs/promises';
+import { parseSince } from './mcp.js';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -21,6 +22,7 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo history <note>                List saved versions of a note
   octavo restore <note> <version-id>   Restore a saved version
   octavo orphans                       Notes nothing links to, and dead ends
+  octavo recent [span|date]            Notes changed recently (default 1d; e.g. 12h, 3d, 2w, 2026-11-01)
   octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
   octavo set <note> <key> [value]      Set a property (no value removes it)
   octavo backup [file.zip] [--history] The whole vault as one zip (default: "<vault> backup <date>.zip")
@@ -36,7 +38,7 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo import evernote <file.enex> [--into F]
                                        Import an Evernote export
 
-Add --json to tasks, search, tags, history, orphans or query for machine-readable output.`;
+Add --json to tasks, search, tags, history, orphans, recent or query for machine-readable output.`;
 
 export const NOTE_COMMANDS = new Set([
   'new',
@@ -55,6 +57,7 @@ export const NOTE_COMMANDS = new Set([
   'history',
   'restore',
   'orphans',
+  'recent',
   'query',
   'set',
   'publish',
@@ -332,6 +335,18 @@ export async function runNoteCommand(
         }
         const s = await vault.setProperty(args[0], args[1], value);
         console.log(value === null ? `Removed ${args[1]} from ${s.path}` : `Set ${args[1]} on ${s.path}`);
+        break;
+      }
+      case 'recent': {
+        const after = parseSince(args[0] ?? '1d');
+        const notes = vault
+          .list()
+          .filter((n) => n.mtime >= after)
+          .sort((a, b) => b.mtime - a.mtime);
+        out(
+          notes.map((n) => ({ path: n.path, updated: new Date(n.mtime).toISOString() })),
+          () => (notes.length ? notes.map((n) => `  ${new Date(n.mtime).toLocaleString()}  ${n.path}`).join('\n') : `Nothing changed in the last ${args[0] ?? '1d'}.`),
+        );
         break;
       }
       case 'orphans': {

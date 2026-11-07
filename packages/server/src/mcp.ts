@@ -270,20 +270,24 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
     'list_notes',
     {
       title: 'List notes',
-      description: 'List notes, optionally filtered by folder and/or tag. Sorted by most recently updated.',
+      description:
+        'List notes, optionally filtered by folder and/or tag. Sorted by most recently updated. Use `since` to see what changed recently, e.g. at the start of a conversation ("since": "3d").',
       inputSchema: {
         folder: z.string().optional().describe('Only notes in this folder (including subfolders)'),
+        since: z.string().optional().describe('Only notes changed since then: a date (2026-11-01), a date and time, or a span back from now such as 12h, 3d or 2w'),
         tag: z.string().optional().describe('Only notes with this tag (nested tags match their parent)'),
         limit: z.number().int().min(1).max(500).optional().describe('Max results (default 50)'),
       },
       annotations: { readOnlyHint: true },
     },
-    safe(async ({ folder, tag, limit }) => {
+    safe(async ({ folder, tag, since, limit }) => {
+      const after = since ? parseSince(since) : 0;
       const notes = vault
         .list({ folder, tag })
+        .filter((n) => n.mtime >= after)
         .sort((a, b) => b.mtime - a.mtime)
         .slice(0, limit ?? 50);
-      return text(notes.length ? notes.map(summaryLine).join('\n') : 'No matching notes.');
+      return text(notes.length ? notes.map(summaryLine).join('\n') : since ? `No notes changed since ${new Date(after).toISOString().slice(0, 16).replace('T', ' ')}.` : 'No matching notes.');
     }),
   );
 
@@ -748,4 +752,17 @@ export function createMcpServer(vault: Vault, opts: { readOnly?: boolean } = {})
   );
 
   return server;
+}
+
+/** "3d", "12h", "2w", "30m", or a date / date-time → a time in ms. */
+export function parseSince(since: string, now = Date.now()): number {
+  const span = /^\s*(\d+(?:\.\d+)?)\s*(m|min|h|d|w)\s*$/i.exec(since);
+  if (span) {
+    const unit = { m: 60e3, min: 60e3, h: 3600e3, d: 86400e3, w: 7 * 86400e3 }[span[2].toLowerCase() as 'm' | 'min' | 'h' | 'd' | 'w'];
+    return now - Number(span[1]) * unit;
+  }
+  const s = since.trim();
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00`).getTime() : Date.parse(s);
+  if (Number.isNaN(t)) throw new Error(`Couldn't read "${since}" as a date or a span like 3d`);
+  return t;
 }

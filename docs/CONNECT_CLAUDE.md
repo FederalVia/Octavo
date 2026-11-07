@@ -136,7 +136,7 @@ To reinforce this, you can add a line to your own `CLAUDE.md` or system prompt, 
 | `read_note` | Full content, its brain region (and why), outgoing links and backlinks | |
 | `random_note` | Read a random note, optionally in a folder, tag or region; `favor` picks old notes (default), under-linked ones, both, or none | |
 | `get_note_region` | Which brain region a note is drawn in, and why | |
-| `list_notes` | Notes in a folder and/or with a tag, newest first | |
+| `list_notes` | Notes in a folder and/or with a tag, newest first; `since: "3d"` shows only what changed recently | |
 | `get_backlinks` | Notes linking to a note, with the linking lines | |
 | `get_related` | Related notes via links, backlinks, shared tags and two-step links | |
 | `query_notes` | Query notes like a database: `TABLE status, due FROM "Projects" WHERE status != "done" SORT due` | |

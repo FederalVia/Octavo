@@ -51,3 +51,14 @@ test('octavo theme: add from a file (switched on), list, off/on, remove', async 
   assert.match(await run(dir, 'theme', []), /No themes yet/);
   await assert.rejects(run(dir, 'theme', ['on', 'Missing']), /No theme called "Missing"/);
 });
+
+test('octavo recent: notes changed in a span', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-cli-recent-'));
+  await fs.writeFile(path.join(dir, 'New.md'), '# New\n');
+  await fs.writeFile(path.join(dir, 'Old.md'), '# Old\n');
+  const old = new Date(Date.now() - 10 * 86400e3);
+  await fs.utimes(path.join(dir, 'Old.md'), old, old);
+  const recent = JSON.parse(await run(dir, 'recent', ['3d'], { json: true })) as { path: string }[];
+  assert.deepEqual(recent.map((r) => r.path), ['New.md']);
+  assert.equal((JSON.parse(await run(dir, 'recent', ['2w'], { json: true })) as unknown[]).length, 2);
+});
