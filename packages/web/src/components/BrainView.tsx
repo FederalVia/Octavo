@@ -910,19 +910,34 @@ export function BrainView(props: Props) {
       placed.length = 0;
       // Keep names off the toolbar, the zoom buttons and the dock.
       placed.push(0, 0, 400, MARGIN.top - 8, 0, H - MARGIN.bottom + 4, W, MARGIN.bottom, freeW() - 64, 0, 64, 170);
-      // Island names: a soft map heading above each island, placed before the note names.
+      // With islands: the area each one (and the main map) covers, so plain names don't spill across the water.
+      const box = new Map<string, { x0: number; x1: number; y0: number; y1: number }>();
       if (st.islands.length) {
-        const box = new Map<string, { x0: number; x1: number; y0: number }>();
         for (const n of st.nodes) {
-          if (!n.isl || n.x == null || !visible(n)) continue;
-          const b = box.get(n.group);
-          if (!b) box.set(n.group, { x0: n.x, x1: n.x, y0: n.y! });
+          if (n.x == null || !visible(n)) continue;
+          const key = n.isl ? n.group : '';
+          const b = box.get(key);
+          if (!b) box.set(key, { x0: n.x, x1: n.x, y0: n.y!, y1: n.y! });
           else {
             if (n.x < b.x0) b.x0 = n.x;
             if (n.x > b.x1) b.x1 = n.x;
             if (n.y! < b.y0) b.y0 = n.y!;
+            if (n.y! > b.y1) b.y1 = n.y!;
           }
         }
+      }
+      /** Whether a plain name at this screen rectangle would reach into another island (or the main map). */
+      const crosses = (n: Node, x: number, y: number, w: number, h: number) => {
+        const own = n.isl ? n.group : '';
+        for (const [key, b] of box) {
+          if (key === own) continue;
+          const bx = ox + b.x0 * k - 6, by = oy + b.y0 * k - 6, bw = (b.x1 - b.x0) * k + 12, bh = (b.y1 - b.y0) * k + 12;
+          if (x < bx + bw && x + w > bx && y < by + bh && y + h > by) return true;
+        }
+        return false;
+      };
+      // Island names: a soft map heading above each island, placed before the note names.
+      if (st.islands.length) {
         const hf = font + 1.5;
         ctx.save();
         ctx.font = `600 ${hf}px system-ui, -apple-system, "Segoe UI", sans-serif`;
@@ -967,6 +982,11 @@ export function BrainView(props: Props) {
         if (x < 4 && !strong) return false;
         // Generous spacing around plain names, so they never stack into a column.
         const pad = strong ? 3 : 10;
+        if (!strong && box.size > 1 && crosses(n, x, sy - font * 0.75, w, font * 1.5)) {
+          // Try the other side of the dot before giving up.
+          x = x > sx ? sx - nodePx(n) - 4 - w : sx + nodePx(n) + 4;
+          if (x < 4 || x + w > freeW() - 6 || crosses(n, x, sy - font * 0.75, w, font * 1.5)) return false;
+        }
         if (!fits(x - pad, sy - font * 0.75 - pad / 2, w + pad * 2, font * 1.5 + pad) && !strong) return false;
         ctx.globalAlpha = strong ? 1 : n.hub ? 0.9 : 0.75;
         ctx.lineWidth = 3;
@@ -992,6 +1012,19 @@ export function BrainView(props: Props) {
         for (const n of st.ranked) if (matches(n) && draw(n, false) && ++shown > 60) break;
       } else if (!focus || !focusSet) {
         let shown = 0;
+        // Every island gets at least its busiest name, even where the budget is small (phones).
+        if (st.islands.length) {
+          const named = new Set<string>();
+          const tries = new Map<string, number>();
+          for (const n of st.ranked) {
+            if (!n.isl || n.unresolved || named.has(n.group)) continue;
+            const t = (tries.get(n.group) ?? 0) + 1;
+            tries.set(n.group, t);
+            if (draw(n, false)) shown++, named.add(n.group);
+            else if (t >= 6) named.add(n.group);
+            if (named.size >= st.islands.length) break;
+          }
+        }
         for (const n of st.ranked) {
           if (shown >= budget) break;
           if (n.unresolved && !small) continue;
