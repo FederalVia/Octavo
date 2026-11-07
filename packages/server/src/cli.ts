@@ -80,6 +80,7 @@ async function main() {
       folder: { type: 'string' },
       tag: { type: 'string' },
       title: { type: 'string' },
+      history: { type: 'boolean', default: false },
     },
   });
 
@@ -150,6 +151,7 @@ async function main() {
       folder: values.folder,
       tag: values.tag,
       title: values.title,
+      history: values.history,
     });
     return;
   }

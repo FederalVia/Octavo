@@ -1,3 +1,4 @@
+import { BackupTooLargeError, backupName, buildBackup } from './backup.js';
 import { clipNote, readPage, WebReadError } from './webread.js';
 import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
@@ -358,6 +359,20 @@ export function createApp(opts: AppOptions): express.Express {
 
   api.get('/insights', (_req, res) => {
     res.json(vault.insights());
+  });
+
+  // Backup: the whole vault folder as a zip download.
+  api.get('/backup.zip', async (req, res, next) => {
+    try {
+      const b = await buildBackup(vault, { history: req.query.history === '1' });
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(backupName(vault))}`);
+      res.setHeader('X-Octavo-Files', String(b.files));
+      res.send(b.zip);
+    } catch (err) {
+      if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
+      else next(err);
+    }
   });
 
   // Publish: the static website as a zip download.

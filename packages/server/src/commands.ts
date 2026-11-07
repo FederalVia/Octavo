@@ -2,6 +2,8 @@ import { Vault, formatQueryResult } from '@octavo/core';
 import path from 'node:path';
 import { importEnex, importNotion } from './importers.js';
 import { buildSite, writeSite } from './publish.js';
+import { backupName, buildBackup } from './backup.js';
+import fs from 'node:fs/promises';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -21,6 +23,7 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo orphans                       Notes nothing links to, and dead ends
   octavo query <query…>                Query notes, e.g. 'TABLE status FROM #project WHERE status != "done"'
   octavo set <note> <key> [value]      Set a property (no value removes it)
+  octavo backup [file.zip] [--history] The whole vault as one zip (default: "<vault> backup <date>.zip")
   octavo islands [add <folder> [--title NAME] | remove <name-or-folder>]
                                        List islands, or keep a folder apart in the brain views
   octavo publish <folder> [--all | --folder F | --tag T] [--title T]
@@ -54,6 +57,7 @@ export const NOTE_COMMANDS = new Set([
   'set',
   'publish',
   'islands',
+  'backup',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -79,6 +83,7 @@ export interface NoteCommandOptions {
   folder?: string;
   tag?: string;
   title?: string;
+  history?: boolean;
 }
 
 /** Run a note command against the vault and print the result. */
@@ -185,6 +190,15 @@ export async function runNoteCommand(
         need(args, 2, 'restore <note> <version-id>');
         const s = await vault.restoreVersion(args[0], args[1]);
         console.log(`Restored ${s.path} to version ${args[1]}`);
+        break;
+      }
+      case 'backup': {
+        const b = await buildBackup(vault, { history: opts.history });
+        const file = path.resolve(args[0] ?? backupName(vault));
+        const root = path.resolve(vault.root);
+        if (file === root || file.startsWith(root + path.sep)) throw new Error('Save the backup outside the vault folder');
+        await fs.writeFile(file, b.zip);
+        console.log(`Backed up ${b.files} files (${(b.bytes / 1024 / 1024).toFixed(1)} MB) to ${file}`);
         break;
       }
       case 'islands': {
