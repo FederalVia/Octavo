@@ -73,6 +73,8 @@ export interface GraphNode {
   /** Tagged #surprise or `surprise: true`: its links are highlighted in the atlas. */
   surprise?: boolean;
   degree: number;
+  /** Creation time (ms): frontmatter `created`/`date`, else the file's ctime. Not on unresolved nodes. */
+  created?: number;
   /** Id of the island the note belongs to (see Island): drawn apart from the six regions, in the island's colour. */
   island?: string;
 }
