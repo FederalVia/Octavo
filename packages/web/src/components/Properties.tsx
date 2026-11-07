@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import YAML from 'yaml';
 
 type PropType = 'text' | 'list' | 'number' | 'checkbox' | 'date' | 'other';
@@ -52,10 +52,37 @@ export function setFrontmatter(content: string, data: Record<string, unknown>): 
   return `---\n${yaml}\n---\n${m ? body : body.startsWith('\n') ? body : `\n${body}`}`;
 }
 
-function renderValue(v: unknown): string {
-  if (Array.isArray(v)) return v.map(renderValue).join(', ');
+function renderValue(v: unknown): ReactNode {
+  if (Array.isArray(v))
+    return v.map((x, i) => (
+      <Fragment key={i}>
+        {i > 0 && ', '}
+        {/* Unquoted `owner: [[Ada]]` is YAML for a list in a list: show it as the link it was meant to be. */}
+        {Array.isArray(x) && x.length === 1 && typeof x[0] === 'string' ? withLinks(`[[${x[0]}]]`) : renderValue(x)}
+      </Fragment>
+    ));
   if (v && typeof v === 'object') return JSON.stringify(v);
-  return String(v ?? '');
+  return withLinks(String(v ?? ''));
+}
+
+/** `[[Note]]` / `[[Note#Heading|alias]]` in a property value as clickable links (the preview handles the click). */
+function withLinks(text: string): ReactNode {
+  const re = /\[\[([^\]|#]*)(?:#([^\]|]*))?(?:\|([^\]]+))?\]\]/g;
+  if (!text.includes('[[')) return text;
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const target = m[1].trim();
+    out.push(
+      <a key={m.index} className="wikilink" href="#" data-target={target} data-heading={m[2]?.trim() ?? ''}>
+        {m[3]?.trim() || target || m[2]}
+      </a>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 let nextId = 1;
