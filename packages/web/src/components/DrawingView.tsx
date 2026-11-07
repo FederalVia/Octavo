@@ -3,6 +3,7 @@
  * drawing library only downloads the first time a drawing is opened.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Excalidraw, MainMenu, serializeAsJSON } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import { api, ApiError } from '../api';
@@ -28,6 +29,10 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
   // Where saves go: the drawing itself, or a conflict copy once it was changed elsewhere.
   const target = useRef(path);
   const title = path.replace(/\.excalidraw$/i, '').split('/').pop();
+  // Phones: Excalidraw's top bar is full of tools, so Done goes in the middle of its bottom bar instead.
+  const [mobile, setMobile] = useState(false);
+  const [bottomSlot, setBottomSlot] = useState<HTMLElement | null>(null);
+  const viewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -106,8 +111,31 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
     );
   }
 
+  useEffect(() => {
+    if (!mobile || !scene) return;
+    const root = viewRef.current;
+    if (!root) return;
+    const ensure = () => {
+      const bar = root.querySelector<HTMLElement>('.App-bottom-bar .App-toolbar-content');
+      if (!bar) return setBottomSlot(null);
+      let slot = bar.querySelector<HTMLElement>(':scope > .dv-bottom-slot');
+      if (!slot) {
+        slot = document.createElement('div');
+        slot.className = 'dv-bottom-slot';
+        bar.insertBefore(slot, bar.children[1] ?? null);
+      }
+      setBottomSlot((cur) => (cur === slot ? cur : slot));
+    };
+    ensure();
+    // Excalidraw redraws its bars (e.g. when a shape is selected): put the slot back when that happens.
+    const mo = new MutationObserver(ensure);
+    mo.observe(root, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [mobile, scene]);
+
   return (
     <div
+      ref={viewRef}
       className="drawing-view"
       onKeyDown={(e) => {
         // Esc closes the drawing when nothing in Excalidraw is using it (no tool, menu or text edit).
@@ -132,14 +160,18 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
             if (timer.current) clearTimeout(timer.current);
             timer.current = setTimeout(() => void flush(), 900);
           }}
-          renderTopRightUI={() => (
-            <div className="dv-top">
-              {status && <span className="dv-status">{status}</span>}
-              <button className="dv-done" onClick={close} title="Back to your notes">
-                Done
-              </button>
-            </div>
-          )}
+          renderTopRightUI={(isMobile) => {
+            if (isMobile !== mobile) queueMicrotask(() => setMobile(isMobile));
+            if (isMobile) return null;
+            return (
+              <div className="dv-top">
+                {status && <span className="dv-status">{status}</span>}
+                <button className="dv-done" onClick={close} title="Back to your notes">
+                  Done
+                </button>
+              </div>
+            );
+          }}
         >
           <MainMenu>
             <MainMenu.Item onSelect={close}>← Back to notes</MainMenu.Item>
@@ -154,6 +186,17 @@ export default function DrawingView({ path, dark, onClose }: { path: string; dar
       ) : (
         <div className="dv-error muted">Loading drawing…</div>
       )}
+      {mobile &&
+        bottomSlot &&
+        createPortal(
+          <>
+            {status && <span className="dv-status">{status}</span>}
+            <button className="dv-done" onClick={close} title="Back to your notes">
+              Done
+            </button>
+          </>,
+          bottomSlot,
+        )}
     </div>
   );
 }
