@@ -73,7 +73,7 @@ An island keeps a separate subject apart. If your vault is mostly about one thin
 - Links between an island and the rest are still there, drawn faint.
 - A single note somewhere else can join an island with `region: Theology` (the island's name) in its properties.
 - Rename an island or change its colour in Settings. **Remove** puts its notes back in the regions; nothing is moved or changed in your files.
-- Claude can list, add and remove islands too (`manage_islands`). Islands are saved in the vault (`.octavo/islands.json`), so every device sees them.
+- Claude can list, add and remove islands too (`manage_islands`), and so can the terminal: `octavo islands`, `octavo islands add Theology`, `octavo islands remove Theology`. Islands are saved in the vault (`.octavo/islands.json`), so every device sees them.
 
 ## Network view
 
