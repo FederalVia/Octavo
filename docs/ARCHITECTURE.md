@@ -104,7 +104,7 @@ A Vite + React single-page app, served by the server (or by Vite in development,
   - Notes get stable positions: a seeded random point inside their region's sphere, pulled toward the centre by degree. Region centres sit at anatomical positions, scaled by the size of the largest region.
   - Links are drawn in one additive batch, which is what makes the bundles glow.
   - Labels use greedy collision avoidance.
-- `components/BrainView.tsx` is the Network view: d3-force simulation on a canvas, with a pre-settled initial layout, pinch and wheel zoom, and node dragging.
+- `components/BrainView.tsx` is the Network view: d3-force simulation on a canvas, with a pre-settled initial layout, pinch and wheel zoom, node dragging, and notes placed by hand (saved through `/api/pins`).
 - `regions.ts` holds the region definitions and the `classify()` rules shared by both views.
 - `components/Editor.tsx` is CodeMirror 6 with Markdown, wikilink and tag decorations, `[[` and `#` autocomplete, and Ctrl/Cmd-click to follow links.
 - `markdown.ts` renders the reading view with marked plus extensions for wikilinks and embeds, `#tags`, `==highlights==`, callouts, custom task marks, `%%comments%%`, `^block` anchors, footnotes (marked-footnote) and maths (KaTeX). Output is sanitised with DOMPurify.

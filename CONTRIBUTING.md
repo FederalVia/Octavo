@@ -5,7 +5,7 @@ Thanks for helping out! See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how
 ## Setup
 
 ```bash
-git clone https://github.com/FederalVia/octavo.git
+git clone https://github.com/FederalVia/Octavo.git
 cd octavo
 npm install
 npm run build
@@ -32,7 +32,7 @@ Run these before opening a pull request:
 
 ```bash
 npm run typecheck
-npm test            # core unit tests + server tests (REST, auth, MCP round-trip)
+npm test            # core, server (REST, auth, MCP round-trip, CLI, backups) and web unit tests
 npm run build
 ```
 

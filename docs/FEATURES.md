@@ -18,7 +18,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Free, no paid tiers | ✅ | Every feature, including future sync and publishing |
 | Lock individual notes with a password | ✅ | Optional, off by default (⚙ Settings). End-to-end encrypted on your device (AES-256-GCM, PBKDF2 600k), including on phones over plain Wi-Fi. The server and Claude can't read locked notes. See the [user guide](USER_GUIDE.md#locked-encrypted-notes) |
 | Open formats, no lock-in | ✅ | Markdown + YAML frontmatter, compatible with Obsidian |
-| Mac, Windows, Linux | ✅ | Desktop app with installers on the [Releases page](https://github.com/FederalVia/octavo/releases), or any browser |
+| Mac, Windows, Linux | ✅ | Desktop app with installers on the [Releases page](https://github.com/FederalVia/Octavo/releases), or any browser |
 | iOS and Android | 🟡 | Scan a QR code and add Octavo to your home screen. **Access from Anywhere** connects your phone directly to your PC over Wi-Fi or mobile data (automatic router setup and HTTPS). No native apps |
 | Multiple vaults | ✅ | **Brains**: create, switch and remove separate vaults in **Settings → Brains** or **File → Brains**. Each brain is its own Claude connection, so each chat can get only the brains it should. Server: run one per vault (`--vault`, `--port`) |
 | Open a single Markdown file outside a vault | ✅ | Desktop: **File → Brains → Open Markdown File…**, or *Open with → Octavo*. A file outside every brain opens with its folder added as a brain |
