@@ -101,7 +101,7 @@ export async function pdfText(data: Buffer): Promise<string[]> {
  * spaces go (trimmed before the dots, so " .." can't survive as ".." and climb out of the target folder).
  */
 export function safeSegment(s: string): string {
-  return s.replace(/[\\/:*?"<>|#^[\]]+/g, '_').replace(/^\.+/, '').trim() || 'Untitled';
+  return s.replace(/[\\/:*?"<>|#^[\]]+/g, '_').replace(/^[\s.]+|[\s.]+$/g, '') || 'Untitled';
 }
 
 /** The synced block of a note for a PDF or image. */

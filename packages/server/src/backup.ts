@@ -14,6 +14,9 @@ const MAX_FILES = 60_000;
 const MAX_BYTES = 1.5 * 1024 * 1024 * 1024;
 
 export class BackupTooLargeError extends Error {}
+/** A backup is already being built: each one can hold up to MAX_BYTES in memory, so only one at a time. */
+export class BackupBusyError extends Error {}
+let building = false;
 
 export interface BackupResult {
   zip: Buffer;
@@ -22,6 +25,16 @@ export interface BackupResult {
 }
 
 export async function buildBackup(vault: Vault, opts: { history?: boolean } = {}): Promise<BackupResult> {
+  if (building) throw new BackupBusyError('A backup is already being made. Try again in a moment.');
+  building = true;
+  try {
+    return await build(vault, opts);
+  } finally {
+    building = false;
+  }
+}
+
+async function build(vault: Vault, opts: { history?: boolean }): Promise<BackupResult> {
   const root = vault.root;
   const files = new Map<string, Buffer>();
   let bytes = 0;
@@ -40,11 +53,13 @@ export async function buildBackup(vault: Vault, opts: { history?: boolean } = {}
         if (!opts.history && childRel === '.octavo/history') continue;
         await walk(childRel);
       } else if (e.isFile()) {
+        const tooBig = () => new BackupTooLargeError('This vault is too big for a zip backup from Octavo. Copy the vault folder itself instead (it’s just files).');
+        // Check the size before reading, so one huge file is refused without being loaded into memory.
+        const size = (await fs.stat(path.join(root, childRel)).catch(() => null))?.size ?? 0;
+        if (files.size >= MAX_FILES || bytes + size > MAX_BYTES) throw tooBig();
         const data = await fs.readFile(path.join(root, childRel));
         bytes += data.length;
-        if (files.size >= MAX_FILES || bytes > MAX_BYTES) {
-          throw new BackupTooLargeError('This vault is too big for a zip backup from Octavo. Copy the vault folder itself instead (it’s just files).');
-        }
+        if (bytes > MAX_BYTES) throw tooBig();
         files.set(childRel, data);
       }
     }

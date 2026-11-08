@@ -38,3 +38,15 @@ test('findNotes: name matches first, then full-text', async () => {
     vault.close();
   }
 });
+
+test('renderNote: terminal control sequences in a note are not passed through', () => {
+  // OSC 52 (write the clipboard), a title change, a raw CSI and a C1 CSI, as another device or Claude might write them.
+  const evil = 'Hi\x1b]52;c;ZWNobyBwd25lZA==\x07 there\x1b]0;title\x07\x1b[2J\x9b31m\r\n# Head\x1b[5m\n\tindented';
+  const r = renderNote(evil, 80);
+  const joined = r.lines.join('\n');
+  // Only the renderer's own SGR styling may remain.
+  assert.equal(joined.replace(/\x1b\[[0-9;]*m/g, '').match(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/), null, JSON.stringify(joined));
+  assert.ok(!joined.includes('\x1b]'));
+  assert.ok(!joined.includes('\x1b[2J'));
+  assert.ok(r.lines.map(plain).some((l) => l.includes('    indented')));
+});

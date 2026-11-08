@@ -86,3 +86,18 @@ test('automatic backups: off by default, daily once switched on, keeps the newes
     vault.close();
   }
 });
+
+test('backup: one at a time (each can hold a lot of memory), the next one works again', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-busy-'));
+  for (let i = 0; i < 20; i++) await fs.writeFile(path.join(dir, `N${i}.md`), `# ${i}\n`);
+  const vault = await Vault.open(dir, { watch: false });
+  try {
+    const { BackupBusyError } = await import('../src/backup.js');
+    const first = buildBackup(vault);
+    await assert.rejects(buildBackup(vault), BackupBusyError);
+    assert.equal((await first).files, 20);
+    assert.equal((await buildBackup(vault)).files, 20);
+  } finally {
+    vault.close();
+  }
+});

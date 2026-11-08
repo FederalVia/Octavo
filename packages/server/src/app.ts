@@ -1,4 +1,4 @@
-import { BackupTooLargeError, autoBackupStatus, backupName, buildBackup, getAutoBackupConfig, runAutoBackup } from './backup.js';
+import { BackupBusyError, BackupTooLargeError, autoBackupStatus, backupName, buildBackup, getAutoBackupConfig, runAutoBackup } from './backup.js';
 import { clipNote, readPage, WebReadError } from './webread.js';
 import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
@@ -384,6 +384,7 @@ export function createApp(opts: AppOptions): express.Express {
       res.send(b.zip);
     } catch (err) {
       if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
+      else if (err instanceof BackupBusyError) res.status(429).json({ error: err.message });
       else next(err);
     }
   });
@@ -427,6 +428,7 @@ export function createApp(opts: AppOptions): express.Express {
       res.json(await autoBackupStatus(vault));
     } catch (err) {
       if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
+      else if (err instanceof BackupBusyError) res.status(429).json({ error: err.message });
       else next(err);
     }
   });
