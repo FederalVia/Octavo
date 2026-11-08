@@ -1643,7 +1643,7 @@ export function App() {
         </div>
       )}
 
-      {ready && !panelOpen && notes.length > 0 && viewMode === 'network' && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag to move</div>}
+      {ready && !panelOpen && notes.length > 0 && viewMode === 'network' && <div className="brain-hint">Click a point to open its note · scroll to zoom · drag the background to pan, a point to move it</div>}
 
       {/* Drawer: files / search / tags */}
       {showLeft && (

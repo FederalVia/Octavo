@@ -2005,7 +2005,7 @@ export function AtlasView(props: Props) {
         </div>
       )}
 
-      {props.data && props.data.nodes.length === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
+      {props.data && props.data.nodes.length === 0 && <div className="brain-empty">Your mind is empty. Press ＋ to write your first note.</div>}
     </div>
   );
 }

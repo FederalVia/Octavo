@@ -100,3 +100,35 @@ test('folder sync: the vault itself, folders inside it, or around it, are never 
     vault.close();
   }
 });
+
+test('folder sync: names in the watched folder can’t climb out of the target folder, and links are skipped', async () => {
+  const vaultDir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-fs-vault-'));
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-fs-outside-'));
+  const src = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-fs-src-')), 'Shared');
+  await fs.mkdir(path.join(vaultDir, 'attachments'), { recursive: true });
+  await fs.writeFile(path.join(vaultDir, 'attachments', 'photo.png'), 'mine');
+  // " .." passed the old check as ".." (trimmed after the leading dots were removed).
+  await put(path.join(src, ' ..', 'attachments', 'photo.png'), 'replaced');
+  await put(path.join(src, ' ..', 'Planted.md'), '# planted\n');
+  await put(path.join(outside, 'secret.md'), 'secret');
+  await fs.symlink(path.join(outside, 'secret.md'), path.join(src, 'link.md'));
+  const vault = await Vault.open(vaultDir, { watch: false });
+  try {
+    const r = await syncFolder(vault, src, 'Shared');
+    assert.equal(await fs.readFile(path.join(vaultDir, 'attachments', 'photo.png'), 'utf8'), 'mine');
+    await assert.rejects(fs.stat(path.join(vaultDir, 'Planted.md')));
+    for (const p of [...r.added, ...r.updated]) assert.ok(p.startsWith('Shared/'), p);
+    assert.ok(!r.added.some((p) => /link/.test(p)));
+    await assert.rejects(fs.stat(path.join(vaultDir, 'Shared', 'link.md')));
+  } finally {
+    vault.close();
+  }
+});
+
+test('safeSegment: dot and space tricks become plain names', async () => {
+  const { safeSegment } = await import('../src/folderSync.js');
+  for (const bad of ['..', ' ..', '.. ', ' . ', '...', '']) assert.equal(safeSegment(bad), 'Untitled', JSON.stringify(bad));
+  assert.equal(safeSegment(' .git'), 'git');
+  assert.equal(safeSegment('a/b'), 'a_b');
+  assert.equal(safeSegment('Lecture 4'), 'Lecture 4');
+});
