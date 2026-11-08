@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { api, type Island, type NoteSummary } from '../api';
 
 interface Folder {
@@ -62,6 +62,27 @@ export function FileTree(props: Props) {
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; isFolder: boolean } | null>(null);
+  // Touch: press and hold opens the same menu (iPhone Safari never sends contextmenu).
+  const press = useRef<{ timer: number; fired: boolean }>({ timer: 0, fired: false });
+  const holdToOpen = (open: (x: number, y: number) => void) => ({
+    onTouchStart: (e: React.TouchEvent) => {
+      clearTimeout(press.current.timer);
+      press.current.fired = false;
+      if (e.touches.length !== 1) return;
+      const { clientX: x, clientY: y } = e.touches[0];
+      press.current.timer = window.setTimeout(() => {
+        press.current.fired = true;
+        open(x, y);
+      }, 500);
+    },
+    onTouchMove: () => clearTimeout(press.current.timer),
+    onTouchCancel: () => clearTimeout(press.current.timer),
+    onTouchEnd: (e: React.TouchEvent) => {
+      clearTimeout(press.current.timer);
+      // The hold opened the menu: don't also open or fold the item.
+      if (press.current.fired) e.preventDefault();
+    },
+  });
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [islands, setIslands] = useState<Island[]>([]);
   const islandFolders = new Set(islands.map((i) => i.folder.toLowerCase()));
@@ -120,6 +141,10 @@ export function FileTree(props: Props) {
                   setMenu({ x: e.clientX, y: e.clientY, path: sub.path, isFolder: true });
                   void api.islands().then((r) => setIslands(r.islands)).catch(() => {});
                 }}
+                {...holdToOpen((x, y) => {
+                  setMenu({ x, y, path: sub.path, isFolder: true });
+                  void api.islands().then((r) => setIslands(r.islands)).catch(() => {});
+                })}
               >
                 <span className={`chevron${isCollapsed ? '' : ' open'}`}>›</span>
                 <span className="tree-name">{sub.name}</span>
@@ -158,6 +183,7 @@ export function FileTree(props: Props) {
               e.preventDefault();
               setMenu({ x: e.clientX, y: e.clientY, path: n.path, isFolder: false });
             }}
+            {...holdToOpen((x, y) => setMenu({ x, y, path: n.path, isFolder: false }))}
             title={n.path}
           >
             <span className="tree-name">
@@ -178,7 +204,7 @@ export function FileTree(props: Props) {
       {menu && (
         <>
           <div className="menu-backdrop" onMouseDown={() => setMenu(null)} onContextMenu={(e) => (e.preventDefault(), setMenu(null))} />
-          <div className="context-menu" style={{ left: menu.x, top: menu.y }}>
+          <div className="context-menu" style={{ left: Math.max(8, Math.min(menu.x, window.innerWidth - 220)), top: Math.max(8, Math.min(menu.y, window.innerHeight - 230)) }}>
             {menu.isFolder ? (
               <>
                 <button onClick={() => (props.onNewNote(menu.path), setMenu(null))}>New note here</button>
