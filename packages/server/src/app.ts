@@ -93,8 +93,11 @@ export function createApp(opts: AppOptions): express.Express {
   const WINDOW_MS = 10 * 60 * 1000;
   const BLOCK_MS = 15 * 60 * 1000;
 
+  type Checked = Request & { octavoKeyChecked?: boolean };
   const auth = (req: Request, res: Response, next: NextFunction) => {
     if (!opts.token) return next();
+    // The key is checked once per request (before the body is parsed), not again on the route.
+    if ((req as Checked).octavoKeyChecked) return next();
     const who = req.ip ?? req.socket.remoteAddress ?? 'unknown';
     const now = Date.now();
     const rec = failures.get(who);
@@ -108,6 +111,7 @@ export function createApp(opts: AppOptions): express.Express {
     const query = typeof req.query.token === 'string' ? req.query.token : '';
     if ((bearer && safeEqual(bearer, opts.token)) || (query && safeEqual(query, opts.token))) {
       failures.delete(who);
+      (req as Checked).octavoKeyChecked = true;
       return next();
     }
     // Only count actual guesses, not requests that simply carry no key.
@@ -121,9 +125,14 @@ export function createApp(opts: AppOptions): express.Express {
     res.status(401).json({ error: 'Unauthorized' });
   };
 
-  // Drawings carry their images inline, so their route parses a bigger body (after the access key check).
+  // Bodies are parsed only after the access key check, so a client without the key can't make the server
+  // parse 10 MB of JSON. Drawings carry their images inline, so their route parses a bigger body itself.
   const json = express.json({ limit: '10mb' });
-  app.use((req, res, next) => (req.method === 'PUT' && req.path.startsWith('/api/drawing/') ? next() : json(req, res, next)));
+  app.use((req, res, next) => {
+    if (req.method === 'PUT' && req.path.startsWith('/api/drawing/')) return next();
+    if (!(req.path === '/mcp' || req.path.startsWith('/api/'))) return next();
+    auth(req, res, () => json(req, res, next));
+  });
 
   // ------------------------------------------------------------------ MCP
   app.post('/mcp', auth, async (req, res) => {
