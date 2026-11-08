@@ -202,12 +202,15 @@ const frontMatter: MarkdownConfig = {
         const marks = [cx.elt('FrontMatterMark', 0, line.text.length)];
         let end = line.text.length;
         while (cx.nextLine()) {
-          end = cx.lineStart + line.text.length;
           if (/^(---|\.\.\.)\s*$/.test(line.text)) {
+            end = cx.lineStart + line.text.length;
             marks.push(cx.elt('FrontMatterMark', cx.lineStart, end));
             cx.nextLine();
             break;
           }
+          // Not YAML (a rule at the top of a note, then text): stop here and leave the rest as Markdown.
+          if (!/^(\s|-|[^\s:#][^:]*:(\s|$)|$)/.test(line.text)) break;
+          end = cx.lineStart + line.text.length;
         }
         cx.addElement(cx.elt('FrontMatter', 0, end, marks));
         return true;
