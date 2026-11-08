@@ -88,7 +88,7 @@ Open **http://127.0.0.1:4321**. You'll see the example vault from `examples/demo
 npm start -- --vault ~/Octavo
 ```
 
-- The folder is created if it doesn't exist. An empty vault gets two starter notes (use `--no-seed` to skip them).
+- The folder is created if it doesn't exist. An empty vault gets a few starter notes (use `--no-seed` to skip them).
 - Without `--vault`, the default is `~/Octavo`.
 - You can point it at an existing **Obsidian vault**. The files stay compatible, and Obsidian's `.obsidian` folder is ignored.
 - On Windows, use a path like `--vault "C:\Users\you\Documents\Octavo"`.
