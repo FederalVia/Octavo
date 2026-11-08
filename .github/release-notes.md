@@ -1,5 +1,11 @@
 Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
 
+## New in 0.7.0
+
+- **Notes from Notability, GoodNotes and other apps:** point Octavo at the folder an app backs up to (for Notability: Settings → Auto-backup → Google Drive, OneDrive or Dropbox, as PDF, with that drive on your PC), in **⚙ Settings → Notes from other apps**. Each PDF becomes a note showing every page, with its typed text searchable by you and Claude, and it follows your changes. Your own notes outside the synced part stay.
+- **PDFs show page by page** in notes, on phones too (iPhones used to show only the first page), with an **Open PDF** link.
+- Command line: `octavo serve --watch-folder <folder>` and `octavo sync-folder <folder>`.
+
 ## New in 0.6.6
 
 - **Drawing editor on phones:** the Done button was pushed off the screen by the drawing tools. On phones it now sits in the middle of the bottom bar.

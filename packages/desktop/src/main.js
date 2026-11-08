@@ -35,6 +35,19 @@ function saveConfig(cfg) {
 
 // ------------------------------------------------------------------ server
 
+/** Notes from other apps: folders on this PC mirrored into each brain (kept per PC, never in the vault or over the web API). */
+function syncFoldersFor(vaultPath) {
+  const all = loadConfig().syncFolders ?? {};
+  const list = all[path.resolve(vaultPath)];
+  return Array.isArray(list) ? list.filter((f) => f && typeof f.source === 'string') : [];
+}
+function saveSyncFolders(vaultPath, list) {
+  const cfg = loadConfig();
+  cfg.syncFolders = { ...(cfg.syncFolders ?? {}), [path.resolve(vaultPath)]: list };
+  saveConfig(cfg);
+  server?.folderSync.setFolders(list);
+}
+
 const phoneEnabled = () => !!loadConfig().phoneAccess;
 const remoteEnabled = () => !!loadConfig().remoteAccess;
 /** Any outside access (Wi-Fi or internet) means the server needs the access key. */
@@ -69,6 +82,7 @@ async function openVault(vaultPath, { autoRemote = true } = {}) {
     token: needsKey() ? phoneToken() : undefined,
     webDir: webDir(),
     fallbackToRandomPort: true,
+    watchFolders: syncFoldersFor(vaultPath),
   });
   await seedIfEmpty(server.vault);
   rememberBrain(vaultPath);
@@ -974,6 +988,34 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.handle('octavo:reveal-brain', async (e, p) => {
     const b = fromMainWindow(e) && findBrain(p);
     if (b) await shell.openPath(b.path);
+  });
+  // Notes from other apps (Settings → Notes from other apps).
+  ipcMain.handle('octavo:sync-folders', (e) => (fromMainWindow(e) && server ? server.folderSync.status() : null));
+  ipcMain.handle('octavo:add-sync-folder', async (e) => {
+    if (!fromMainWindow(e) || !server) return null;
+    const res = await dialog.showOpenDialog(win ?? undefined, {
+      title: 'Choose the folder another app saves notes to',
+      message: 'For Notability: the folder its Auto-backup uses in Google Drive, OneDrive or Dropbox (usually “Notability”).',
+      buttonLabel: 'Keep in step',
+      properties: ['openDirectory'],
+    });
+    if (res.canceled || !res.filePaths[0]) return server.folderSync.status();
+    const vaultPath = server.vault.root;
+    const source = path.resolve(res.filePaths[0]);
+    const before = syncFoldersFor(vaultPath);
+    saveSyncFolders(vaultPath, [...before.filter((f) => path.resolve(f.source) !== source), { source }]);
+    // setFolders refuses the vault itself or folders inside/around it: say so instead of failing silently.
+    if (!server.folderSync.list().some((f) => f.source === source)) {
+      saveSyncFolders(vaultPath, before);
+      await dialog.showMessageBox(win ?? undefined, { type: 'warning', message: 'That folder can’t be used', detail: 'Pick a folder outside this brain’s folder (and not one that contains it).' });
+    }
+    return server.folderSync.status();
+  });
+  ipcMain.handle('octavo:remove-sync-folder', (e, source) => {
+    if (!fromMainWindow(e) || !server || typeof source !== 'string') return null;
+    const vaultPath = server.vault.root;
+    saveSyncFolders(vaultPath, syncFoldersFor(vaultPath).filter((f) => path.resolve(f.source) !== path.resolve(source)));
+    return server.folderSync.status();
   });
   // Pop-out windows: the same app on another note. Only notes in the open brain.
   ipcMain.handle('octavo:pop-out', async (e, p) => {

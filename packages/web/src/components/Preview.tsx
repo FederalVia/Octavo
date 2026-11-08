@@ -10,6 +10,7 @@ import { editTableInContent, type TableAction } from '../tables';
 import { Properties } from './Properties';
 import { renderNoteQuery } from './noteQuery';
 import { renderDrawingEmbed } from '../drawingEmbed';
+import { renderPdfEmbed } from '../pdfEmbed';
 
 interface TableMenu {
   x: number;
@@ -179,6 +180,13 @@ async function hydrate(
     if (isStale()) return;
     el.dataset.done = '1';
     await renderDrawingEmbed(el);
+  }
+
+  // ![[file.pdf]]: its pages as pictures (pdf.js loads only when a note has a PDF).
+  for (const el of root.querySelectorAll<HTMLElement>('.embed-pdf-pages:not([data-done])')) {
+    if (isStale()) return;
+    el.dataset.done = '1';
+    void renderPdfEmbed(el);
   }
 
   for (const el of root.querySelectorAll<HTMLElement>('.notes-query:not([data-done])')) {

@@ -80,6 +80,15 @@ export interface GraphNode {
 }
 
 /** A part of the vault kept apart from the six regions, e.g. a "Theology" folder. */
+/** A folder from another app kept in step with the vault (Settings → Notes from other apps). */
+export interface SyncFolder {
+  source: string;
+  into: string;
+  exists: boolean;
+  running: boolean;
+  last: { at: string; added: string[]; updated: string[]; unchanged: number; errors: string[] } | null;
+}
+
 /** Daily automatic backups into a folder next to the vault. */
 export interface AutoBackup {
   on: boolean;
@@ -252,6 +261,8 @@ export const api = {
   setPins: (pins: Record<string, NotePin | null>) => request<{ pins: Record<string, NotePin> }>('PUT', 'api/pins', { pins }),
   clearPins: () => request<{ pins: Record<string, NotePin> }>('PUT', 'api/pins', { clear: true }),
   autoBackup: () => request<AutoBackup>('GET', 'api/autobackup'),
+  syncFolders: () => request<{ folders: SyncFolder[] }>('GET', 'api/folder-sync'),
+  syncNow: () => request<{ folders: SyncFolder[] }>('POST', 'api/folder-sync/run'),
   setAutoBackup: (change: { on?: boolean; keep?: number }) => request<AutoBackup>('PUT', 'api/autobackup', change),
   backupNow: () => request<AutoBackup>('POST', 'api/autobackup/now'),
   daily: () => request<NoteSummary>('POST', 'api/daily'),

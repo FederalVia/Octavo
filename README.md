@@ -41,7 +41,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 - **Canvas**: boards of cards and arrows in the open JSON Canvas format.
 - **Drawings**: the Excalidraw editor built in, with drawings shown as pictures in your notes.
 - **Organise**: tabs (also stacked), split view, pop-out windows, file tree, quick switcher, command palette, `/` slash commands, full-text search, bookmarks, templates, workspaces, and daily, weekly and monthly notes with a calendar.
-- **Capture**: record audio notes, clip web pages into notes from the built-in web viewer, and import from Notion and Evernote.
+- **Capture**: record audio notes, clip web pages into notes from the built-in web viewer, import from Notion and Evernote, and keep notes from Notability, GoodNotes and other apps in step through their backup folder.
 - **Publish**: turn chosen notes into a free static website you can host anywhere.
 - **Islands and separate brains**: keep a separate subject apart in its own corner of the brain, or keep whole separate vaults, each with its own Claude connection.
 - **Optional note locking**: password-protect individual notes with end-to-end encryption. Off by default.

@@ -135,6 +135,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | --- | --- | --- |
 | Themes / CSS snippets | ✅ | **Settings → Appearance**: dark, light or match system, six accent colours, and CSS snippets from the vault's `.octavo/snippets` folder |
 | Plugins | 🚧 | |
+| Notes from other apps (Notability, GoodNotes…) | ✅ | Watch the folder another app backs up to (e.g. Notability's Google Drive auto-backup): each PDF becomes a note showing every page with its typed text searchable, and follows changes; your own notes outside the synced part stay. `--watch-folder` / `octavo sync-folder` on the command line |
 | Import from other apps | ✅ | Obsidian vaults open as-is. **File → Import** (or `octavo import`) brings in Notion exports and Evernote `.enex` files |
 
 ## Popular plugin equivalents

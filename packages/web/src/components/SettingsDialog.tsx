@@ -1,8 +1,105 @@
 import { IslandsSection } from './IslandsSection';
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
-import { api, getToken, saveAllForOffline, type AutoBackup } from '../api';
+import { api, getToken, saveAllForOffline, type AutoBackup, type SyncFolder } from '../api';
 import { ACCENTS, applyAppearance, applySnippets, getAccent, getTheme, type ThemeChoice } from '../appearance';
+
+/** Notes from other apps: folders on the PC (e.g. Notability's Google Drive backup) mirrored into the vault. */
+function SyncFoldersSection() {
+  const desktop = window.octavoDesktop;
+  const canEdit = !!desktop?.addSyncFolder;
+  const [folders, setFolders] = useState<SyncFolder[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const load = () =>
+    (canEdit ? desktop!.getSyncFolders!() : api.syncFolders().then((r) => r.folders))
+      .then((f) => setFolders(f ?? []))
+      .catch(() => setFolders([]));
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // While a sync runs (a big first sync can take a while), check back.
+  useEffect(() => {
+    if (!folders?.some((f) => f.running)) return;
+    const t = setTimeout(() => void load(), 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folders]);
+  const run = async (fn: () => Promise<SyncFolder[] | null | undefined>) => {
+    setBusy(true);
+    setError('');
+    try {
+      const f = await fn();
+      if (f) setFolders(f);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!folders) return null;
+  if (!canEdit && !folders.length) return null;
+  const summary = (f: SyncFolder) => {
+    if (f.running) return 'Syncing…';
+    if (!f.exists) return 'Folder not found: is the cloud drive connected?';
+    if (!f.last) return 'Waiting for the first sync…';
+    const n = f.last.added.length + f.last.updated.length;
+    return `${new Date(f.last.at).toLocaleString()}: ${n ? `${f.last.added.length} added, ${f.last.updated.length} updated` : 'up to date'}${f.last.errors.length ? ` · ${f.last.errors.length} problem${f.last.errors.length > 1 ? 's' : ''}` : ''}`;
+  };
+  return (
+    <section>
+      <h4>Notes from other apps</h4>
+      <p className="muted small settings-note">
+        Keep notes from Notability, GoodNotes and other apps in step with this brain. Point Octavo at the folder the app backs up to (for Notability:
+        Settings → Auto-backup → Google Drive, OneDrive or Dropbox, format PDF, with that drive synced to this PC). Each PDF becomes a note that shows it, with its typed text
+        searchable; when the original changes the note follows. Write your own notes below the synced part and they stay.
+      </p>
+      {folders.map((f) => (
+        <div className="setting-row" key={f.source}>
+          <div style={{ minWidth: 0 }}>
+            <b style={{ overflowWrap: 'anywhere' }}>{f.source}</b>
+            <span className="muted small">
+              → {f.into}/ · {summary(f)}
+            </span>
+            {!!f.last?.errors.length && (
+              <details className="muted small">
+                <summary>Problems</summary>
+                {f.last.errors.slice(0, 20).map((e) => (
+                  <div key={e}>{e}</div>
+                ))}
+              </details>
+            )}
+          </div>
+          {canEdit && (
+            <button className="btn" disabled={busy} onClick={() => void run(() => desktop!.removeSyncFolder!(f.source))} title="Stop keeping this folder in step (notes already made stay)">
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="setting-row">
+        <div>
+          <b>{canEdit ? 'Add a folder' : 'Folders are added in the desktop app on your PC'}</b>
+          <span className="muted small">Changes come in by themselves; Sync now looks straight away.</span>
+        </div>
+        <div className="island-add">
+          {canEdit && (
+            <button className="btn primary" disabled={busy} onClick={() => void run(() => desktop!.addSyncFolder!())}>
+              Add folder…
+            </button>
+          )}
+          {folders.length > 0 && (
+            <button className="btn" disabled={busy} onClick={() => void run(async () => (await api.syncNow()).folders)}>
+              {busy ? 'Syncing…' : 'Sync now'}
+            </button>
+          )}
+        </div>
+      </div>
+      {error && <p className="error small">{error}</p>}
+    </section>
+  );
+}
 
 /** Download the whole vault as one zip file. */
 function BackupSection() {
@@ -256,6 +353,10 @@ export interface DesktopBridge {
   installUpdate(): Promise<UpdateState | null>;
   onUpdate(callback: (s: UpdateState) => void): () => void;
   getBrains?(): Promise<BrainsState | null>;
+  /** Added in 0.7.0: notes from other apps. */
+  getSyncFolders?(): Promise<SyncFolder[] | null>;
+  addSyncFolder?(): Promise<SyncFolder[] | null>;
+  removeSyncFolder?(source: string): Promise<SyncFolder[] | null>;
   switchBrain?(path: string): Promise<BrainsState>;
   createBrain?(name: string): Promise<BrainsState & { ok: boolean; error?: string }>;
   removeBrain?(path: string): Promise<BrainsState>;
@@ -688,6 +789,8 @@ export function SettingsDialog(p: Props) {
         </section>
 
         <OfflineSection />
+
+        <SyncFoldersSection />
 
         <BackupSection />
 

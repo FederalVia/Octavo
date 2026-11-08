@@ -73,7 +73,8 @@ function mediaHtml(ref: string, label: string | undefined, fromPath?: string): s
   if (IMAGE_EXT.test(ref)) return `<img class="embed-media" src="${src}" alt="${alt}"${dims} loading="lazy">`;
   if (AUDIO_EXT.test(ref)) return `<audio class="embed-media" controls preload="metadata" src="${src}"></audio>`;
   if (VIDEO_EXT.test(ref)) return `<video class="embed-media" controls preload="metadata" src="${src}"${dims}></video>`;
-  return `<iframe class="embed-pdf" src="${src}" title="${alt}"${dims}></iframe>`;
+  // PDFs are drawn page by page (pdfEmbed.ts): an iframe shows only the first page on iPhones.
+  return `<div class="embed-pdf-pages" data-src="${src}" data-name="${escapeHtml(ref.split('/').pop()!)}"><div class="embed-loading">📄 ${escapeHtml(ref.split('/').pop()!)}</div></div>`;
 }
 
 const CALLOUT_ICONS: Record<string, string> = {
