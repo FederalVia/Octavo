@@ -1,6 +1,8 @@
-# Connecting Claude
+# Connecting Claude and other AI tools
 
-Octavo includes an [MCP](https://modelcontextprotocol.io) server. Once it's connected, Claude can search, read and write your vault. That gives Claude a long-term memory you can see and edit.
+Octavo includes an [MCP](https://modelcontextprotocol.io) server. Once it's connected, an AI can search, read and write your vault. That gives it a long-term memory you can see and edit. Claude is the main example below, but anything that speaks MCP works the same way: Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code with Copilot, ChatGPT and more; see [Other AI tools](#other-ai-tools).
+
+**The easy way:** in the desktop app, **File → Connect an AI…** (or **⚙ Settings → Connect an AI**) shows the exact setup for each tool, with your paths filled in and a Copy button. From a terminal, `octavo connect codex` (or `cursor`, `gemini`…) prints the same.
 
 There are two ways to connect:
 
@@ -96,6 +98,69 @@ Without the app, it's the same thing by hand: one entry per vault, each with its
 ```
 
 ---
+
+## Other AI tools
+
+Every tool below gets the same 28 tools Claude gets. Replace the paths with your own (the desktop app's **Connect an AI** section fills them in for you). "Local" setups start Octavo's memory server themselves, so the app needn't be open; "over HTTP" setups talk to a running Octavo (desktop app, `npm start` or Docker) and need the access key (`Authorization: Bearer …`) only when one is set.
+
+### Codex CLI (OpenAI)
+
+```bash
+# Local
+codex mcp add octavo -- node /path/to/octavo/packages/server/dist/cli.js mcp --vault ~/Octavo
+# Over HTTP
+codex mcp add octavo --url http://127.0.0.1:4321/mcp
+```
+
+Or in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.octavo]
+command = "node"
+args = ["/path/to/octavo/packages/server/dist/cli.js", "mcp", "--vault", "/home/you/Octavo"]
+```
+
+### Cursor
+
+`~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project), or Cursor Settings → MCP → Add new server:
+
+```json
+{ "mcpServers": { "octavo": { "command": "node", "args": ["/path/to/octavo/packages/server/dist/cli.js", "mcp", "--vault", "/home/you/Octavo"] } } }
+```
+
+Over HTTP: `{ "mcpServers": { "octavo": { "url": "http://127.0.0.1:4321/mcp" } } }`.
+
+### Windsurf
+
+`~/.codeium/windsurf/mcp_config.json` (create it if it's missing). The same `command`/`args` entry as Cursor; over HTTP use `"serverUrl"` instead of `"url"`.
+
+### Gemini CLI (Google)
+
+```bash
+gemini mcp add octavo node /path/to/octavo/packages/server/dist/cli.js mcp --vault ~/Octavo
+```
+
+Or in `~/.gemini/settings.json`; over HTTP the key is `"httpUrl"`.
+
+### VS Code (Copilot)
+
+Command palette → **MCP: Add Server**, or `.vscode/mcp.json`:
+
+```json
+{ "servers": { "octavo": { "type": "stdio", "command": "node", "args": ["/path/to/octavo/packages/server/dist/cli.js", "mcp", "--vault", "/home/you/Octavo"] } } }
+```
+
+Over HTTP: `{ "type": "http", "url": "http://127.0.0.1:4321/mcp" }`.
+
+### ChatGPT
+
+ChatGPT only reaches MCP servers over the internet, as a connector. Turn on **Access from Anywhere** (⚙ Settings → Use on your phone), then in ChatGPT go to **Settings → Connectors → Create** (developer mode) and enter your `https://…/mcp` address with the access key as a Bearer token. OpenAI changes this part of ChatGPT often; check their current help page if it looks different.
+
+### Anything else
+
+Give the tool either the command `node /path/to/octavo/packages/server/dist/cli.js mcp --vault <folder>` (stdio transport) or the address `http://127.0.0.1:4321/mcp` (Streamable HTTP transport). The desktop app packs the server inside itself: its **Connect an AI** section shows the exact command.
+
+> The config-file formats above are the ones each tool documented when this was written. They change now and then; if a tool rejects one, its own MCP docs have the current form.
 
 ## Remote and cloud Claude
 

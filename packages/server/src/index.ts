@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { scheduleAutoBackups } from './backup.js';
 import { FolderSync, type WatchedFolder } from './folderSync.js';
+import type { ConnectInfo, StdioCommand } from './connect.js';
 import { watchActivity } from './activity.js';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -14,6 +15,7 @@ export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js
 export { RemoteAccess, diagnose, type RemoteStatus, type RemoteProblem } from './remote/remote.js';
 export { importNotion, importEnex, type ImportResult } from './importers.js';
 export { activityFile, recordAccess, watchActivity } from './activity.js';
+export { connectClients, type ConnectInfo, type ConnectClient, type ConnectSnippet, type StdioCommand } from './connect.js';
 export { FolderSync, syncFolder, defaultInto, type WatchedFolder, type SyncResult, type FolderStatus } from './folderSync.js';
 
 export interface StartOptions {
@@ -30,6 +32,8 @@ export interface StartOptions {
   fallbackToRandomPort?: boolean;
   /** Folders outside the vault to mirror into it, e.g. where Notability backs up its PDFs (see folderSync.ts). */
   watchFolders?: WatchedFolder[];
+  /** For Settings → Connect an AI: the server's name in AI tools, and how a tool on this computer can start it (stdio). */
+  connect?: { name?: string; stdio?: StdioCommand };
 }
 
 export interface RunningServer {
@@ -76,8 +80,11 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
   const host = opts.host ?? '127.0.0.1';
   const vault = await Vault.open(opts.vaultPath, { dailyFolder: opts.dailyFolder });
   const folderSync = new FolderSync(vault);
+  // Filled in once the port is known (see below); the app reads it per request.
+  const connect: ConnectInfo = { name: opts.connect?.name ?? 'octavo', stdio: opts.connect?.stdio, httpUrl: '', token: opts.token };
   const app = createApp({
     folderSync,
+    connect,
     vault,
     token: opts.token,
     webDir: opts.webDir ?? defaultWebDir(),
@@ -103,6 +110,7 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
   const stopBackups = scheduleAutoBackups(vault);
   folderSync.setFolders(opts.watchFolders ?? []);
   const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+  connect.httpUrl = `http://${displayHost}:${port}/mcp`;
   return {
     url: `http://${displayHost}:${port}`,
     port,

@@ -1,4 +1,5 @@
 import { BackupBusyError, BackupTooLargeError, autoBackupStatus, backupName, buildBackup, getAutoBackupConfig, runAutoBackup } from './backup.js';
+import { connectClients, type ConnectInfo } from './connect.js';
 import { clipNote, readPage, WebReadError } from './webread.js';
 import { buildSite, zipFiles } from './publish.js';
 import crypto from 'node:crypto';
@@ -43,6 +44,8 @@ export interface AppOptions {
   trustProxy?: string | number | boolean;
   /** Notes from other apps (folders watched on this computer); the API can show and re-run them, not change them. */
   folderSync?: import('./folderSync.js').FolderSync;
+  /** Settings → Connect an AI: how tools reach this vault's MCP server (httpUrl is set once the port is known). */
+  connect?: ConnectInfo;
 }
 
 /** Parse a trust-proxy setting from the CLI or environment ("1" → 1 hop, "true"/"false", else a list). */
@@ -396,6 +399,14 @@ export function createApp(opts: AppOptions): express.Express {
       else if (err instanceof BackupBusyError) res.status(429).json({ error: err.message });
       else next(err);
     }
+  });
+
+  // Setup snippets for AI tools (Claude, Codex, Cursor, Gemini…). `?url=` swaps in another address for the HTTP
+  // snippets, e.g. the Access-from-Anywhere address. The access key appears only to a client that already holds it.
+  api.get('/connect', (req, res) => {
+    const base = opts.connect ?? { name: 'octavo', httpUrl: '', token: opts.token };
+    const url = typeof req.query.url === 'string' && /^https?:\/\/[^\s/]+(\/\S*)?$/.test(req.query.url) ? req.query.url.replace(/\/+$/, '') + '/mcp' : base.httpUrl;
+    res.json({ name: base.name, httpUrl: url, stdio: !!base.stdio, clients: connectClients({ ...base, httpUrl: url }) });
   });
 
   // Notes from other apps: which folders are mirrored, and "sync now". Adding or removing folders is done on

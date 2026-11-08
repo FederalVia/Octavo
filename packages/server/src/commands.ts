@@ -6,6 +6,8 @@ import { backupName, buildBackup } from './backup.js';
 import fs from 'node:fs/promises';
 import { parseSince } from './mcp.js';
 import { defaultInto, syncFolder } from './folderSync.js';
+import { connectClients } from './connect.js';
+import { fileURLToPath } from 'node:url';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -34,6 +36,8 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo publish <folder> [--all | --folder F | --tag T] [--title T]
                                        Build a static website from notes marked "publish: true"
                                        (or everything, a folder or a tag) into <folder>
+  octavo connect [tool]                Setup for an AI tool: claude-code, claude-desktop, codex, cursor,
+                                       windsurf, gemini, vscode, chatgpt (none: all of them)
   octavo sync-folder <folder> [--into F]
                                        Mirror a folder from another app (PDFs, images, Markdown) into the
                                        vault once; run again to bring in only what changed
@@ -69,6 +73,7 @@ export const NOTE_COMMANDS = new Set([
   'backup',
   'theme',
   'sync-folder',
+  'connect',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -90,6 +95,8 @@ export interface NoteCommandOptions {
   json?: boolean;
   daily?: string;
   into?: string;
+  port?: number;
+  token?: string;
   all?: boolean;
   folder?: string;
   tag?: string;
@@ -210,6 +217,24 @@ export async function runNoteCommand(
         if (file === root || file.startsWith(root + path.sep)) throw new Error('Save the backup outside the vault folder');
         await fs.writeFile(file, b.zip);
         console.log(`Backed up ${b.files} files (${(b.bytes / 1024 / 1024).toFixed(1)} MB) to ${file}`);
+        break;
+      }
+      case 'connect': {
+        const cliPath = path.resolve(fileURLToPath(import.meta.url), '..', 'cli.js');
+        const info = {
+          name: 'octavo',
+          stdio: { command: 'node', args: [cliPath, 'mcp', '--vault', path.resolve(vault.root)] },
+          httpUrl: `http://127.0.0.1:${opts.port ?? 4321}/mcp`,
+          token: opts.token,
+        };
+        const want = (args[0] ?? '').toLowerCase();
+        const clients = connectClients(info).filter((c) => !want || c.id === want || c.label.toLowerCase().includes(want));
+        if (!clients.length) throw new Error(`No tool called "${args[0]}". Try: ${connectClients(info).map((c) => c.id).join(', ')}`);
+        out(clients, () =>
+          clients
+            .map((c) => [`== ${c.label} ==`, c.about, ...c.snippets.flatMap((s) => ['', `-- ${s.title}${s.file ? ` (${s.file})` : ''}`, s.text])].join('\n'))
+            .join('\n\n'),
+        );
         break;
       }
       case 'sync-folder': {

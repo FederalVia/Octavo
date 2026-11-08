@@ -1822,6 +1822,14 @@ export function AtlasView(props: Props) {
   const toolsStyle = { right: freeRight };
   const dockStyle = { right: freeRight };
   const centerStyle = { left: `${(1 - props.rightInset) * 50}%` };
+  // With a note open the free area narrows and the centred time-lapse bar would cover the app
+  // toolbar; then it drops below it. (Read on every render: the bar re-renders as it plays.)
+  const lapseLow = (() => {
+    if (!lapse || typeof document === 'undefined') return false;
+    const tb = document.querySelector('.toolbar')?.getBoundingClientRect();
+    const half = Math.min(380, window.innerWidth - 124) / 2;
+    return !!tb && (window.innerWidth * (1 - props.rightInset)) / 2 - half < tb.right + 8;
+  })();
   const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   const [viewOpen, setViewOpen] = useState(false);
   const dismissTipRef = useRef(() => {});
@@ -1907,7 +1915,7 @@ export function AtlasView(props: Props) {
       </div>
 
       {lapse !== 0 && (
-        <div className="atlas-lapse" style={centerStyle} role="group" aria-label="Time-lapse">
+        <div className={`atlas-lapse${lapseLow ? ' low' : ''}`} style={centerStyle} role="group" aria-label="Time-lapse">
           <button
             className="atlas-lapse-play"
             aria-label={lapse === 1 ? 'Pause' : 'Play'}

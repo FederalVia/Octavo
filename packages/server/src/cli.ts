@@ -156,6 +156,8 @@ async function main() {
       tag: values.tag,
       title: values.title,
       history: values.history,
+      port: values.port ? Number(values.port) : undefined,
+      token: values.token,
     });
     return;
   }

@@ -1,8 +1,105 @@
 import { IslandsSection } from './IslandsSection';
 import { useEffect, useRef, useState } from 'react';
 import { Overlay } from './Modal';
-import { api, getToken, saveAllForOffline, type AutoBackup, type SyncFolder } from '../api';
+import { api, getToken, saveAllForOffline, type AutoBackup, type ConnectClient, type SyncFolder } from '../api';
 import { ACCENTS, applyAppearance, applySnippets, getAccent, getTheme, type ThemeChoice } from '../appearance';
+
+/** Connect an AI: setup snippets for Claude, Codex, Cursor, Gemini, VS Code, ChatGPT and anything else that speaks MCP. */
+function ConnectSection({ focus }: { focus: boolean }) {
+  const [data, setData] = useState<{ name: string; httpUrl: string; stdio: boolean; clients: ConnectClient[] } | null>(null);
+  const [client, setClient] = useState(() => {
+    try {
+      return localStorage.getItem('octavo.connect.client') || 'claude-code';
+    } catch {
+      return 'claude-code';
+    }
+  });
+  const [remote, setRemote] = useState<string | null>(null);
+  const [useRemote, setUseRemote] = useState(false);
+  const [copied, setCopied] = useState('');
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    // The Access-from-Anywhere address, when it's on: tools on other computers (and ChatGPT) use that one.
+    window.octavoDesktop
+      ?.getState()
+      .then((s) => setRemote(s?.remoteStatus?.state === 'ready' && s.remoteStatus.url ? s.remoteStatus.url : null))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    api
+      .connect(useRemote && remote ? remote : undefined)
+      .then(setData)
+      .catch(() => setData(null));
+  }, [useRemote, remote]);
+  useEffect(() => {
+    if (focus && data) ref.current?.scrollIntoView({ block: 'start' });
+  }, [focus, data]);
+  if (!data) return null;
+  const current = data.clients.find((c) => c.id === client) ?? data.clients[0];
+  const copy = (key: string, text: string) => {
+    navigator.clipboard?.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(''), 1500);
+    });
+  };
+  return (
+    <section ref={ref}>
+      <h4>Connect an AI</h4>
+      <p className="muted small settings-note">
+        Any AI tool that speaks MCP can use this brain as its memory: it gets {' '}
+        <a href="https://github.com/FederalVia/Octavo/blob/main/docs/CONNECT_CLAUDE.md" target="_blank" rel="noreferrer">
+          28 tools
+        </a>{' '}
+        to search, read, write and organise your notes, and what it reads lights up in the brain. Pick your tool and copy its setup.
+        {data.stdio ? ' “Local” setups start the memory server by themselves, so Octavo needn’t be open; “over HTTP” ones talk to this app while it runs.' : ''}
+      </p>
+      <div className="setting-row">
+        <div>
+          <b>Tool</b>
+          <span className="muted small">This brain appears there as “{data.name}”.</span>
+        </div>
+        <select
+          className="input select"
+          value={current.id}
+          onChange={(e) => {
+            setClient(e.target.value);
+            try {
+              localStorage.setItem('octavo.connect.client', e.target.value);
+            } catch {
+              /* storage blocked */
+            }
+          }}
+        >
+          {data.clients.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {remote && (
+        <Toggle label="For a tool on another computer" help={`Use the Access from Anywhere address (${remote}) with your access key instead of this PC’s local address.`} checked={useRemote} onChange={setUseRemote} />
+      )}
+      <p className="muted small settings-note">{current.about}</p>
+      {current.snippets.map((s) => (
+        <div className="connect-snippet" key={s.title}>
+          <div className="connect-snippet-head">
+            <span className="small">
+              {s.title}
+              {s.file ? <code className="muted"> {s.file}</code> : null}
+            </span>
+            {s.kind !== 'note' && (
+              <button className="btn" onClick={() => copy(s.title, s.text)}>
+                {copied === s.title ? 'Copied' : 'Copy'}
+              </button>
+            )}
+          </div>
+          {s.kind === 'note' ? <p className="small connect-note">{s.text}</p> : <pre className="connect-code">{s.text}</pre>}
+        </div>
+      ))}
+    </section>
+  );
+}
 
 /** Notes from other apps: folders on the PC (e.g. Notability's Google Drive backup) mirrored into the vault. */
 function SyncFoldersSection() {
@@ -721,6 +818,8 @@ export function SettingsDialog(p: Props) {
             ✕
           </button>
         </header>
+
+        <ConnectSection focus={p.focus === 'connect'} />
 
         <BrainsSection focus={p.focus === 'brains'} />
 

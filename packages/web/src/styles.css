@@ -2463,7 +2463,7 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
   .note-tab-close { min-width: 32px; min-height: 32px; font-size: 16px; }
   .note-tab-new { min-width: 40px; font-size: 16px; }
   .drawer .tabs .tab { min-height: 40px; }
-  .tb-btn, .toolbar .tb-btn { width: 36px; height: 38px; font-size: 17px; }
+  .tb-btn, .toolbar .tb-btn { width: 40px; height: 40px; font-size: 17px; }
   .connections .chip { padding: 7px 12px; font-size: 13px; }
   .seg-btn { min-height: 34px; padding: 6px 12px; }
   .calendar .cal-day, .calendar button.cal-wk { min-height: 38px; }
@@ -2524,10 +2524,16 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .atlas-lapse .atlas-lapse-play:hover { background: var(--accent); color: var(--on-accent); filter: brightness(1.08); }
 .atlas-lapse-date { flex: none; min-width: 92px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .atlas-lapse input[type='range'] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.atlas-lapse.low { top: calc(66px + env(safe-area-inset-top)); }
 @media (max-width: 560px) {
   /* Clear of the floating app toolbar, between it and the dock; the tools column stays free on the right. */
-  .atlas-lapse { top: calc(66px + env(safe-area-inset-top)); }
+  /* Left-aligned under the toolbar so the slider gets all the width left of the tools column. */
+  .atlas-lapse { top: calc(66px + env(safe-area-inset-top)); left: 12px !important; transform: none; width: calc(100vw - 24px - 42px - 8px); }
   .atlas-lapse-date { min-width: 0; font-size: 12px; }
+}
+@media (pointer: coarse) {
+  .atlas-lapse button { width: 40px; height: 40px; border-radius: 20px; }
+  .atlas-lapse input[type='range'] { height: 40px; }
 }
 
 /* hand-placed notes (network view) */
@@ -2547,3 +2553,10 @@ g.selected .cv-edge { stroke-width: 3.5; filter: drop-shadow(0 0 4px var(--accen
 .embed-pdf-page { width: 100%; height: auto; display: block; background: #fff; border-radius: 4px; box-shadow: 0 1px 0 var(--border), 0 4px 16px rgba(0,0,0,0.25); }
 .embed-pdf-caption { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
 .embed-pdf-open { color: var(--accent); }
+
+/* Settings → Connect an AI */
+.connect-snippet { margin: 10px 0; }
+.connect-snippet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.connect-snippet-head code { font-size: 11px; }
+.connect-code { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--code-bg); font: 12px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+.connect-note { margin: 0; color: var(--text-muted); }

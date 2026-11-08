@@ -83,6 +83,8 @@ async function openVault(vaultPath, { autoRemote = true } = {}) {
     webDir: webDir(),
     fallbackToRandomPort: true,
     watchFolders: syncFoldersFor(vaultPath),
+    // Settings → Connect an AI: the name this brain has in AI tools, and how a tool can start the server itself.
+    connect: { name: brainsState().brains.find((b) => samePath(b.path, vaultPath))?.mcpName ?? mcpNames()[0] ?? 'octavo', stdio: mcpEntry(vaultPath) },
   });
   await seedIfEmpty(server.vault);
   rememberBrain(vaultPath);
@@ -539,35 +541,6 @@ function webDir() {
   return PACKAGED ? path.join(app.getAppPath(), 'web') : undefined;
 }
 
-function claudeConfig() {
-  const vaultPath = server?.vault.root ?? '';
-  const httpUrl = server ? `${server.url}/mcp` : '';
-  const name = brainsState().brains.find((b) => b.current)?.mcpName ?? 'octavo';
-  const desktopJson = vaultPath ? brainsClaudeJson(vaultPath) : '';
-  const claudeCode = `claude mcp add --transport http ${name} ${httpUrl}`;
-  return { httpUrl, desktopJson, claudeCode, name };
-}
-
-async function showConnectClaude() {
-  const { httpUrl, desktopJson, claudeCode, name } = claudeConfig();
-  const { response } = await dialog.showMessageBox(win ?? undefined, {
-    type: 'info',
-    title: 'Connect Claude',
-    message: 'Give Claude access to this vault as its memory',
-    detail:
-      `While this app is open, its MCP endpoint is:\n${httpUrl}\n\n` +
-      `Claude Code:\n${claudeCode}\n\n` +
-      `Claude Desktop: add the "${name}" entry to claude_desktop_config.json. It runs without this app being open.\n\n` +
-      `Each brain is added separately, so you can turn each one on or off per chat in Claude. Settings → Brains copies the setup for every brain.\n\n` +
-      `Copy one of the configs below.`,
-    buttons: ['Copy Claude Code command', 'Copy Claude Desktop JSON', 'Close'],
-    defaultId: 0,
-    cancelId: 2,
-  });
-  if (response === 0) clipboard.writeText(claudeCode);
-  if (response === 1) clipboard.writeText(desktopJson);
-}
-
 // ------------------------------------------------------------------ phone access
 
 async function showPhoneQr() {
@@ -708,7 +681,7 @@ function buildMenu() {
           click: () => server && shell.openPath(server.vault.root),
         },
         { type: 'separator' },
-        { label: 'Connect Claude…', click: showConnectClaude },
+        { label: 'Connect an AI (Claude, Codex, Cursor…)…', click: () => win?.webContents.send('octavo:open-settings', 'connect') },
         {
           label:
             updateState.status === 'ready'
