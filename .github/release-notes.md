@@ -1,25 +1,18 @@
-Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, with no account needed.
+**Octavo 1.0**: a knowledge base you see as a brain, and that Claude uses as its long-term memory. Free, with no account needed. Your notes are plain Markdown files in a folder you choose.
 
-## New in 0.7.0
+## What's in 1.0
 
-- **Notes from Notability, GoodNotes and other apps:** point Octavo at the folder an app backs up to (for Notability: Settings → Auto-backup → Google Drive, OneDrive or Dropbox, as PDF, with that drive on your PC), in **⚙ Settings → Notes from other apps**. Each PDF becomes a note showing every page, with its typed text searchable by you and Claude, and it follows your changes. Your own notes outside the synced part stay.
-- **PDFs show page by page** in notes, on phones too (iPhones used to show only the first page), with an **Open PDF** link.
-- Command line: `octavo serve --watch-folder <folder>` and `octavo sync-folder <folder>`.
+- **The brain:** a 3D atlas of your notes in six coloured regions, plus a flat network view. Islands keep a separate subject apart in its own corner. Place notes by hand in the network view and they stay put. A time-lapse replays your brain growing.
+- **Writing:** live preview, callouts, tasks with due dates, tables, maths, Mermaid diagrams, footnotes, live queries (Bases / Dataview style), canvas boards, Excalidraw drawings and a quick `/sketch` pad in any note. PDFs show page by page.
+- **Claude:** an MCP server with 28 tools, so Claude can search, read, write, organise and even move notes in the brain. Everything it reads and changes lights up live.
+- **Your phone:** open Octavo on your phone over home Wi-Fi, or from anywhere with Access from Anywhere (your PC, your router, a free certificate; no cloud service). Installable as an app, with offline reading.
+- **Other apps:** keep notes from Notability, GoodNotes and others in step through their backup folder. Import from Notion and Evernote. Publish chosen notes as a static website.
+- **Safety net:** version history, a recoverable trash, conflict warnings, optional password-locked notes, one-click zip backups and optional daily automatic backups.
+- **Terminal:** `octavo tui` to browse in a terminal, and commands for notes, tasks, queries, islands, themes, backups and more.
 
-## New in 0.6.6
+Full feature list: [docs/FEATURES.md](https://github.com/FederalVia/Octavo/blob/main/docs/FEATURES.md). Guides: [Installation](https://github.com/FederalVia/Octavo/blob/main/docs/INSTALL.md), [User guide](https://github.com/FederalVia/Octavo/blob/main/docs/USER_GUIDE.md), [Connecting Claude](https://github.com/FederalVia/Octavo/blob/main/docs/CONNECT_CLAUDE.md).
 
-- **Drawing editor on phones:** the Done button was pushed off the screen by the drawing tools. On phones it now sits in the middle of the bottom bar.
-
-## New in 0.6.5
-
-- **Drawings show as pictures while editing too:** `![[sketch.excalidraw]]` used to appear as a link in edit mode; now it is drawn like in reading view. Tap it to open the drawing.
-
-## New in 0.6.4
-
-- **Place notes by hand in the network view:** turn on the pin button (under the zoom buttons), or hold Shift as you drop, and a dragged note stays where you put it. Right-click a note to let the layout place it again.
-- **Claude can move notes too:** ask it to gather related notes together or put a note next to another. It uses the new `place_note` tool, and you see the notes glide there.
-- Placements are saved in the vault, so your phone and other devices see them.
-- Fixed: after dragging a note, the mouse pointer stayed a hand over empty space.
+**Updating from a 0.x test build:** the app offers 1.0 by itself (Settings → Updates). On a Mac, download the new `.dmg` from this page.
 
 ## Download
 
@@ -32,7 +25,7 @@ Test build of **Octavo**: notes you see as a brain, shared with Claude. Free, wi
 
 ## First launch: expect a warning
 
-This test build isn't signed with a paid developer certificate yet, so your computer warns you the first time:
+Octavo isn't signed with a paid developer certificate (it's free software with no company behind it), so your computer warns you the first time:
 
 - **Windows:** "Windows protected your PC" → click **More info** → **Run anyway**.
 - **Mac:** open the `.dmg` and drag Octavo to Applications. The first time you open it, macOS says it can't verify the app. Go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway**, and confirm.
@@ -48,7 +41,7 @@ This test build isn't signed with a paid developer certificate yet, so your comp
    - **Windows will ask whether to allow Octavo through the firewall. Click Allow.**
 3. **Your phone, at home only:** **⚙ Settings → Home Wi-Fi only → Turn on**.
 4. **Claude:** **File → Connect Claude…** copies the setup for Claude Code or Claude Desktop.
-5. **Settings (⚙):** optional password-locked notes, Vim mode, and the default brain view.
+5. **Settings (⚙):** islands, backups, notes from other apps, optional password-locked notes, Vim mode, and the default brain view.
 
 Your notes are saved as plain Markdown files in the `Octavo` folder in your home folder. Use **File → Open Vault Folder…** to pick another folder, such as an existing Obsidian vault.
 
