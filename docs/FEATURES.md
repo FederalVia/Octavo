@@ -118,7 +118,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Backups | ✅ | ⚙ Settings → Backup, or `octavo backup [file.zip] [--history]`: the whole vault as one zip. Optional daily automatic backups into `<vault> backups` next to the vault, keeping the newest 7 (or 3, 14, 30) |
 | CLI: terminal UI | ✅ | `octavo tui`: type to search, ↑↓ + Enter to read, number keys follow links, `e` edits in your editor, Ctrl+D / `d` today's journal |
 | CLI: install plugins/themes | 🟡 | Themes: `octavo theme add <file.css or https URL>` installs a CSS theme/snippet and switches it on; `on` / `off` / `remove`. Plugins aren't supported yet |
-| AI access | ✅ | MCP server with 28 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
+| AI access | ✅ | MCP server with 28 tools (Claude Code, Claude Desktop, Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code, ChatGPT or any MCP client; Settings → Connect an AI gives each its setup), so the AI can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
 | Headless client | 🟡 | `octavo serve` / Docker runs the vault headless with a REST API |
 
 ## Sync and publishing (free)

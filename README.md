@@ -83,7 +83,7 @@ Prefer an app window? Run `npm run desktop`.
 
 **Full instructions for every platform: [docs/INSTALL.md](docs/INSTALL.md)**
 
-## Give Claude its memory
+## Give Claude (or Codex, Cursor, Gemini…) its memory
 
 With the app built, add the vault to Claude Code:
 
@@ -91,7 +91,7 @@ With the app built, add the vault to Claude Code:
 claude mcp add octavo --scope user -- node "$(pwd)/packages/server/dist/cli.js" mcp --vault ~/Octavo
 ```
 
-For Claude Desktop, remote servers and the full tool list, see **[docs/CONNECT_CLAUDE.md](docs/CONNECT_CLAUDE.md)**.
+In the desktop app, **File → Connect an AI…** shows the setup for Claude Code, Claude Desktop, Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code and ChatGPT, with your paths filled in. Details and the full tool list: **[docs/CONNECT_CLAUDE.md](docs/CONNECT_CLAUDE.md)**.
 
 ## How notes map to brain regions
 
@@ -116,7 +116,7 @@ Numbered folders such as `00 - Current Projects` work too. More in the [user gui
 | [User guide](docs/USER_GUIDE.md) | The interface, views, writing syntax, links, search, templates, bookmarks, history, shortcuts |
 | [Features](docs/FEATURES.md) | Every feature with its status: done, partly done, or planned |
 | [Use from anywhere](docs/SELF_HOSTING.md) | Reach Octavo on your PC from your phone anywhere: Access from Anywhere, troubleshooting, Docker |
-| [Connecting Claude](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, remote access, tool reference, tips |
+| [Connecting Claude and other AIs](docs/CONNECT_CLAUDE.md) | Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI, VS Code, ChatGPT, remote access, tool reference |
 | [Architecture](docs/ARCHITECTURE.md) | How it's built, REST API, live events, file handling, security |
 | [Contributing](CONTRIBUTING.md) | Development setup, tests, project layout |
 

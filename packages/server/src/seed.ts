@@ -120,7 +120,7 @@ Claude can use this vault as its long-term memory: it searches it at the start o
 
 ## Connect it
 
-- **Desktop app:** File → **Connect Claude…** copies the setup for Claude Code or Claude Desktop.
+- **Desktop app:** File → **Connect an AI…** (or ⚙ Settings → Connect an AI) shows the setup for Claude Code, Claude Desktop, Codex, Cursor, Windsurf, Gemini CLI, VS Code and others: pick your tool and copy.
 - **Without the desktop app:** the [[Octavo user guide]] links to the full setup.
 
 Claude gets 28 tools: search, read, write, tasks, queries, canvases, islands, placing notes on the map and more. Ask it to "put my project notes next to Home" and watch them move.

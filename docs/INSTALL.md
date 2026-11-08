@@ -112,7 +112,7 @@ npm run desktop
 This builds the project and opens Octavo in its own window.
 
 - On first launch it uses `~/Octavo`. Use **File → Brains** to create another brain or add an existing folder (such as an Obsidian vault), and it remembers your choice.
-- **File → Connect Claude…** copies a ready-made Claude Code command or Claude Desktop config.
+- **File → Connect an AI…** shows the setup for Claude Code, Claude Desktop, Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code and ChatGPT, with your paths filled in and a Copy button.
 - While it's open, the desktop app also serves the web UI and MCP endpoint at `http://127.0.0.1:4321`. If that port is busy it picks another one.
 
 After the first build, `npm start -w @octavo/desktop` opens the app faster because it skips the rebuild.

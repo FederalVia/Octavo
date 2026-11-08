@@ -80,6 +80,14 @@ export interface GraphNode {
 }
 
 /** A part of the vault kept apart from the six regions, e.g. a "Theology" folder. */
+/** Setup snippets for AI tools (Settings → Connect an AI). */
+export interface ConnectClient {
+  id: string;
+  label: string;
+  about: string;
+  snippets: { kind: 'command' | 'file' | 'note'; title: string; file?: string; text: string }[];
+}
+
 /** A folder from another app kept in step with the vault (Settings → Notes from other apps). */
 export interface SyncFolder {
   source: string;
@@ -262,6 +270,7 @@ export const api = {
   clearPins: () => request<{ pins: Record<string, NotePin> }>('PUT', 'api/pins', { clear: true }),
   autoBackup: () => request<AutoBackup>('GET', 'api/autobackup'),
   syncFolders: () => request<{ folders: SyncFolder[] }>('GET', 'api/folder-sync'),
+  connect: (url?: string) => request<{ name: string; httpUrl: string; stdio: boolean; clients: ConnectClient[] }>('GET', `api/connect${url ? `?url=${encodeURIComponent(url)}` : ''}`),
   syncNow: () => request<{ folders: SyncFolder[] }>('POST', 'api/folder-sync/run'),
   setAutoBackup: (change: { on?: boolean; keep?: number }) => request<AutoBackup>('PUT', 'api/autobackup', change),
   backupNow: () => request<AutoBackup>('POST', 'api/autobackup/now'),
