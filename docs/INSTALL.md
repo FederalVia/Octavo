@@ -117,7 +117,7 @@ This builds the project and opens Octavo in its own window.
 
 After the first build, `npm start -w @octavo/desktop` opens the app faster because it skips the rebuild.
 
-**Build the installers yourself:** `npm run dist:desktop` builds one for the system you're on, and puts it in `release/dist/`. Pushing a version tag (e.g. `v0.2.0`) makes GitHub build all three and publish a release (`.github/workflows/release.yml`).
+**Build the installers yourself:** `npm run dist:desktop` builds one for the system you're on, and puts it in `release/dist/`. Pushing a version tag (e.g. `v1.0.0`) makes GitHub build all three and publish a release (`.github/workflows/release.yml`).
 
 ---
 
@@ -215,6 +215,9 @@ It opens your router (UPnP), gets a free HTTPS certificate for your home's inter
 ```
 octavo serve [options]   Web app + REST API + MCP endpoint (/mcp)
 octavo mcp   [options]   MCP server over stdio (for Claude Desktop / Claude Code)
+octavo tui   [options]   Browse and search the vault in the terminal
+octavo check-remote      Check whether your home network allows Access from Anywhere
+octavo qr <address>      Print a QR code that opens Octavo at <address> on your phone
 ```
 
 From the repository, `npm start -- <options>` runs `serve` and `npm run mcp -- <options>` runs `mcp`. You can also call `node packages/server/dist/cli.js <command> <options>` directly.
@@ -250,7 +253,7 @@ octavo backup ~/octavo-backup.zip                    # the whole vault as one zi
 
 `octavo tui` is a full-screen browser: type to search, ↑/↓ and Enter to open a note, number keys to follow its links, `e` to edit it in your `$EDITOR` (Notepad on Windows), `d` (or Ctrl+D in the list) for today's journal, Esc to go back, Ctrl+C (or `q` while reading) to quit.
 
-All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `tags`, `history`, `orphans` and `recent` accept `--json`.
+All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `tags`, `history`, `orphans`, `recent` and `query` accept `--json`. Run `octavo --help` for the full list, including `weekly`, `monthly`, `set`, `publish` and `import`.
 
 | Option | Environment variable | Default | Meaning |
 | --- | --- | --- | --- |
@@ -263,6 +266,8 @@ All of them take `--vault <dir>` (or use `OCTAVO_VAULT`). `search`, `tasks`, `ta
 | `--public-ip <ip>` | `OCTAVO_PUBLIC_IP` (desktop) | | With `--remote`: skip UPnP, for ports forwarded by hand |
 | `--https-port <n>` / `--challenge-port <n>` | | 4443 / 4380 | With `--remote`: local ports that the router forwards to |
 | `--read-only` | | off | Only expose read tools over MCP |
+| `--watch-folder <dir>` | | | Keep notes from another app in step: mirror this folder into the vault (`serve`). Repeat for more folders |
+| `--trust-proxy <who>` | `OCTAVO_TRUST_PROXY` | off | Behind a reverse proxy only: trust `X-Forwarded-For` from these addresses (e.g. `loopback`), so each device gets its own wrong-key lockout |
 | `--daily <folder>` | | `Journal` | Folder for daily notes |
 | `--no-seed` | | off | Don't create starter notes in an empty vault |
 

@@ -17,6 +17,8 @@
 - [Tasks](#tasks)
 - [Insights: orphans, dead ends, unlinked mentions](#insights-orphans-dead-ends-unlinked-mentions)
 - [Version history](#version-history)
+- [Notes from other apps (Notability, GoodNotes…)](#notes-from-other-apps-notability-goodnotes)
+- [Backups](#backups)
 - [Locked (encrypted) notes](#locked-encrypted-notes)
 - [Queries (Bases)](#queries-bases)
 - [Canvas](#canvas)
@@ -27,6 +29,13 @@
 - [Daily journal](#daily-journal)
 - [When Claude (or anything else) edits a note](#when-claude-or-anything-else-edits-a-note)
 - [Keyboard shortcuts](#keyboard-shortcuts)
+- [Brains (separate vaults)](#brains-separate-vaults)
+- [Tabs, split view and windows](#tabs-split-view-and-windows)
+- [Editing with live preview](#editing-with-live-preview)
+- [Calendar](#calendar)
+- [Slides, PDF and printing](#slides-pdf-and-printing)
+- [Appearance and hotkeys](#appearance-and-hotkeys)
+- [Opening Markdown files (desktop)](#opening-markdown-files-desktop)
 - [Using it alongside Obsidian, git and other editors](#using-it-alongside-obsidian-git-and-other-editors)
 
 ---
@@ -37,7 +46,7 @@
 
 - **The brain** fills the window. Every note is a point, and every link between notes is a line.
 - **The toolbar** (top left) has these buttons, from left to right:
-  - ⚙ opens settings: note locking, Vim, line numbers, and the default brain view.
+  - ⚙ opens settings: brains, note locking, appearance, the editor, the default brain view, islands, phone access, offline notes, notes from other apps, backups and updates.
   - ☰ opens the drawer. Its tabs are Files ▤, Search ⌕, Tags #, Tasks ☑, Bookmarks ☆ and Insights ◇.
   - The green dot shows live sync is connected.
   - The title shows the vault name, the current view and the note count.
@@ -80,7 +89,7 @@ An island keeps a separate subject apart. If your vault is mostly about one thin
 
 ![Network view](images/network.png)
 
-A flat map of your notes. Each region gets its own area (Projects, Knowledge, People, Sources and Journal around the edge, Hubs in the middle), in the same colours as the brain, and only the most important names are labelled until you zoom in. Scroll or pinch to zoom (between your fingers on a phone), drag the background or use one finger to pan, and drag points with a mouse to move them. A dragged point springs back when you let go, unless you want it to stay: Hover a point to see its connections; click or tap it to open the note. The dock at the bottom works like the brain's: **Search the mind…** highlights matching notes (Enter opens the best match), and the region pills hide or show a region. The layout settles in a few seconds and then stops moving, so it costs nothing while you read.
+A flat map of your notes. Each region gets its own area (Projects, Knowledge, People, Sources and Journal around the edge, Hubs in the middle), in the same colours as the brain, and only the most important names are labelled until you zoom in. Scroll or pinch to zoom (between your fingers on a phone), drag the background or use one finger to pan, and drag points with a mouse to move them. A dragged point springs back when you let go, unless you keep it there (see below). Hover a point to see its connections; click or tap it to open the note. The dock at the bottom works like the brain's: **Search the mind…** highlights matching notes (Enter opens the best match), and the region pills hide or show a region. The layout settles in a few seconds and then stops moving, so it costs nothing while you read.
 
 - **Keep notes where you drop them:** turn on the pin button (under the zoom buttons), or hold **Shift** while you let go. The note stays there, marked with a thin ring, and moving it again keeps it wherever you drop it next.
 - **Undo a placement:** right-click the note → **Let the layout place it**, or **Let the layout place every note** to undo them all.
@@ -168,7 +177,7 @@ Octavo reads standard Markdown plus these extras. The demo vault's **Formatting 
 ## Images and attachments
 
 - **Paste** an image (e.g. a screenshot) or **drag files** into the editor. They're saved to the vault's `attachments/` folder, and an embed such as `![[screenshot.png]]` is inserted.
-- **Embed** files with `![[file.png]]`. Images, audio (`mp3`, `wav`, `m4a`, `ogg`…), video (`mp4`, `mov`, `webm`…) and PDFs all display inline. The name alone is enough: the file can be in any folder.
+- **Embed** files with `![[file.png]]`. Images, audio (`mp3`, `wav`, `m4a`, `ogg`…), video (`mp4`, `mov`, `webm`…) and PDFs all display inline. PDFs are shown page by page (on phones too), with an **Open PDF** link. The name alone is enough: the file can be in any folder.
 - **Resize** an image with `![[photo.png|300]]` (width) or `![[photo.png|300x200]]`.
 - Standard Markdown images work too: `![alt](attachments/photo.png)`.
 
@@ -319,7 +328,7 @@ Octavo can keep notes from another app in step with your brain, one way: the oth
 
 The same works for any app that saves PDFs, images, Markdown or text files to a folder (GoodNotes' auto-backup, a scanner app, an export folder). **Sync now** looks straight away. Folders can only be added in the desktop app on the PC itself, never from a phone. On a server, use `octavo serve --watch-folder <folder>`, or `octavo sync-folder <folder>` for a one-off copy.
 
-PDFs in any note (`![[file.pdf]]`) now show page by page, on phones too, with an **Open PDF** link.
+PDFs in any note (`![[file.pdf]]`) show page by page, on phones too, with an **Open PDF** link.
 
 ## Backups
 
@@ -517,7 +526,7 @@ The **Calendar** tab (▦) in the sidebar shows a month. Days with a journal not
 ## Appearance and hotkeys
 
 - **Settings → Appearance:** dark, light or match system, and an accent colour. These are saved on each device. The brain view always stays dark.
-- **CSS snippets:** put `.css` files in the brain's `.octavo/snippets` folder, then switch them on in **Settings → Appearance**. They apply to the whole app and are saved with the brain. From a terminal, `octavo theme add nord.css` (or an https:// link to a .css file) installs one and switches it on; `octavo theme`, `octavo theme off <name>` and `octavo theme remove <name>` list and manage them.
+- **CSS snippets:** put `.css` files in the brain's `.octavo/snippets` folder, then switch them on in **Settings → Appearance**. They apply to the whole app and are saved with the brain. From a terminal, `octavo theme add nord.css` (or an https:// link to a .css file) installs one and switches it on; `octavo theme`, `octavo theme on <name>`, `octavo theme off <name>` and `octavo theme remove <name>` list and manage them.
 - **Hotkeys:** **Settings → Editor → Hotkeys → Customize** (or command palette → *Customize hotkeys…*). Click a shortcut and press the keys you want; Backspace removes it. Hotkeys are saved with the brain, so they apply on every device.
 
 ## Opening Markdown files (desktop)

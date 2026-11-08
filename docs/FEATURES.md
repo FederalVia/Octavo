@@ -39,7 +39,7 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Footnotes | ✅ | `[^1]` … `[^1]: text`, or `/footnote` |
 | Math (LaTeX) | ✅ | `$inline$` and `$$block$$` via KaTeX |
 | Mermaid diagrams | ✅ | Rendered (flowcharts, sequence, timelines…). A box whose label is a note's name opens that note |
-| Embed images, audio, video, PDFs; resize images | ✅ | `![[photo.png\|300]]`; paste or drag files into the editor to upload them |
+| Embed images, audio, video, PDFs; resize images | ✅ | `![[photo.png\|300]]`; paste or drag files into the editor to upload them. PDFs are shown page by page, on phones too |
 
 ## Links and knowledge
 
@@ -112,9 +112,10 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | CLI: create, read, append, search, move notes | ✅ | `octavo new / read / append / search / move` |
 | CLI: daily note, add a task | ✅ | `octavo daily [text]`, `octavo task <text>` |
 | CLI: list tags and tasks, toggle checkboxes | ✅ | `octavo tags`, `octavo tasks`, `octavo done <note> <line>` |
+| CLI: what changed recently | ✅ | `octavo recent [12h \| 3d \| 2w \| date]`; Claude's `list_notes` takes the same `since` |
 | CLI: version history and restore | ✅ | `octavo history`, `octavo restore` |
 | CLI: query notes, set properties | ✅ | `octavo query 'TABLE status FROM #project'`, `octavo set <note> <key> [value]` |
-| Backups | ✅ | ⚙ Settings → Backup, or `octavo backup [file.zip] [--history]`: the whole vault as one zip. Optional daily automatic backups into `<vault> backups` next to the vault, keeping the newest 7 |
+| Backups | ✅ | ⚙ Settings → Backup, or `octavo backup [file.zip] [--history]`: the whole vault as one zip. Optional daily automatic backups into `<vault> backups` next to the vault, keeping the newest 7 (or 3, 14, 30) |
 | CLI: terminal UI | ✅ | `octavo tui`: type to search, ↑↓ + Enter to read, number keys follow links, `e` edits in your editor, Ctrl+D / `d` today's journal |
 | CLI: install plugins/themes | 🟡 | Themes: `octavo theme add <file.css or https URL>` installs a CSS theme/snippet and switches it on; `on` / `off` / `remove`. Plugins aren't supported yet |
 | AI access | ✅ | MCP server with 28 tools, so Claude can read, write and organise the vault, see and set each note's brain region, and resurface old notes at random. The atlas draws a fading **trail** of what Claude read and changed |
@@ -148,4 +149,4 @@ How-tos for the finished features are in the [user guide](USER_GUIDE.md).
 | Calendar | ✅ | Calendar tab in the sidebar: journal days, weekly/monthly notes and due tasks; click a day to open or create its note |
 | Dataview | ✅ | The common Dataview syntax: `TABLE`/`LIST` with `FROM`, `WHERE`, `SORT`, `GROUP BY`, `LIMIT`, inline `key:: value` fields and `file.*` fields. Not JavaScript queries |
 | Outliner | ✅ | In lists, Tab / Shift-Tab move an item with everything under it, Ctrl/Cmd+Shift+↑/↓ move it past its siblings, Ctrl/Cmd+Enter cycles a checkbox, and list items and heading sections fold from the gutter |
-| Drawings (Excalidraw) | ✅ | The real Excalidraw editor, built in: *New drawing…* creates a `.excalidraw` file (and embeds it in the open note), `![[sketch.excalidraw]]` shows it as a picture in the note, click to edit. `/sketch` opens a quick drawing pad right in the note. Hand-drawn fonts ship with the app, so drawings work offline |
+| Drawings (Excalidraw) | ✅ | The real Excalidraw editor, built in: *New drawing…* creates a `.excalidraw` file (and embeds it in the open note), `![[sketch.excalidraw]]` shows it as a picture in the note (in reading view and while editing), click to edit. `/sketch` opens a quick drawing pad right in the note. Hand-drawn fonts ship with the app, so drawings work offline |

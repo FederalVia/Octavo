@@ -33,6 +33,7 @@ The `Vault` class (`src/vault.ts`) holds an in-memory index of every `.md` file 
 - **History**: before a note is overwritten, its previous content is saved to `.octavo/history/<path>/<timestamp>.md`. This happens at most once every 5 minutes per note, and the newest 50 versions are kept.
 - **Attachments**: non-Markdown files are indexed by name, so `![[photo.png]]` resolves anywhere in the vault. `[[file.pdf]]`-style references aren't counted as links between notes.
 - **Tasks**: `- [ ]`-style items (any single-character status) are found outside code blocks and can be toggled by line.
+- **Islands and placements**: folders kept apart from the six regions are stored in `.octavo/islands.json`, and notes placed by hand in the network view in `.octavo/layout.json`. Both are returned with the graph.
 - **Watching**: a recursive `fs.watch` with debounced per-file refreshes, plus a full rescan for directory-level changes. Refreshes compare mtime and size, so the vault's own writes don't cause duplicate events. Every change is emitted as a `VaultEvent` (`change`, `delete`, `rename`, `rescan`).
 
 ## packages/server
@@ -40,6 +41,9 @@ The `Vault` class (`src/vault.ts`) holds an in-memory index of every `.md` file 
 - `createApp()` (`src/app.ts`) builds the Express app, `startServer()` (`src/index.ts`) wires it to a vault and an HTTP listener, `src/cli.ts` is the `octavo` command, and `src/commands.ts` holds its note commands.
 - **MCP** (`src/mcp.ts`) registers 28 tools and the server instructions. Over HTTP, `/mcp` uses the Streamable HTTP transport in stateless mode: each POST gets a fresh MCP server bound to the shared vault. Over stdio, `octavo mcp` connects one server to stdin/stdout and logs to stderr.
 - **Starter notes** (`src/seed.ts`) are written into an empty vault on first run.
+- **Backups** (`src/backup.ts`) zip the whole vault (version history optional) for `/api/backup.zip` and `octavo backup`, and make the optional daily automatic backups into `<vault> backups` next to the vault.
+- **Notes from other apps** (`src/folderSync.ts`) mirror folders outside the vault into it, one way (`--watch-folder`, `octavo sync-folder`, or the desktop app's settings). PDFs and images become notes that embed them; Markdown and text files are copied. Which folders are watched can only be set on the computer itself, never over the API.
+- **Terminal UI** (`src/tui.ts`) is `octavo tui`: plain ANSI escapes and raw keyboard input, no dependencies.
 
 ### REST API
 
@@ -47,27 +51,46 @@ All endpoints are under `/api` and need `Authorization: Bearer <token>` (or `?to
 
 | Method | Path | Description |
 | --- | --- | --- |
-| GET | `/api/vault` | `{ name, noteCount, dailyFolder }` |
+| GET | `/api/vault` | `{ name, noteCount, dailyFolder, version }` |
 | GET | `/api/notes?folder=&tag=` | `{ notes: NoteSummary[], folders: string[] }` |
 | GET | `/api/notes/<path>` | `NoteDetail`: content, frontmatter, tags, headings, links (resolved), backlinks (with context) |
 | PUT | `/api/notes/<path>` | Body `{ content, expectedMtime? }`. Creates or overwrites; `409` on conflict |
 | POST | `/api/notes` | Body `{ path, content? }`. Create only; `409` if it exists |
 | DELETE | `/api/notes/<path>` | Move to `.trash` |
 | POST | `/api/rename` | Body `{ from, to, updateLinks? }` → `{ from, to, updatedNotes, updatedLinks }` |
-| GET | `/api/resolve?link=&from=` | Resolve a link target → `{ path \| null }` |
+| POST | `/api/merge` | Body `{ from, into }`. Merge one note into another; the first goes to `.trash` |
+| GET | `/api/resolve?link=&from=` | Resolve a link target → `{ path \| null, trashed? }` (`trashed` when the note is in `.trash`) |
+| POST | `/api/trash/restore` | Body `{ trashPath }`. Bring a note back from `.trash` |
 | GET | `/api/search?q=&limit=` | `{ results: SearchResult[] }` |
 | GET | `/api/tags` | `{ tags: { tag, count }[] }` |
-| GET | `/api/graph` | `{ nodes, links }`. Nodes include `degree`, `tags`, `unresolved`, `region` |
+| GET | `/api/graph` | `{ nodes, links, islands?, pins? }`. Nodes include `degree`, `tags`, `unresolved`, `region` |
+| GET / PUT | `/api/islands` | `{ islands }` / body `{ islands }` to replace them |
+| PUT | `/api/pins` | Body `{ pins }` (path → spot, or `null` to unpin) or `{ clear: true }`. Notes placed by hand in the network view |
 | GET | `/api/related/<path>` | Related notes with reasons |
 | POST | `/api/daily` | Create (if needed) and return today's journal note |
+| POST | `/api/periodic/<day\|week\|month>?date=` | Create (if needed) and return that period's note |
 | GET | `/api/files/<path-or-name>?from=` | Stream an attachment (resolved by path or bare file name, like `![[photo.png]]`) |
 | POST | `/api/attachments?name=&folder=` | Upload raw bytes; saved under `attachments/` with a free name |
 | GET | `/api/history/<path>` / `?id=` | List saved versions / read one |
 | POST | `/api/restore` | Body `{ path, id }`. Restore a version (the current content is snapshotted first) |
 | GET | `/api/mentions/<path>` | Unlinked mentions of a note |
 | GET | `/api/insights` | `{ orphans, deadEnds, unresolved }` |
+| GET | `/api/backup.zip?history=1` | The whole vault as a zip (`history=1` adds version history); `413` if too large |
+| GET / PUT | `/api/autobackup` | Daily automatic backup status / body `{ on?, keep? }` |
+| POST | `/api/autobackup/now` | Make an automatic backup now |
+| GET | `/api/folder-sync` | Folders mirrored from other apps, with their status |
+| POST | `/api/folder-sync/run` | Sync those folders now (folders can't be added over the API) |
+| GET | `/api/publish.zip?scope=&folder=&tag=&title=` | The published website as a zip |
+| GET | `/api/query?q=&lang=&from=` | Run a query (`query`, `dql` or `base`) |
+| GET | `/api/canvases`, `/api/drawings` | List `.canvas` / `.excalidraw` files |
+| GET / PUT | `/api/canvas/<path>`, `/api/drawing/<path>` | Read / write one. Body `{ data, expectedMtime?, createOnly? }` |
+| GET | `/api/web/read?url=` | Reader-mode version of a public web page |
+| POST | `/api/web/clip` | Body `{ url, folder? }`. Save a page as a note (default `Clippings/`) |
+| POST | `/api/append` | Body `{ path, text, heading? }` |
+| POST | `/api/property` | Body `{ path, key, value }`. Set a property (`null` removes it) |
 | GET / POST | `/api/tasks` | List tasks (`?done=1` for all) / body `{ path, line, status? }` to set one |
-| GET / PUT | `/api/config/bookmarks` | Bookmarks, stored in `.octavo/bookmarks.json` |
+| GET / PUT | `/api/config/<name>` | `bookmarks`, `settings`, `hotkeys`, `workspaces` or `snippets`, stored in `.octavo/<name>.json` |
+| GET | `/api/snippets` | CSS snippets from `.octavo/snippets` |
 | GET | `/api/events` | Server-Sent Events stream of `VaultEvent`s |
 
 Errors are JSON `{ error }` with status `400` (bad path or edit), `401`, `403` (host), `404`, `409` (conflict or exists) or `500`.
@@ -85,6 +108,7 @@ A Vite + React single-page app, served by the server (or by Vite in development,
 - `regions.ts` holds the region definitions and the `classify()` rules shared by both views.
 - `components/Editor.tsx` is CodeMirror 6 with Markdown, wikilink and tag decorations, `[[` and `#` autocomplete, and Ctrl/Cmd-click to follow links.
 - `markdown.ts` renders the reading view with marked plus extensions for wikilinks and embeds, `#tags`, `==highlights==`, callouts, custom task marks, `%%comments%%`, `^block` anchors, footnotes (marked-footnote) and maths (KaTeX). Output is sanitised with DOMPurify.
+- `pdfEmbed.ts` draws embedded PDFs page by page as pictures (pdf.js, loaded on demand), and `drawingEmbed.ts` shows embedded `.excalidraw` drawings as pictures. Both are used by the reading view and the editor's live preview.
 - `components/Preview.tsx` hydrates the rendered HTML: it transcludes embedded notes (up to 3 levels), renders Mermaid diagrams (loaded on demand), shows hover previews, and maps checkbox clicks back to source lines.
 - `components/CommandPalette.tsx`, `HistoryDialog.tsx` and the drawer panels in `Panels.tsx` provide the palette, version history, bookmarks, tasks and insights.
 

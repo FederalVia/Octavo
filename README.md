@@ -55,7 +55,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what'
 
 ## Download
 
-Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](https://github.com/FederalVia/octavo/releases)**. The release notes cover the one-time security prompt for unsigned test builds.
+Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](https://github.com/FederalVia/Octavo/releases)**. The release notes cover the one-time security prompt for unsigned apps.
 
 ## Quick start (from source)
 
@@ -135,7 +135,7 @@ docs/          Guides and screenshots
 
 ## Status
 
-Octavo is approaching 1.0. It's used daily and has tests, but expect some rough edges. See [docs/FEATURES.md](docs/FEATURES.md) for what's planned. Test builds aren't signed with a paid developer certificate yet, so Windows and macOS show a one-time warning.
+Octavo 1.0 is out. It's used daily and has tests; the [feature list](docs/FEATURES.md) shows what's done and what's planned next (plugins, and encrypted sync between devices without your PC). The app isn't signed with a paid developer certificate, so Windows and macOS show a one-time warning on first launch; the release notes explain the click-through.
 
 ## License
 
