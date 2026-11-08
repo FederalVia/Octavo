@@ -122,7 +122,9 @@ function initUpdater() {
     updateState = { ...updateState, status: 'unsupported', error: 'Updates are only available in the installed app.' };
     return;
   }
-  autoUpdater.allowPrerelease = true; // test builds are published as pre-releases
+  // Test builds (versions like 1.1.0-beta.1) are pre-releases: only copies that are test builds themselves get
+  // offered them. 0.x builds had this on, which is how they find 1.0.
+  autoUpdater.allowPrerelease = app.getVersion().includes('-');
   // macOS can only auto-install apps signed with a paid Apple certificate: there we notify and link to the download.
   autoUpdater.autoDownload = !IS_MAC;
   autoUpdater.autoInstallOnAppQuit = !IS_MAC;
