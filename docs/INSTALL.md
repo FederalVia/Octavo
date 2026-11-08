@@ -103,6 +103,16 @@ Stop the server with **Ctrl+C**.
 
 **Easiest:** download the installer for your system from the [Releases page](https://github.com/FederalVia/Octavo/releases): `.exe` for Windows, `.dmg` for Mac, `.AppImage` for Linux. No Node.js needed.
 
+### First launch
+
+A few things to know when you install from the Releases page:
+
+1. **Only download from the official Releases page:** https://github.com/FederalVia/Octavo/releases. Nowhere else is ours.
+2. **Which Mac file?** `…-mac-arm64.dmg` for Apple Silicon Macs (M1 and newer), `…-mac-x64.dmg` for Intel Macs. Not sure which you have? Apple menu → **About This Mac** says.
+3. **Mac warning:** the app isn't signed with an Apple Developer ID or notarized yet, so macOS blocks the first open. Try opening it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. After that it opens normally.
+4. **Windows warning:** the installer isn't code-signed yet, so Windows shows "Windows protected your PC". Click **More info**, then **Run anyway**.
+5. **Linux AppImage:** make it executable first (`chmod +x Octavo-*.AppImage`). If it won't start, install FUSE 2: `sudo apt install libfuse2` on Ubuntu 22.04, `sudo apt install libfuse2t64` on Ubuntu 24.04 and newer.
+
 **From source:**
 
 ```bash

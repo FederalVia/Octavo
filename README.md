@@ -55,7 +55,7 @@ See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what'
 
 ## Download
 
-Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](https://github.com/FederalVia/Octavo/releases)**. The release notes cover the one-time security prompt for unsigned apps.
+Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](https://github.com/FederalVia/Octavo/releases)**. First time? See [First launch](docs/INSTALL.md#first-launch) for which Mac file to pick and how to get past the one-time security warning on Mac and Windows.
 
 ## Quick start (from source)
 
