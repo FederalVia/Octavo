@@ -66,7 +66,7 @@ Alternatively, use [nvm](https://github.com/nvm-sh/nvm) on any platform: `nvm in
 ## 2. Install and run the web app
 
 ```bash
-git clone https://github.com/FederalVia/octavo.git
+git clone https://github.com/FederalVia/Octavo.git
 cd octavo
 npm install
 npm run build
@@ -101,7 +101,7 @@ Stop the server with **Ctrl+C**.
 
 ## 3. Desktop app
 
-**Easiest:** download the installer for your system from the [Releases page](https://github.com/FederalVia/octavo/releases): `.exe` for Windows, `.dmg` for Mac, `.AppImage` for Linux. No Node.js needed.
+**Easiest:** download the installer for your system from the [Releases page](https://github.com/FederalVia/Octavo/releases): `.exe` for Windows, `.dmg` for Mac, `.AppImage` for Linux. No Node.js needed.
 
 **From source:**
 
@@ -111,7 +111,7 @@ npm run desktop
 
 This builds the project and opens Octavo in its own window.
 
-- On first launch it uses `~/Octavo`. Use **File → Open Vault Folder…** to switch, and it remembers your choice.
+- On first launch it uses `~/Octavo`. Use **File → Brains** to create another brain or add an existing folder (such as an Obsidian vault), and it remembers your choice.
 - **File → Connect Claude…** copies a ready-made Claude Code command or Claude Desktop config.
 - While it's open, the desktop app also serves the web UI and MCP endpoint at `http://127.0.0.1:4321`. If that port is busy it picks another one.
 
@@ -184,7 +184,7 @@ Notes are stored as plain Markdown in the folder set by `OCTAVO_VAULT_DIR` (defa
 
 ### On your home Wi-Fi (easiest)
 
-**Desktop app:** choose **File → Use on Your Phone**, confirm, and scan the QR code with your phone's camera.
+**Desktop app:** choose **File → Use on Your Phone (Wi-Fi)** (or **⚙ Settings → Use on your phone**), confirm, and scan the QR code with your phone's camera.
 
 **From a terminal:**
 

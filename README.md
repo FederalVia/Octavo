@@ -48,7 +48,7 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 - **Safety net**: version history for every note, deletes go to a recoverable trash (and links to deleted notes offer to restore them), you get a conflict warning instead of losing edits, and one-click zip backups.
 - **Claude memory over MCP**: 28 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, orphans…) over stdio or HTTP.
 - **Phone**: open it on your phone on home Wi-Fi, or from anywhere with Access from Anywhere (your PC, your router, a free certificate; no cloud service). Installable as an app, with offline reading.
-- **CLI**: `octavo tui` to browse in a terminal, plus `octavo new / read / append / search / daily / task / tasks / query / set / publish / islands / move / history / backup …`
+- **CLI**: `octavo tui` to browse in a terminal, plus `octavo new / read / append / search / recent / daily / task / tasks / query / set / publish / islands / theme / move / history / backup / sync-folder …`
 - **Runs anywhere**: desktop app (Windows, Mac, Linux), in the browser, or self-hosted with Docker.
 
 See **[docs/FEATURES.md](docs/FEATURES.md)** for the full feature list and what's planned.
@@ -62,7 +62,7 @@ Get the desktop app for **Windows, Mac or Linux** from the **[Releases page](htt
 You need [Node.js](https://nodejs.org) 20 or newer and git.
 
 ```bash
-git clone https://github.com/FederalVia/octavo.git
+git clone https://github.com/FederalVia/Octavo.git
 cd octavo
 npm install
 npm run build
