@@ -1,10 +1,10 @@
 # Octavo
 
-**A knowledge base you see as a brain, and that Claude uses as its long-term memory. Completely free: no accounts, no subscriptions, no paid tiers.**
+**A knowledge base you see as a brain, and that your AI (Claude, Codex, Cursor, Gemini and others) uses as its long-term memory. Completely free: no accounts, no subscriptions, no paid tiers.**
 
 Octavo is an Obsidian-like note app built on plain Markdown files. Your notes appear as points in a 3D brain you can turn and zoom, grouped into six coloured regions: Projects, Knowledge, People, Sources, Journal and Hubs. Click any point to read or edit that note.
 
-It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can search, read and write the same notes. Claude remembers things between conversations, and you can watch it work: the notes it reads and changes light up live, and a fading trail shows the path it took.
+It also includes an [MCP](https://modelcontextprotocol.io) server, so an AI assistant can search, read and write the same notes. It remembers things between conversations, and you can watch it work: the notes it reads and changes light up live, and a fading trail shows the path it took. Claude Code, Claude Desktop, Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code and ChatGPT are all covered.
 
 ![The brain: notes grouped into six coloured regions](docs/images/atlas.png)
 
@@ -32,21 +32,21 @@ It also includes an [MCP](https://modelcontextprotocol.io) server, so Claude can
 ## Features
 
 - **Brain views**
-  - **Atlas**: a 3D brain with notes spread over six regions, a region dock with counts (tap to hide, double-tap to solo), find, Claude's trail, and a "bridges between regions" view, and a time-lapse of your brain growing.
-  - **Network**: a flat force-directed graph, coloured by region.
+  - **Atlas**: a 3D brain with notes spread over six regions, a region dock with counts (tap to hide, double-tap to solo), find, the AI's trail, a "bridges between regions" view, and a time-lapse of your brain growing.
+  - **Network**: a flat force-directed graph, coloured by region. Drop a note where you want it and it stays; the AI can place notes too.
 - **Markdown notes**: plain `.md` files in a folder you choose. They work with git, Obsidian and any text editor.
 - **Rich writing**: live preview, callouts, coloured highlights, tasks with due dates and custom marks, footnotes, LaTeX maths, Mermaid diagrams, `%%comments%%`, tables, code highlighting, and embedded images, audio, video and PDFs. Lists work like an outliner.
 - **Linking**: `[[wikilinks]]` to notes, headings and blocks, `![[embeds]]`, hover previews, backlinks, unlinked mentions, aliases, nested `#tags`, and automatic link updates when you rename or move a note.
 - **Queries (Bases / Dataview)**: a ` ```query ` block turns notes into a live table, list or cards (`TABLE status, due FROM "Projects" WHERE status != "done"`). Sort by clicking a column, edit a property by clicking a cell.
 - **Canvas**: boards of cards and arrows in the open JSON Canvas format.
-- **Drawings**: the Excalidraw editor built in, with drawings shown as pictures in your notes.
+- **Drawings**: the Excalidraw editor built in, with drawings shown as pictures in your notes, and a quick `/sketch` pad for a doodle in the middle of writing.
 - **Organise**: tabs (also stacked), split view, pop-out windows, file tree, quick switcher, command palette, `/` slash commands, full-text search, bookmarks, templates, workspaces, and daily, weekly and monthly notes with a calendar.
 - **Capture**: record audio notes, clip web pages into notes from the built-in web viewer, import from Notion and Evernote, and keep notes from Notability, GoodNotes and other apps in step through their backup folder.
 - **Publish**: turn chosen notes into a free static website you can host anywhere.
-- **Islands and separate brains**: keep a separate subject apart in its own corner of the brain, or keep whole separate vaults, each with its own Claude connection.
+- **Islands and separate brains**: keep a separate subject apart in its own corner of the brain, or keep whole separate vaults, each with its own AI connection.
 - **Optional note locking**: password-protect individual notes with end-to-end encryption. Off by default.
-- **Safety net**: version history for every note, deletes go to a recoverable trash (and links to deleted notes offer to restore them), you get a conflict warning instead of losing edits, and one-click zip backups.
-- **Claude memory over MCP**: 28 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, orphans…) over stdio or HTTP.
+- **Safety net**: version history for every note, deletes go to a recoverable trash (and links to deleted notes offer to restore them), you get a conflict warning instead of losing edits, and one-click zip backups (or a daily automatic one).
+- **AI memory over MCP**: 28 tools (search, read, write, append, edit, tasks, journal, queries, canvases, links, placing notes, orphans…) over stdio or HTTP. **File → Connect an AI…** gives each tool its setup.
 - **Phone**: open it on your phone on home Wi-Fi, or from anywhere with Access from Anywhere (your PC, your router, a free certificate; no cloud service). Installable as an app, with offline reading.
 - **CLI**: `octavo tui` to browse in a terminal, plus `octavo new / read / append / search / recent / daily / task / tasks / query / set / publish / islands / theme / move / history / backup / sync-folder …`
 - **Runs anywhere**: desktop app (Windows, Mac, Linux), in the browser, or self-hosted with Docker.
@@ -63,7 +63,7 @@ You need [Node.js](https://nodejs.org) 20 or newer and git.
 
 ```bash
 git clone https://github.com/FederalVia/Octavo.git
-cd octavo
+cd Octavo
 npm install
 npm run build
 npm run demo          # opens the example vault at http://127.0.0.1:4321
