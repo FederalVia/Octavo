@@ -28,7 +28,8 @@ import {
   type CompletionContext,
   type CompletionResult,
 } from '@codemirror/autocomplete';
-import { tags as t } from '@lezer/highlight';
+import { tags as t, styleTags } from '@lezer/highlight';
+import type { MarkdownConfig } from '@lezer/markdown';
 import { vim } from '@replit/codemirror-vim';
 import { parseWikiInner } from '../markdown';
 import { outliner } from '../outliner';
@@ -184,6 +185,36 @@ function wikilinkAt(view: EditorView, pos: number): { target: string; heading?: 
   }
   return null;
 }
+
+/**
+ * YAML properties at the top of a note (`---` … `---`). Without this the closing `---` turns the
+ * last property into a big setext heading in the editor.
+ */
+const frontMatter: MarkdownConfig = {
+  defineNodes: [{ name: 'FrontMatter', block: true }, 'FrontMatterMark'],
+  props: [styleTags({ 'FrontMatter/...': t.meta })],
+  parseBlock: [
+    {
+      name: 'FrontMatter',
+      before: 'HorizontalRule',
+      parse(cx, line) {
+        if (cx.lineStart !== 0 || !/^---\s*$/.test(line.text)) return false;
+        const marks = [cx.elt('FrontMatterMark', 0, line.text.length)];
+        let end = line.text.length;
+        while (cx.nextLine()) {
+          end = cx.lineStart + line.text.length;
+          if (/^(---|\.\.\.)\s*$/.test(line.text)) {
+            marks.push(cx.elt('FrontMatterMark', cx.lineStart, end));
+            cx.nextLine();
+            break;
+          }
+        }
+        cx.addElement(cx.elt('FrontMatter', 0, end, marks));
+        return true;
+      },
+    },
+  ],
+};
 
 export function Editor(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -382,7 +413,7 @@ export function Editor(props: Props) {
         bracketMatching(),
         closeBrackets(),
         EditorView.lineWrapping,
-        markdown({ base: markdownLanguage, codeLanguages: languages }),
+        markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [frontMatter] }),
         syntaxHighlighting(highlight),
         linkHighlighter,
         autocompletion({ override: [completeLinks], icons: false }),

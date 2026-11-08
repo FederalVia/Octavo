@@ -96,7 +96,11 @@ export async function pdfText(data: Buffer): Promise<string[]> {
   }
 }
 
-function safeSegment(s: string): string {
+/**
+ * One folder or file name from the watched folder, safe as one segment of a vault path. Leading/trailing dots and
+ * spaces go (trimmed before the dots, so " .." can't survive as ".." and climb out of the target folder).
+ */
+export function safeSegment(s: string): string {
   return s.replace(/[\\/:*?"<>|#^[\]]+/g, '_').replace(/^\.+/, '').trim() || 'Untitled';
 }
 
@@ -288,7 +292,9 @@ export async function syncFolder(vault: Vault, source: string, into: string, own
     for (const rel of await listFiles(src)) {
       try {
         const full = path.join(src, rel);
-        const st = await fsp.stat(full);
+        // lstat: a file swapped for a link since the listing is skipped, never followed out of the folder.
+        const st = await fsp.lstat(full);
+        if (!st.isFile()) continue;
         const prev = fstate.files[rel];
         if (prev && prev.mtime === Math.round(st.mtimeMs) && prev.size === st.size) {
           result.unchanged++;

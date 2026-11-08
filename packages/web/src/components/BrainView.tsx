@@ -1536,7 +1536,7 @@ export function BrainView(props: Props) {
           </div>
         </div>
       )}
-      {props.data && total === 0 && <div className="brain-empty">Your mind is empty. Create a note to spark the first thought.</div>}
+      {props.data && total === 0 && <div className="brain-empty">Your mind is empty. Press ＋ to write your first note.</div>}
     </div>
   );
 }

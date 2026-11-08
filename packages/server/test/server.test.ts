@@ -214,7 +214,7 @@ describe('HTTP server', () => {
       assert.match(r.text, /Logged to Journal\//);
       r = await call('open_periodic_note', { period: 'week' });
       assert.match(r.text, /^Journal\/Weekly\/\d{4}-W\d{2}\.md\n\n# Week /);
-      r = await call('random_note', { folder: 'People' });
+      r = await call('random_note', { folder: 'People', tag: 'person' }); // the starter notes add other People/ notes
       assert.match(r.text, /^# People\/Ada\.md\nUpdated .* · Brain region: Temporal \(in the “People” folder\)/);
       r = await call('set_note_region', { path: 'Ada', region: 'frontal' });
       assert.match(r.text, /now in the Frontal region \(set in the note’s properties/);
