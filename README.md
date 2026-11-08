@@ -2,7 +2,7 @@
 
 **A knowledge base you see as a brain, and that your AI (Claude, Codex, Cursor, Gemini and others) uses as its long-term memory. Completely free: no accounts, no subscriptions, no paid tiers.**
 
-Octavo is an note app built on plain Markdown files. Your notes appear as points in a 3D brain you can turn and zoom, grouped into six coloured regions: Projects, Knowledge, People, Sources, Journal and Hubs. Click any point to read or edit that note.
+Octavo is a note app built on plain Markdown files. Your notes appear as points in a 3D brain you can turn and zoom, grouped into six coloured regions: Projects, Knowledge, People, Sources, Journal and Hubs. Click any point to read or edit that note.
 
 It also includes an [MCP](https://modelcontextprotocol.io) server, so an AI assistant can search, read and write the same notes. It remembers things between conversations, and you can watch it work: the notes it reads and changes light up live, and a fading trail shows the path it took. Claude Code, Claude Desktop, Codex CLI, Cursor, Windsurf, Gemini CLI, VS Code and ChatGPT are all covered.
 
