@@ -4,7 +4,7 @@ status: active
 ---
 # Octavo
 
-An Obsidian-like app that doubles as Claude's memory.
+A note app you see as a brain, that doubles as your AI's memory.
 
 ## Decisions
 - Store notes as plain Markdown so they work with git and other editors.

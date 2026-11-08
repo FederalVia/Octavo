@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { VERSION } from './version.js';
 import { formatDate, formatQueryResult, REGION_INFO, type CanvasData, type CanvasNode, type NoteSummary, type RegionKey, type Vault } from '@octavo/core';
 
-export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in an Obsidian-like app.
+export const SERVER_INSTRUCTIONS = `Octavo is your long-term memory: a vault of interlinked Markdown notes that persists between conversations and that the user can also browse and edit in the Octavo app.
 
 How to use it:
 - At the start of a task, call get_vault_overview (once per conversation), then search_notes for the people, projects and topics involved. Read the most relevant notes before answering.
