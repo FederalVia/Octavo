@@ -40,6 +40,9 @@ Options:
                     Behind a reverse proxy only: trust X-Forwarded-For from these proxy
                     addresses (e.g. loopback, uniquelocal, 10.0.0.2) so each device gets its
                     own wrong-key lockout (env OCTAVO_TRUST_PROXY; off by default)
+  --watch-folder <dir>
+                    Keep notes from another app in step: mirror this folder (e.g. where Notability
+                    backs up PDFs to Google Drive) into the vault. Repeat for more folders
   --daily <folder>  Folder for daily journal notes (default Journal)
   --no-seed         Don't create starter notes in an empty vault
   -h, --help        Show this help
@@ -68,6 +71,7 @@ async function main() {
       'https-port': { type: 'string' },
       'challenge-port': { type: 'string' },
       daily: { type: 'string' },
+      'watch-folder': { type: 'string', multiple: true },
       'no-seed': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
       content: { type: 'string' },
@@ -204,6 +208,7 @@ async function main() {
     dailyFolder: values.daily,
     mcpReadOnly: values['read-only'],
     trustProxy: parseTrustProxy(values['trust-proxy'] ?? process.env.OCTAVO_TRUST_PROXY),
+    watchFolders: (values['watch-folder'] ?? []).map((d) => ({ source: path.resolve(expandHome(d)) })),
   });
   if (seed) await seedIfEmpty(running.vault);
   console.log(`[octavo] Vault:  ${vaultPath} (${running.vault.list().length} notes)`);

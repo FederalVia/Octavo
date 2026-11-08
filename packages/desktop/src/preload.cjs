@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld('octavoDesktop', {
   revealBrain: (path) => ipcRenderer.invoke('octavo:reveal-brain', path),
   popOut: (path) => ipcRenderer.invoke('octavo:pop-out', path),
   exportPdf: (html, title) => ipcRenderer.invoke('octavo:export-pdf', html, title),
+  // Notes from other apps (folders on this PC kept in step with the brain)
+  getSyncFolders: () => ipcRenderer.invoke('octavo:sync-folders'),
+  addSyncFolder: () => ipcRenderer.invoke('octavo:add-sync-folder'),
+  removeSyncFolder: (source) => ipcRenderer.invoke('octavo:remove-sync-folder', source),
   onOpenSettings: (callback) => {
     const listener = (_event, section) => callback(section);
     ipcRenderer.on('octavo:open-settings', listener);

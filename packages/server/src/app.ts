@@ -41,6 +41,8 @@ export interface AppOptions {
    * Only turn it on when every request reaches Octavo through that proxy.
    */
   trustProxy?: string | number | boolean;
+  /** Notes from other apps (folders watched on this computer); the API can show and re-run them, not change them. */
+  folderSync?: import('./folderSync.js').FolderSync;
 }
 
 /** Parse a trust-proxy setting from the CLI or environment ("1" → 1 hop, "true"/"false", else a list). */
@@ -383,6 +385,19 @@ export function createApp(opts: AppOptions): express.Express {
     } catch (err) {
       if (err instanceof BackupTooLargeError) res.status(413).json({ error: err.message });
       else next(err);
+    }
+  });
+
+  // Notes from other apps: which folders are mirrored, and "sync now". Adding or removing folders is done on
+  // the computer itself (desktop app or command line), so a remote client can't point Octavo at other folders.
+  api.get('/folder-sync', (_req, res) => {
+    res.json({ folders: opts.folderSync?.status() ?? [] });
+  });
+  api.post('/folder-sync/run', async (_req, res, next) => {
+    try {
+      res.json({ folders: (await opts.folderSync?.syncAll()) ?? [] });
+    } catch (err) {
+      next(err);
     }
   });
 

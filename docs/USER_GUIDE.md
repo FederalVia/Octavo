@@ -302,6 +302,25 @@ Under each note, **Mentioned in** lists notes that use its name in plain text wi
 
 Before a note changes, Octavo keeps a copy of the previous version (at most every 5 minutes, newest 50 per note) in the vault's `.octavo/history/` folder. Click **⟲** on a note to see its versions. Each one shows what changed compared with the current note, and **Restore this version** brings it back. The current content is saved first, so a restore can be undone too. This covers edits by Claude as well.
 
+## Notes from other apps (Notability, GoodNotes…)
+
+Octavo can keep notes from another app in step with your brain, one way: the other app keeps a folder updated, and Octavo turns what's in it into notes.
+
+**Notability, step by step:**
+1. In Notability: **Settings → Auto-backup**. Choose **Google Drive**, **OneDrive** or **Dropbox**, and set the format to **PDF**. Notability then keeps a PDF of every note in a "Notability" folder there, updated as you write.
+2. On your PC, install that drive's desktop app (e.g. Google Drive for desktop), so the folder appears on your computer, such as `G:\My Drive\Notability`.
+3. In Octavo: **⚙ Settings → Notes from other apps → Add folder…**, and pick that folder.
+
+**What you get:**
+- A note for each PDF, in a `Notability` folder in your brain (subfolders kept). It shows every page, handwriting included, and is in the brain views like any other note.
+- Any **typed** text in the PDF is copied under the pages, in a folded "Text in the PDF" box, so search and Claude can find it. Handwriting isn't text in a PDF, so it can't be searched.
+- When you change a note in Notability, the Octavo note follows within a minute or so of the drive syncing. **Write your own notes outside the `%% synced %%` lines** (below them, for example) and they stay when it updates.
+- Deleting a note in Notability doesn't delete it in Octavo.
+
+The same works for any app that saves PDFs, images, Markdown or text files to a folder (GoodNotes' auto-backup, a scanner app, an export folder). **Sync now** looks straight away. Folders can only be added in the desktop app on the PC itself, never from a phone. On a server, use `octavo serve --watch-folder <folder>`, or `octavo sync-folder <folder>` for a one-off copy.
+
+PDFs in any note (`![[file.pdf]]`) now show page by page, on phones too, with an **Open PDF** link.
+
 ## Backups
 
 **⚙ Settings → Backup → Download .zip** saves the whole vault as one zip file: every note, attachment, canvas, drawing and setting (islands, bookmarks, templates). Version history is left out unless you turn on **Include version history**. To restore, unzip it anywhere and open that folder as your vault. From a terminal, `octavo backup` does the same (`octavo backup D:\Backups\notes.zip --history`). The backup must be saved outside the vault folder.

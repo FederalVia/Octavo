@@ -5,6 +5,7 @@ import { buildSite, writeSite } from './publish.js';
 import { backupName, buildBackup } from './backup.js';
 import fs from 'node:fs/promises';
 import { parseSince } from './mcp.js';
+import { defaultInto, syncFolder } from './folderSync.js';
 
 export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault folder; no server needed):
   octavo new <path> [--content TEXT]   Create a note (content from --content or stdin)
@@ -33,6 +34,9 @@ export const NOTE_COMMANDS_HELP = `Note commands (work directly on the vault fol
   octavo publish <folder> [--all | --folder F | --tag T] [--title T]
                                        Build a static website from notes marked "publish: true"
                                        (or everything, a folder or a tag) into <folder>
+  octavo sync-folder <folder> [--into F]
+                                       Mirror a folder from another app (PDFs, images, Markdown) into the
+                                       vault once; run again to bring in only what changed
   octavo import notion <folder> [--into F]
                                        Import an unzipped Notion "Markdown & CSV" export
   octavo import evernote <file.enex> [--into F]
@@ -64,6 +68,7 @@ export const NOTE_COMMANDS = new Set([
   'islands',
   'backup',
   'theme',
+  'sync-folder',
 ]);
 
 async function readStdin(): Promise<string> {
@@ -205,6 +210,22 @@ export async function runNoteCommand(
         if (file === root || file.startsWith(root + path.sep)) throw new Error('Save the backup outside the vault folder');
         await fs.writeFile(file, b.zip);
         console.log(`Backed up ${b.files} files (${(b.bytes / 1024 / 1024).toFixed(1)} MB) to ${file}`);
+        break;
+      }
+      case 'sync-folder': {
+        need(args, 1, 'sync-folder <folder> [--into F]');
+        const source = path.resolve(args.join(' '));
+        const root = path.resolve(vault.root);
+        const rel = path.relative(root, source);
+        if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) throw new Error('That folder is inside the vault already');
+        const into = opts.into ?? defaultInto(source);
+        const r = await syncFolder(vault, source, into);
+        out(r, () =>
+          [
+            `Synced ${source} → ${into}/: ${r.added.length} added, ${r.updated.length} updated, ${r.unchanged} unchanged.`,
+            ...r.errors.map((e) => `  ! ${e}`),
+          ].join('\n'),
+        );
         break;
       }
       case 'theme': {

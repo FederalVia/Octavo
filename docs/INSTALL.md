@@ -243,6 +243,7 @@ octavo recent 3d                                     # notes changed in the last
 octavo query 'TABLE status FROM #project'            # live query, as a table
 octavo islands add Theology                          # keep a folder apart in the brain views
 octavo tui                                           # browse and search in the terminal
+octavo sync-folder "$HOME/Google Drive/Notability"  # bring in notes from another app (PDFs, images, Markdown)
 octavo theme add ~/Downloads/nord.css                # install a CSS theme and switch it on
 octavo backup ~/octavo-backup.zip                    # the whole vault as one zip (--history adds versions)
 ```

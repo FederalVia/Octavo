@@ -8,6 +8,7 @@ import type { SyntaxNode } from '@lezer/common';
 import type { EditorState, Range } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view';
 import { renderDrawingEmbed } from './drawingEmbed';
+import { renderPdfEmbed } from './pdfEmbed';
 
 export interface LivePreviewOptions {
   onOpenLink: (target: string, heading?: string) => void;
@@ -116,6 +117,38 @@ class DrawingWidget extends WidgetType {
   }
   get estimatedHeight() {
     return 220;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+/** `![[file.pdf]]` drawn page by page, as in the reading view. */
+class PdfWidget extends WidgetType {
+  constructor(
+    readonly src: string,
+    readonly name: string,
+  ) {
+    super();
+  }
+  eq(o: PdfWidget) {
+    return o.src === this.src;
+  }
+  toDOM(view: EditorView) {
+    const el = document.createElement('div');
+    el.className = 'embed-pdf-pages cm-lp-pdf';
+    el.dataset.src = this.src;
+    el.dataset.name = this.name;
+    el.innerHTML = '<div class="embed-loading"></div>';
+    (el.firstChild as HTMLElement).textContent = `📄 ${this.name}`;
+    el.addEventListener('mousedown', (e) => {
+      if (!(e.target as HTMLElement).closest('a')) e.preventDefault();
+    });
+    void renderPdfEmbed(el).then(() => view.requestMeasure());
+    return el;
+  }
+  get estimatedHeight() {
+    return 500;
   }
   ignoreEvent() {
     return true;
@@ -250,6 +283,10 @@ function build(view: EditorView, opts: LivePreviewOptions): DecorationSet {
             decos.push(Decoration.replace({ widget: new DrawingWidget(target.trim(), (t) => opts.onOpenLink(t)) }).range(start, end));
             continue;
           }
+          if (m[1] && /\.pdf$/i.test(target.trim())) {
+            decos.push(Decoration.replace({ widget: new PdfWidget(opts.fileUrl(target.trim()), target.trim().split('/').pop()!) }).range(start, end));
+            continue;
+          }
           if (m[1] && IMAGE.test(target.trim())) {
             const width = /^\d+$/.test(label) ? Number(label) : undefined;
             decos.push(Decoration.replace({ widget: new ImageWidget(opts.fileUrl(target.trim()), target, width) }).range(start, end));
@@ -321,6 +358,7 @@ const lpTheme = {
   '.cm-lp-codeline': { backgroundColor: 'var(--code-bg)', fontFamily: 'var(--font-mono)' },
   '.cm-lp-done': { color: 'var(--text-faint)', textDecoration: 'line-through' },
   '.cm-lp-task': { margin: '0 0.35em 0 0', verticalAlign: 'middle', cursor: 'pointer' },
+  '.cm-lp-pdf': { display: 'block', margin: '6px 0' },
   '.cm-lp-drawing': { display: 'block', margin: '6px 0', cursor: 'pointer' },
   '.cm-lp-image': { maxWidth: '100%', display: 'block', margin: '6px 0', borderRadius: '6px' },
   '.cm-lp-highlight': { backgroundColor: 'rgba(250, 204, 21, 0.28)', borderRadius: '3px', padding: '0 2px' },

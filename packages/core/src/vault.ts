@@ -1207,6 +1207,18 @@ export class Vault extends EventEmitter {
     return rel;
   }
 
+  /** Write a file that isn't a note (a PDF, an image) at an exact path, replacing it: e.g. a copy kept in step with another app. */
+  async writeAttachment(rel: string, data: Buffer): Promise<string> {
+    const clean = normalizeFolderPath(rel);
+    if (!clean || /\.md$/i.test(clean)) throw new VaultPathError(`Not an attachment path: ${rel}`);
+    const full = this.filePath(clean);
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, data);
+    this.addToMap(this.attachments, path.posix.basename(clean).toLowerCase(), clean);
+    this.emitEvent({ type: 'rescan' });
+    return clean;
+  }
+
   // ---------------------------------------------------------------- canvases
 
   /** Every .canvas file in the vault. */

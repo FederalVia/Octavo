@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { scheduleAutoBackups } from './backup.js';
+import { FolderSync, type WatchedFolder } from './folderSync.js';
 import { watchActivity } from './activity.js';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -13,6 +14,7 @@ export { lanAddresses, loadOrCreateToken, phoneUrl, qrDataUrl } from './phone.js
 export { RemoteAccess, diagnose, type RemoteStatus, type RemoteProblem } from './remote/remote.js';
 export { importNotion, importEnex, type ImportResult } from './importers.js';
 export { activityFile, recordAccess, watchActivity } from './activity.js';
+export { FolderSync, syncFolder, defaultInto, type WatchedFolder, type SyncResult, type FolderStatus } from './folderSync.js';
 
 export interface StartOptions {
   vaultPath: string;
@@ -26,6 +28,8 @@ export interface StartOptions {
   trustProxy?: string | number | boolean;
   /** If the port is taken, fall back to a random free port. */
   fallbackToRandomPort?: boolean;
+  /** Folders outside the vault to mirror into it, e.g. where Notability backs up its PDFs (see folderSync.ts). */
+  watchFolders?: WatchedFolder[];
 }
 
 export interface RunningServer {
@@ -34,6 +38,8 @@ export interface RunningServer {
   vault: Vault;
   /** The request handler, e.g. to also serve it over HTTPS for remote access. */
   app: import('express').Express;
+  /** Notes from other apps: change the watched folders with folderSync.setFolders(). */
+  folderSync: FolderSync;
   close(): Promise<void>;
 }
 
@@ -69,7 +75,9 @@ function listen(server: http.Server, port: number, host: string): Promise<number
 export async function startServer(opts: StartOptions): Promise<RunningServer> {
   const host = opts.host ?? '127.0.0.1';
   const vault = await Vault.open(opts.vaultPath, { dailyFolder: opts.dailyFolder });
+  const folderSync = new FolderSync(vault);
   const app = createApp({
+    folderSync,
     vault,
     token: opts.token,
     webDir: opts.webDir ?? defaultWebDir(),
@@ -93,16 +101,19 @@ export async function startServer(opts: StartOptions): Promise<RunningServer> {
   // Reads by Claude Desktop's separate Octavo process show up in this app's atlas trail.
   const stopActivity = watchActivity(vault.root, (p) => vault.noteAccessed(p));
   const stopBackups = scheduleAutoBackups(vault);
+  folderSync.setFolders(opts.watchFolders ?? []);
   const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
   return {
     url: `http://${displayHost}:${port}`,
     port,
     vault,
     app,
+    folderSync,
     close: () =>
       new Promise<void>((resolve) => {
         stopActivity();
         stopBackups();
+        folderSync.close();
         vault.close();
         server.closeAllConnections?.();
         server.close(() => resolve());
