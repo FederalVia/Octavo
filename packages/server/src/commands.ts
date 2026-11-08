@@ -258,6 +258,8 @@ export async function runNoteCommand(
             if (url.protocol !== 'https:') throw new Error('Use an https:// address');
             const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000) });
             if (!res.ok) throw new Error(`Couldn’t download it (${res.status} ${res.statusText})`);
+            // Redirects are followed, but not down to plain http, where anyone on the way could change the stylesheet.
+            if (res.url && new URL(res.url).protocol !== 'https:') throw new Error('That address redirects to a plain http:// address; use an https:// one');
             css = await res.text();
             base = decodeURIComponent(url.pathname.split('/').pop() || 'theme');
           } else {

@@ -22,6 +22,16 @@ export function visibleLength(s: string): number {
   return s.replace(/\x1b\[[0-9;]*m/g, '').length;
 }
 
+/**
+ * Text from the vault with terminal control characters removed. Notes can be written by other devices or
+ * Claude, and an escape sequence printed raw could retitle the terminal, write the clipboard (OSC 52) and so on.
+ * Tabs become spaces; newlines are kept for multi-line text.
+ */
+export function plain(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\t/g, '    ').replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f\u2028\u2029]/g, '');
+}
+
 /** Notes matching a query: name matches first (prefix, then substring), then full-text hits. */
 export function findNotes(vault: Vault, query: string, limit = 200): NoteSummary[] {
   const all = vault.list();
@@ -66,6 +76,7 @@ function wrap(line: string, width: number): string[] {
 export function renderNote(content: string, width: number): { lines: string[]; links: string[] } {
   const links: string[] = [];
   const lines: string[] = [];
+  content = plain(content.replace(/\r\n/g, '\n'));
   let body = content;
   const fm = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(content);
   if (fm) {
@@ -133,7 +144,7 @@ export async function runTui(vault: Vault): Promise<void> {
     const { w, h } = size();
     const rows: string[] = [];
     if (screen.kind === 'list') {
-      rows.push(style.bold(` Octavo · ${vault.name} `) + style.dim(`${vault.list().length} notes`));
+      rows.push(style.bold(` Octavo · ${plain(vault.name)} `) + style.dim(`${vault.list().length} notes`));
       rows.push(` Search: ${query}${style.inverse(' ')}`);
       rows.push(style.dim('─'.repeat(w)));
       const space = h - 5;
@@ -141,21 +152,21 @@ export async function runTui(vault: Vault): Promise<void> {
       if (selected >= listScroll + space) listScroll = selected - space + 1;
       for (let i = listScroll; i < Math.min(results.length, listScroll + space); i++) {
         const n = results[i];
-        const label = `${n.name}${n.folder ? style.dim(`  ${n.folder}`) : ''}`;
+        const label = `${plain(n.name)}${n.folder ? style.dim(`  ${plain(n.folder)}`) : ''}`;
         rows.push(i === selected ? style.inverse(fit(` ${label} `, w)) : ` ${label}`);
       }
       if (!results.length) rows.push(style.dim(' No matching notes.'));
       while (rows.length < h - 1) rows.push('');
-      rows.push(style.dim(message || ' type to search · ↑↓ move · Enter open · Ctrl+D today · Esc clear · Ctrl+C quit'));
+      rows.push(style.dim(plain(message) || ' type to search · ↑↓ move · Enter open · Ctrl+D today · Esc clear · Ctrl+C quit'));
     } else {
       const s = screen;
-      rows.push(style.bold(` ${s.path.replace(/\.md$/, '')} `));
+      rows.push(style.bold(` ${plain(s.path.replace(/\.md$/, ''))} `));
       rows.push(style.dim('─'.repeat(w)));
       const space = h - 3;
       for (const l of s.lines.slice(s.scroll, s.scroll + space)) rows.push(` ${l}`);
       while (rows.length < h - 1) rows.push('');
       const more = s.lines.length > space ? ` ${Math.min(100, Math.round(((s.scroll + space) / s.lines.length) * 100))}%` : '';
-      rows.push(style.dim(message || ` ↑↓/Space scroll · 1-9 follow link · e edit · d today · Esc back · q quit${more}`));
+      rows.push(style.dim(plain(message) || ` ↑↓/Space scroll · 1-9 follow link · e edit · d today · Esc back · q quit${more}`));
     }
     out.write(`${ESC}H${ESC}2J` + rows.map((r) => r).join('\n'));
     message = '';
@@ -182,7 +193,11 @@ export async function runTui(vault: Vault): Promise<void> {
   const edit = (path: string) => {
     input.setRawMode(false);
     out.write(`${ESC}?1049l`);
-    spawnSync(editorCommand(), [vault.filePath(path)], { stdio: 'inherit', shell: process.platform === 'win32' });
+    // Windows runs the editor through cmd.exe (for .cmd editors), which would read & | ^ in a note's file name
+    // as commands: quote it there (file names can't contain "). Elsewhere there's no shell.
+    const file = vault.filePath(path);
+    const win = process.platform === 'win32';
+    spawnSync(editorCommand(), [win ? `"${file}"` : file], { stdio: 'inherit', shell: win });
     out.write(`${ESC}?1049h`);
     input.setRawMode(true);
   };

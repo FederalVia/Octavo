@@ -62,3 +62,18 @@ test('octavo recent: notes changed in a span', async () => {
   assert.deepEqual(recent.map((r) => r.path), ['New.md']);
   assert.equal((JSON.parse(await run(dir, 'recent', ['2w'], { json: true })) as unknown[]).length, 2);
 });
+
+test('octavo theme add <url>: https only, and a redirect down to http is refused', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'octavo-cli-theme-url-'));
+  await assert.rejects(run(dir, 'theme', ['add', 'http://example.com/a.css']), /https/);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => ({ ok: true, status: 200, statusText: 'OK', url: 'http://evil.example/a.css', text: async () => 'body{}' })) as unknown as typeof fetch;
+  try {
+    await assert.rejects(run(dir, 'theme', ['add', 'https://example.com/a.css']), /plain http/);
+    await assert.rejects(fs.stat(path.join(dir, '.octavo', 'snippets', 'a.css')));
+    globalThis.fetch = (async () => ({ ok: true, status: 200, statusText: 'OK', url: 'https://cdn.example/a.css', text: async () => 'body{}' })) as unknown as typeof fetch;
+    assert.match(await run(dir, 'theme', ['add', 'https://example.com/a.css']), /Installed and switched on a\.css/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
